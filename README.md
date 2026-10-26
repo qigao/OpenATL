@@ -40,7 +40,8 @@ and maintenance patches, **removing only its dependency on the Microsoft
 ATL stub**. For example, on an MSVC Windows x64 host:
 
 ```sh
-vcpkg install --triplet x64-windows-static
+vcpkg install --triplet x64-windows-static \
+  --x-install-root=vcpkg_installed/x64-windows-static
 cmake -S . -B build -DOPENATL_BUILD_QUALIFICATION=ON \
   -DVCPKG_TARGET_TRIPLET=x64-windows-static
 cmake --build build
@@ -50,7 +51,10 @@ ctest --test-dir build --output-on-failure
 Windows llvm-mingw, Linux and macOS cross-host builds use the custom
 `cmake/vcpkg-triplets/{x64,arm64}-openatl-mingw.cmake` triplets.
 Their compilers use `cmake/toolchains/llvm-mingw.cmake`, and CI
-installs WTL through vcpkg before configuring OpenATL. Manually supplied
+installs WTL through vcpkg before configuring OpenATL. The CI uses
+a separate manifest install root per triplet (at
+`vcpkg_installed/<triplet>/<triplet>/include`) so installing ARM64 does
+not remove previously installed x64 headers. Manually supplied
 `OPENATL_ATL_INCLUDE_DIR` and `OPENATL_WTL_INCLUDE_DIR` are rejected.
 
 A GUI application links **`OpenATL::ATL`** and obtains WTL's
