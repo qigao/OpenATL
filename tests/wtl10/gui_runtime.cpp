@@ -19,6 +19,7 @@
 #define _WIN32_IE 0x0601
 #endif
 #include <windows.h>
+#include <objbase.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <atlbase.h>
@@ -246,15 +247,16 @@ static bool check_dialog()
 
 int main(void)
 {
-    const HRESULT apartment = ::CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
-    if (FAILED(apartment)) {
-        fprintf(stderr, "CoInitializeEx failed: 0x%08lx\n", (unsigned long)apartment);
+    // UI-only contract: no COM apartment is initialized by this process.
+    // CoGetContextToken does NOT initialize one, it only checks the state.
+    ULONG_PTR context_token = 0;
+    if (::CoGetContextToken(&context_token) != CO_E_NOTINITIALIZED) {
+        fprintf(stderr, "WTL-only GUI must start with COM uninitialized\n");
         return 10;
     }
     HRESULT init = _Module.Init(NULL, ::GetModuleHandleW(NULL));
     if (FAILED(init)) {
-        ::CoUninitialize();
-        fprintf(stderr, "WTL CAppModule init failed\n");
+        fprintf(stderr, "WTL CAppModule init failed without COM\n");
         return 11;
     }
 
@@ -264,14 +266,14 @@ int main(void)
     const bool dialog_ok = window_ok && check_dialog();
 
     _Module.Term();
-    ::CoUninitialize();
+    const bool no_com = (::CoGetContextToken(&context_token) == CO_E_NOTINITIALIZED);
 
-    if (!thunk_ok || !window_ok || !dialog_ok) {
-        fprintf(stderr, "WTL10 GUI runtime FAILURE thunk=%d window=%d dialog=%d err=%lu\n",
-                (int)thunk_ok, (int)window_ok, (int)dialog_ok,
+    if (!thunk_ok || !window_ok || !dialog_ok || !no_com) {
+        fprintf(stderr, "WTL10 GUI runtime FAILURE thunk=%d window=%d dialog=%d no_com=%d err=%lu\n",
+                (int)thunk_ok, (int)window_ok, (int)dialog_ok, (int)no_com,
                 (unsigned long)::GetLastError());
-        return !thunk_ok ? 20 : (!window_ok ? 21 : 22);
+        return !thunk_ok ? 20 : (!window_ok ? 21 : (!dialog_ok ? 22 : 23));
     }
-    puts("WTL10 GUI runtime PASS: W^X thunk x64/ARM64, true message maps, resource dialog, NCDESTROY, OnFinalMessage");
+    puts("WTL10 GUI runtime PASS: no COM apartment, W^X thunk x64/ARM64, message maps, resource dialog, NCDESTROY, OnFinalMessage");
     return 0;
 }
