@@ -11,6 +11,9 @@
 
 #include "atlbase.h"
 #include <string>
+#include <algorithm>
+#include <vector>
+#include <cstdarg>
 
 namespace ATL {
 
@@ -38,8 +41,11 @@ public:
         if (psz != NULL) {
             int len = ::MultiByteToWideChar(CP_ACP, 0, psz, -1, NULL, 0);
             if (len > 0) {
-                m_str.resize(len - 1);
-                ::MultiByteToWideChar(CP_ACP, 0, psz, -1, &m_str[0], len);
+                // Conversion includes a final NUL: allocate *len* chars.
+                std::vector<wchar_t> output(static_cast<size_t>(len));
+                if (::MultiByteToWideChar(CP_ACP, 0, psz, -1,
+                      output.data(), len) == len)
+                    m_str.assign(output.data(), static_cast<size_t>(len - 1));
             }
         }
     }
@@ -181,9 +187,9 @@ public:
 
     LPTSTR GetBuffer(int nMinBufLength = 0)
     {
-        if (nMinBufLength > (int)m_str.length())
-            m_str.resize(nMinBufLength);
-        return &m_str[0];
+        if (nMinBufLength > GetLength())
+            m_str.resize(static_cast<size_t>(nMinBufLength));
+        return m_str.data(); // C++17: valid even for an empty CString
     }
 
     void ReleaseBuffer(int nNewLength = -1)
@@ -196,8 +202,8 @@ public:
 
     LPTSTR GetBufferSetLength(int nNewLength)
     {
-        m_str.resize(nNewLength);
-        return &m_str[0];
+        m_str.resize(static_cast<size_t>(nNewLength < 0 ? 0 : nNewLength));
+        return m_str.data();
     }
 
     void __cdecl Format(const TCHAR* pszFormat, ...)
@@ -210,11 +216,23 @@ public:
 
     void FormatV(const TCHAR* pszFormat, va_list args)
     {
-        int nLen = _vsctprintf(pszFormat, args);
-        if (nLen > 0) {
-            m_str.resize(nLen);
-            _vstprintf_s(&m_str[0], nLen + 1, pszFormat, args);
-        }
+        if (!pszFormat) { m_str.clear(); return; }
+#if defined(_MSC_VER) && !defined(__clang__)
+        va_list measurement = args;
+#else
+        va_list measurement;
+        va_copy(measurement, args);
+#endif
+        const int length = _vsctprintf(pszFormat, measurement);
+#if !defined(_MSC_VER) || defined(__clang__)
+        va_end(measurement);
+#endif
+        if (length < 0) { m_str.clear(); return; }
+        std::vector<TCHAR> buffer(static_cast<size_t>(length) + 1);
+        const int written = _vstprintf_s(buffer.data(), buffer.size(),
+                                        pszFormat, args);
+        if (written < 0) { m_str.clear(); return; }
+        m_str.assign(buffer.data(), static_cast<size_t>(written));
     }
 
     BOOL LoadString(UINT nID)
@@ -233,6 +251,7 @@ public:
         if (pszOld == NULL || pszNew == NULL) return 0;
         int nCount = 0;
         size_t nOldLen = _tcslen(pszOld);
+        if (nOldLen == 0) return 0; // avoid endless empty-pattern replace
         size_t nNewLen = _tcslen(pszNew);
         size_t pos = 0;
         while ((pos = m_str.find(pszOld, pos)) != std::basic_string<TCHAR>::npos) {
