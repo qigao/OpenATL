@@ -1,0 +1,9 @@
+{
+  "name": "wtl",
+  "version": "10.0.10320",
+  "port-version": 6,
+  "description": "Official WTL10 headers for OpenATL; the in-tree OpenATL implementation supplies ATL instead of Microsoft ATL.",
+  "homepage": "https://sourceforge.net/projects/wtl/",
+  "license": "MS-PL",
+  "supports": "windows & !xbox"
+}

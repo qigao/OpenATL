@@ -1,0 +1,22 @@
+# Generated / external sources are never committed
+/build/
+/build-*/
+/tools/
+/vcpkg_installed/
+/.cache/
+*.obj
+*.o
+*.res
+*.res.o
+*.dll
+*.exe
+*.zip
+*.7z
+*.tar.xz
+*.pdb
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Testing/
+.DS_Store
+__pycache__/
