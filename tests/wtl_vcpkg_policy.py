@@ -44,14 +44,15 @@ def check() -> int:
         errors.append("CMake must consume manifest-installed WTL")
     if "if(DEFINED OPENATL_WTL_INCLUDE_DIR)" not in cmake:
         errors.append("CMake must reject manually supplied WTL roots")
-    for name in ["scripts/windows-openatl-bootstrap.ps1",
-                 "scripts/wtl10-cross-host.sh"]:
-        src = (ROOT / name).read_text("utf-8")
-        if "vcpkg" not in src or "install" not in src:
-            errors.append(f"{name} must invoke manifest WTL install")
-        if ("WTL10_10320_Final.zip" in src or
-                "WTL10_10320_Release.zip" in src):
-            errors.append(f"{name} must not manually download WTL ZIP")
+    workflow = (ROOT / ".github/workflows/openatl-qualification.yml").read_text("utf-8")
+    if "vcpkg install" not in workflow and "vcpkg.exe" not in workflow and "vcpkg/vcpkg" not in workflow:
+        errors.append("GitHub Actions must install WTL through vcpkg manifest")
+    if "--x-install-root" not in workflow or "cmake --build" not in workflow:
+        errors.append("GitHub Actions must isolate target triplets and build with CMake")
+    if "scripts/" in workflow or (ROOT / "scripts").exists():
+        errors.append("Legacy scripts/ directory or workflow calls must not return")
+    if "WTL10_10320_Final.zip" in workflow or "WTL10_10320_Release.zip" in workflow:
+        errors.append("GitHub Actions must not manually download WTL ZIP")
     if errors:
         for error in errors:
             print("WTL_VCPKG_POLICY_FAIL " + error, file=sys.stderr)
