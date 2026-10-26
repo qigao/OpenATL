@@ -2,7 +2,8 @@
 
 This project qualifies **Windows UI without COM initialization** and
 **optional COM Client** with two mandatory compiler paths. The same in-repository MIT clean-room OpenATL implementation and pinned
-official MS-PL WTL10 headers are used.
+official MS-PL WTL10 headers are used, installed by the checked-in
+vcpkg manifest and ATL-free WTL overlay on every build host.
 
 | Toolchain | Build host | Target | Mandatory acceptance |
 | --- | --- | --- | --- |
@@ -16,9 +17,9 @@ MSVC developer-shell action is pinned to
 `ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756`.
 MSVC build uses `/MT`; llvm-mingw uses `-static`. Neither selects
 Microsoft ATL or a separate RATL provider. CMake refuses the retired
-`OPENATL_ATL_INCLUDE_DIR` setting; its source root is always `include/`. The GUI target
-`OpenATL::WTL` must not transitively link COM client libraries;
-`OpenATL::COMClient` is linked explicitly only by a COM consumer.
+`OPENATL_ATL_INCLUDE_DIR` setting; its source root is always `include/`. GUI targets link `OpenATL::ATL` and include vcpkg-installed WTL headers.
+There is no `OpenATL::WTL` target, alias or fallback to Microsoft ATL;
+`OpenATL::COMClient` remains explicitly opt-in.
 
 [Historical dual-toolchain baseline](https://github.com/qigao/OpenATL/actions/runs/40361221782)
 preceded the UI/client-only architectural refactor and included removed
@@ -28,7 +29,8 @@ The new branch HEAD requires its own full CI acceptance.
 Still unqualified: CFG/CET, aggressive failure injection and concurrent
 thunk unloading, real interactive SDI and production release.
 
-**Build boundary:** OpenATL is permanently source-tree-only. No install,
-export, package configuration, Installed SDK, or installed-consumer test is
-planned or permitted. Windows SDK in the matrix means Microsoft's target
-OS headers and resource tools, **not** an OpenATL distributable.
+**Build boundary:** OpenATL is permanently source-tree-only. There is
+no OpenATL install/export/package config, Installed SDK, or installed-consumer
+test. External WTL headers are installed **by vcpkg** under
+`vcpkg_installed/<triplet>/include`; that is not an OpenATL SDK.
+Windows SDK means Microsoft's target OS headers and resource tools.
