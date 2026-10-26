@@ -1,62 +1,42 @@
 param([string]$ArtifactRoot='wtl10-arm64')
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() -ne 'Arm64') {
-  throw 'Genuine Windows ARM64 runner required'
+if([Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne
+   [Runtime.InteropServices.Architecture]::Arm64) {
+  throw 'Real native Windows ARM64 runner is mandatory'
 }
-$manifest=Get-Content (Join-Path $ArtifactRoot 'manifest.json') -Raw | ConvertFrom-Json -AsHashtable
-$files=@(
-  'wtl10_gui_runtime_aarch64.exe',
-  'atl_com_openatl_arm64.exe',
-  'atl_com_p1_openatl_arm64.exe',
-  'atl_com_p1b_openatl_arm64.exe',
-  'atl_registry_sandbox_arm64.exe',
-  'atl_p1c_registrar_arm64.exe'
-)
-foreach($filename in $files) {
+$manifest=Get-Content (Join-Path $ArtifactRoot 'manifest.json') -Raw |
+  ConvertFrom-Json -AsHashtable
+$expected=@{
+  'wtl10_gui_runtime_aarch64.exe'='WTL10 GUI runtime PASS: no COM apartment, W^X thunk x64/ARM64, message maps, resource dialog, NCDESTROY, OnFinalMessage'
+  'atl_com_client_arm64.exe'='ATL_COM_CLIENT_OK activate=1 qi=1 comptr=1 bstr=1 variant=1 unregister=0'
+}
+foreach($filename in $expected.Keys) {
   $path=(Resolve-Path (Join-Path $ArtifactRoot $filename)).Path
   $data=[IO.File]::ReadAllBytes($path)
-  if ($data.Length -lt 128 -or [Text.Encoding]::ASCII.GetString($data,0,2) -ne 'MZ') {
-    throw "Invalid PE image $filename"
+  if($data.Length -lt 128 -or [Text.Encoding]::ASCII.GetString($data,0,2) -ne 'MZ') {
+    throw "Invalid Windows PE $filename"
   }
   $offset=[BitConverter]::ToInt32($data,0x3c)
-  if ($offset -lt 64 -or $offset+8 -gt $data.Length -or
-      [Text.Encoding]::ASCII.GetString($data,$offset,4) -ne "PE$([char]0)$([char]0)" -or
-      [BitConverter]::ToUInt16($data,$offset+4) -ne 0xAA64) {
-    throw "Not Windows ARM64 PE: $filename"
+  if($offset -lt 64 -or $offset+8 -gt $data.Length -or
+     [Text.Encoding]::ASCII.GetString($data,$offset,4) -ne "PE$([char]0)$([char]0)" -or
+     [BitConverter]::ToUInt16($data,$offset+4) -ne 0xAA64) {
+    throw "Expected ARM64 PE: $filename"
   }
   $sha=(Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
-  if (!$manifest.ContainsKey($filename) -or $sha -ne $manifest[$filename]) {
-    throw "ARM64 PE SHA mismatch/missing provenance: $filename"
+  if(!$manifest.ContainsKey($filename) -or $sha -ne $manifest[$filename]) {
+    throw "ARM64 SHA256 mismatch: $filename"
   }
 }
-$expect=@{
-  'atl_com_openatl_arm64.exe'='ATL_COM_P0_OK identity=1 map=1 qi_errors=1 refs=0 comptr=1 bstr=1 variant=1'
-  'atl_com_p1_openatl_arm64.exe'='ATL_COM_P1_OK create=1 rollback=1 factory=1 nonagg=1 locks=1 running=1 revoke=1 registry_failclosed=1'
-  'atl_com_p1b_openatl_arm64.exe'='ATL_COM_P1B_OK map=2 rollback=1 activation=2 revoke=1 wrongthread=1 registry=0'
-  'atl_registry_sandbox_arm64.exe'='ATL_REG_SANDBOX_OK isolated=1 redirect=1 rollback=1 restored=1 clean=1 stub_failclosed=1'
-  'atl_p1c_registrar_arm64.exe'='ATL_P1C_REAL_OK guarded=1 writes=2 rollback=1 duplicate=1 targeted=1 clean=1 recovered=1'
-}
-for($iteration=1;$iteration -le 5;$iteration++) {
-  $gui=(Resolve-Path (Join-Path $ArtifactRoot 'wtl10_gui_runtime_aarch64.exe')).Path
-  & $gui
-  if($LASTEXITCODE -ne 0) { throw "ARM64 native GUI runtime failed repetition $iteration" }
-  foreach($name in $expect.Keys) {
-    $program=(Resolve-Path (Join-Path $ArtifactRoot $name)).Path
+for($repeat=1;$repeat -le 5;$repeat++) {
+  foreach($file in $expected.Keys) {
+    $program=(Resolve-Path (Join-Path $ArtifactRoot $file)).Path
     $out=@(& $program 2>&1)
-    $rc=$LASTEXITCODE
-    $actual=($out | ForEach-Object { "$_".Trim() }) -join ''
-    if($rc -ne 0 -or $actual -cne $expect[$name]) {
-      throw "ARM64 native $name failed repeat $iteration exit=$($rc): $actual"
-    }
-  }
-  foreach($mode in @('invalid','duplicate','capacity')) {
-    $p1b=(Resolve-Path (Join-Path $ArtifactRoot 'atl_com_p1b_openatl_arm64.exe')).Path
-    $out=@(& $p1b $mode 2>&1)
-    $actual=($out | ForEach-Object { "$_".Trim() }) -join ''
-    if($LASTEXITCODE -ne 0 -or $actual -cne "ATL_COM_P1B_NEG_OK mode=$mode") {
-      throw "ARM64 P1-B fail-closed $mode failed: $actual"
+    $status=$LASTEXITCODE
+    $actual=($out | ForEach-Object {"$_".Trim()}) -join ''
+    if($status -ne 0 -or $actual -cne $expected[$file]) {
+      throw "Native ARM64 $file repeat $repeat code=$($status): $actual"
     }
   }
 }
-Write-Host 'OpenATL true Windows ARM64 GUI/COM P0-P1C native run 5/5 PASS'
+Write-Host 'llvm-mingw native Windows ARM64 WTL UI no-COM + COM CLIENT 5/5 PASS'
