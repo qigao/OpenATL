@@ -25,9 +25,6 @@ git clone --quiet https://github.com/kkhaike/openatl.git tools/wtl10-host/openat
 git -C tools/wtl10-host/openatl checkout --quiet --detach 7b587f3e10f3f8d93a01522033de80007368bad5
 test "$(git -C tools/wtl10-host/openatl rev-parse HEAD)" = 7b587f3e10f3f8d93a01522033de80007368bad5
 python3 scripts/openatl-wx-hardening.py tools/wtl10-host/openatl
-python3 scripts/openatl-com-p1-hardening.py tools/wtl10-host/openatl
-python3 scripts/openatl-com-p1b-map.py tools/wtl10-host/openatl
-python3 scripts/openatl-com-p1c-registrar.py tools/wtl10-host/openatl
 git clone --quiet https://github.com/kkhaike/wtltest.git tools/wtl10-host/wtltest
 git -C tools/wtl10-host/wtltest checkout --quiet --detach 63ba6a992cb3d79d56be66cd283f6615c6646b3d
 test "$(git -C tools/wtl10-host/wtltest rev-parse HEAD)" = 63ba6a992cb3d79d56be66cd283f6615c6646b3d

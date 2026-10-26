@@ -19,15 +19,8 @@ Run git @('-C','tools/wtl10-openatl','checkout','--quiet','--detach',$openPin)
 if ((git -C tools/wtl10-openatl rev-parse HEAD).Trim() -ne $openPin) {
   throw 'OpenATL immutable source mismatch'
 }
-# Patches are for conformance only; not an installable OpenATL ATL distribution.
-foreach ($patch in @(
-    'scripts/openatl-wx-hardening.py',
-    'scripts/openatl-com-p1-hardening.py',
-    'scripts/openatl-com-p1b-map.py',
-    'scripts/openatl-com-p1c-registrar.py'
-)) {
-  Run python @($patch,'tools/wtl10-openatl')
-}
+# UI W^X qualification only; no class factory, server or registry patches.
+Run python @('scripts/openatl-wx-hardening.py','tools/wtl10-openatl')
 Run git @('clone','--quiet','https://github.com/kkhaike/wtltest.git','tools/wtl10-test')
 Run git @('-C','tools/wtl10-test','checkout','--quiet','--detach',$demoPin)
 if ((git -C tools/wtl10-test rev-parse HEAD).Trim() -ne $demoPin) {
