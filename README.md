@@ -2,8 +2,10 @@
 
 **OpenATL** is a Windows-first, C++17 integration and compatibility project for
 **WTL 10.0.10320** (Windows Template Library) and a pinned **OpenATL** subset
-of the Active Template Library. It is built with `llvm-mingw` Clang++ on
-Windows, Linux, or macOS to produce Windows x64 and ARM64 PE binaries.
+of the Active Template Library. Its conformance suite is built using
+**llvm-mingw Clang++ and Microsoft Visual C++ (MSVC)**. llvm-mingw cross-builds
+Windows x64/ARM64 PE on Windows, Linux and macOS; MSVC builds them using
+Microsoft's Visual Studio/Windows SDK tools on genuine Windows hosts.
 
 **Status: experimental / qualification only.** This repository is not a full
 replacement for Microsoft ATL, an ActiveX implementation, or an installable
@@ -52,17 +54,22 @@ test-only patches and Win32 fixtures previously exercised in the TinyCC
 POC. OpenATL's own workflows must pass on the **exact new commit** before
 the branch is considered qualified:
 
-- Windows x64: resource-linked WTL10 full SDI build, hidden native
-  `CWindowImpl`/`CDialogImpl` GUI lifecycle 5× and COM P0/P1/P1-B/P1-C;
-  separate RATL x64 differential tests.
-- Windows ARM64: verify PE machine + SHA256 manifests from Windows x64
-  builds, then execute the **same real WTL10/COM** conformance 5× on a
-  genuine Windows ARM64 runner. Do not treat PE linking as ARM64 runtime.
-- Linux/macOS: use SHA-pinned `llvm-mingw` to cross-build Windows x64/ARM64
-  PE and link real WTL10 SDI plus `.rc`, not execute Windows GUI there.
+- **llvm-mingw**: Windows x64 native and real Windows ARM64 GUI/COM runtime
+  5×; Linux/macOS independently cross-build x64+ARM64 PE and link official
+  WTL10 SDI with real `.rc` resources. RATL x64 differential tests remain
+  in their separate, license-scoped reference executables.
+- **MSVC**: Windows x64 genuine native CTest 6/6 repeated 5×, and an
+  independent VS2022 `cl.exe` HostX64→ARM64 cross-build. A real Windows
+  ARM64 runner must execute MSVC-produced GUI/COM PE 5× after verifying
+  machine ID and SHA256. Both MSVC targets also link full WTL10 SDI
+  with real Windows SDK `rc.exe`; interactive SDI is not qualified.
+- Both compilers must use the **same pinned MIT OpenATL provider**,
+  never Microsoft's ATL fallback or RATL mixed headers. No test-only
+  patched third-party source is a production SDK.
 
 See [architecture and licensing](docs/ARCHITECTURE.md) and
-[conformance boundaries](docs/ACCEPTANCE.md). Legacy WTL8/WTL4MinGW,
+[conformance boundaries](docs/ACCEPTANCE.md) and
+[toolchain matrix](docs/TOOLCHAIN_MATRIX.md). Legacy WTL8/WTL4MinGW,
 MSVC ATL fallback, and mixed-provider header builds are not supported.
 
 ## Development status
