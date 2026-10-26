@@ -1,4 +1,4 @@
-/* Fault admission for pinned, test-only OpenATL CWndProcThunk W^X patch.
+/* Fault admission for the in-tree OpenATL CWndProcThunk W^X implementation.
  * Each test performs REAL Windows VirtualAlloc, VirtualProtect, Flush and
  * VirtualFree calls except for the exact single stage intentionally denied.
  * No COM apartment, app-owned COM class, RATL or shipped API involved.
@@ -7,11 +7,15 @@
 #define _WIN32_WINNT 0x0601
 #endif
 #ifndef OPENATL_WX_FAULT_TEST
-#error "Refuse thunk fault test without isolated exact-pin instrumentation"
+#error "Refuse thunk fault test without isolated in-tree instrumentation"
 #endif
 #include <windows.h>
 #include <cstdio>
 #include <atlwin.h>
+
+#if !defined(OPENATL_REPOSITORY_HEADERS) || OPENATL_REPOSITORY_HEADERS != 0x4F41544CUL
+#error "This target must compile repository-owned OpenATL headers"
+#endif
 
 static_assert(sizeof(void*)==8, "Native Windows x64/ARM64 required");
 using Thunk=ATL::CWndProcThunk;
