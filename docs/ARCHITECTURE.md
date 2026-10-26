@@ -1,6 +1,6 @@
 # OpenATL UI + optional COM client architecture
 
-Two independent functional paths share only pinned clean-room ATL headers:
+Two independent functional paths share repository-owned clean-room ATL headers:
 
 ```
 Win32 GUI application
@@ -15,7 +15,9 @@ Optional system COM consumer
 `OpenATL::ATL` and `OpenATL::WTL` are header-only build configuration
 targets. `OpenATL::COMClient` is an explicitly selected client dependency.
 Win32 UI can use WTL windowing, dialogs, message maps and common controls
-without COM initialization or registry writes.
+without COM initialization or registry writes. CPath, CAtlFile,
+CString and native Win32 synchronization are support utilities that
+live in `include/` and do not link COM Client libraries.
 
 **Excluded features:** implementing `IClassFactory` servers, registering
 COM class objects, RGS, HKCR/HKLM registry writes, self-registering DLLs,
@@ -25,8 +27,9 @@ such names, but this project does not qualify or ship those features.
 
 ## Upstream pins and licenses
 
-- External clean-room OpenATL MIT headers from
+- Clean-room MIT ATL source under `include/`, originally derived from
   `kkhaike/openatl@7b587f3e10f3f8d93a01522033de80007368bad5`.
+  CI only compiles the checked-in headers and refuses an external ATL root.
 - Official WTL10 MS-PL headers, pinned
   `Win32-WTL/WTL@065ef5597383c1231bd4892cf8e94331b29bdb97`,
   SHA256 of ZIP:
@@ -38,8 +41,8 @@ such names, but this project does not qualify or ship those features.
 - Both llvm-mingw 20261020 and genuine MSVC 2022 build and test Windows
   x64+ARM64; no Microsoft ATL include-path fallback.
 
-The temporary CI W^X thunk patch changes the pinned external source for
-**qualification only**, not for an exported SDK. Actual CFG/CET
+The W^X thunk and test-only fault injection live in the checked-in
+`atlwin.h`; no external checkout is patched. Actual CFG/CET
 mitigations, callback teardown/unload races, interactive SDI and
 production distribution are tracked separately.
 
