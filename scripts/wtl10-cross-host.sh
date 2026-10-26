@@ -31,19 +31,10 @@ test "$(git -C tools/wtl10-host/wtltest rev-parse HEAD)" = 63ba6a992cb3d79d56be6
 
 ATL_INC="$PWD/tools/wtl10-host/openatl/include"
 TEST_DIR="$PWD/tools/wtl10-host/wtltest"
-for arch in x86_64 aarch64; do
-  CC="$MINGW_BIN/$arch-w64-mingw32-clang++"
-  test -x "$CC"
-  FLAGS=(-std=c++17 -O0 -DUNICODE -D_UNICODE
-    -D_WIN32_WINNT=0x0601 -DWINVER=0x0601 -D_WIN32_IE=0x0601
-    "-I$ATL_INC" "-I$WTL_INC" "-I$TEST_DIR")
-  "$CC" "${FLAGS[@]}" -fsyntax-only \
-    tests/wtl10/openatl_wtl10_bridge.cpp "$TEST_DIR/main.cpp"
-  OUT="build-wtl10-host/poc_openatl_wtl10_$arch.dll"
-  "$CC" "${FLAGS[@]}" -shared \
-    tests/wtl10/openatl_wtl10_bridge.cpp -o "$OUT" \
-    -static -loleaut32 -lole32 -luuid -lcomctl32 -lgdi32 -luser32 \
-    -lshell32 -lshlwapi -lcomdlg32 -luxtheme -lmsimg32
-  python3 tests/wtl10/verify_pe_machine.py "$OUT" "$arch"
-done
-echo "WTL10/OpenATL cross-build from $(uname -s) for x64+ARM64 PASS"
+test -s "$ATL_INC/atlbase.h"
+test -s "$ATL_INC/atlwin.h"
+test -s "$TEST_DIR/main.cpp"
+test -s "$TEST_DIR/wtltest.rc"
+# Compiler acceptance now lives in mandatory GUI/COM-client and full SDI
+# steps; do NOT compile the removed TinyCC bridge or server/RATL code.
+echo "OpenATL UI + COM-client pinned llvm-mingw/WTL10 checkout ready on $(uname -s)"
