@@ -27,7 +27,7 @@ if (!(($marker -join ' ') -match 'OpenATL - Clean-room ATL subset')) {
   throw 'Refuse accidental use of Microsoft ATL instead of pinned OpenATL'
 }
 $wtlTriplet="$TargetArchitecture-windows-static"
-if(!(Test-Path "vcpkg_installed/$wtlTriplet/include/atlapp.h")) {
+if(!(Test-Path "vcpkg_installed/$wtlTriplet/$wtlTriplet/include/atlapp.h")) {
   throw "WTL is not installed by vcpkg for $wtlTriplet"
 }
 $demo=(Resolve-Path 'tools/wtl10-test').Path
