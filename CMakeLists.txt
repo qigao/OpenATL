@@ -131,4 +131,5 @@ endif()
 # No COM server targets, class factories, registry writers, RGS or RATL.
 # The clean-room MIT ATL implementation is owned here under include/.
 # No checkout patch or external ATL implementation is ever used.
-# No install/export until CFG/CET and installed-consumer acceptance.
+# Permanent source-tree-only API: no install(), export(), packaging, or
+# installed-consumer acceptance. This project never distributes an Installed SDK.
