@@ -14,6 +14,10 @@ Optional system COM consumer
 
 `OpenATL::ATL` and `OpenATL::WTL` are header-only build configuration
 targets. `OpenATL::COMClient` is an explicitly selected client dependency.
+They exist only within a source-tree CMake build. OpenATL **never** defines
+`install()`, `export()`, a package config, or an Installed SDK. Consumers
+build from the repository checkout; a post-install consumption path is
+permanently excluded.
 Win32 UI can use WTL windowing, dialogs, message maps and common controls
 without COM initialization or registry writes. CPath, CAtlFile,
 CString and native Win32 synchronization are support utilities that
