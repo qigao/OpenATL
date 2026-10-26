@@ -85,6 +85,10 @@ CFG/CET and concurrency remain unqualified. OpenATL installation is
 permanently out of scope; installing the external WTL dependency with
 vcpkg does not install OpenATL.
 
+## CI structure
+
+The redundant `scripts/` bootstrap and compiler wrappers are being removed in favor of CMake, CTest, and direct GitHub Actions steps. Windows ARM64 runtime checks live under `tests/wtl10/`.
+
 ## Required CI
 
 - **llvm-mingw** on Windows x64, real Windows ARM64, plus Linux/macOS
