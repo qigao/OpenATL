@@ -1,4 +1,5 @@
-# Fresh per-CI-job dependency bootstrap; no vendored ATL/WTL headers.
+# Fresh dependency bootstrap: ATL headers are checked in under include/.
+# Fetch only the pinned official WTL10 archive and WTL sample, never OpenATL.
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 function Run([string]$file,[string[]]$args_) {
