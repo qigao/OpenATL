@@ -37,8 +37,11 @@ $triplets=if ($Toolchain -eq 'LLVM') {
 }
 $overlay=(Resolve-Path 'cmake/vcpkg-triplets').Path
 foreach ($triplet in $triplets) {
-  Run $vcpkg @('install',"--triplet=$triplet","--overlay-triplets=$overlay")
-  $directory="vcpkg_installed/$triplet"
+  # Manifest mode synchronizes its install root to ONE target triplet and
+  # removes the previous one. Keep an independent vcpkg root per triplet.
+  $root=(Join-Path (Resolve-Path '.').Path "vcpkg_installed/$triplet")
+  Run $vcpkg @('install',"--triplet=$triplet","--overlay-triplets=$overlay","--x-install-root=$root")
+  $directory=Join-Path $root $triplet
   $header=Join-Path $directory 'include/atlapp.h'
   if (!(Test-Path $header)) { throw "Missing vcpkg WTL header at $header" }
   if (Test-Path (Join-Path $directory 'share/atl')) {
