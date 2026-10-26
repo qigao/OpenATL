@@ -75,6 +75,17 @@ if(OPENTL_BUILD_QUALIFICATION)
   target_link_libraries(opentl_registrar PRIVATE OpenTL::ATL
     ole32 oleaut32 uuid rpcrt4 shlwapi advapi32 gdi32 user32)
   add_test(NAME opentl.registrar_controlled COMMAND opentl_registrar)
+
+  # llvm-mingw's default C++ executables can depend on host-absent
+  # libstdc++-6.dll/libwinpthread-1.dll on a clean Windows runner.
+  # Qualification must run the *exact* PE without PATH or DLL injection;
+  # follow the independently passing direct clang++ -static scripts.
+  foreach(_qualified IN ITEMS
+      opentl_gui_runtime opentl_com_p0 opentl_com_p1
+      opentl_com_p1b opentl_registry_sandbox opentl_registrar)
+    target_compile_definitions(${_qualified} PRIVATE NDEBUG)
+    target_link_options(${_qualified} PRIVATE "-static")
+  endforeach()
 endif()
 
 # Interface targets deliberately are not installed or exported yet.
