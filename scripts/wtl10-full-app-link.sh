@@ -14,7 +14,7 @@ for arch in x86_64 aarch64; do
   else
     triplet=arm64-openatl-mingw
   fi
-  WTL_INC="$PWD/vcpkg_installed/$triplet/include"
+  WTL_INC="$PWD/vcpkg_installed/$triplet/$triplet/include"
   test -s "$WTL_INC/atlapp.h"
   CC="$BIN/$arch-w64-mingw32-clang++"
   WINDRES="$BIN/$arch-w64-mingw32-windres"
