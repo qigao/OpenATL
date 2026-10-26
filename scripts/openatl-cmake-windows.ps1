@@ -2,18 +2,16 @@ param([Parameter(Mandatory=$true)][string]$LLVMRoot)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $atl=(Resolve-Path include).Path
-$wtlFile=Get-ChildItem 'tools/wtl10' -Recurse -File -Filter atlapp.h |
-  Where-Object { $_.Directory.Name -ieq 'Include' } | Select-Object -First 1
-if (!$wtlFile) { throw 'Official WTL10 header missing' }
-$wtl=$wtlFile.Directory.FullName
 $toolchain=(Resolve-Path 'cmake/toolchains/llvm-mingw.cmake').Path
 foreach($arch in @('x86_64','aarch64')) {
+  $triplet=if($arch -eq 'x86_64'){'x64-openatl-mingw'}else{'arm64-openatl-mingw'}
+  if(!(Test-Path "vcpkg_installed/$triplet/include/atlapp.h")){throw "No vcpkg WTL: $triplet"}
   $build="build-openatl-cmake-$arch"
   $args_=@('-S','.','-B',$build,'-G','Ninja',
     "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
     "-DOPENATL_LLVM_MINGW_BIN=$LLVMRoot",
     "-DOPENATL_TARGET_ARCH=$arch",
-    "-DOPENATL_WTL_INCLUDE_DIR=$wtl",
+    "-DVCPKG_TARGET_TRIPLET=$triplet",
     '-DOPENATL_BUILD_QUALIFICATION=ON')
   & cmake @args_
   if ($LASTEXITCODE -ne 0) { throw "CMake configure Windows $arch failed" }
