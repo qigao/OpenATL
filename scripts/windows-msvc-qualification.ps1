@@ -26,10 +26,10 @@ $marker=Get-Content (Join-Path $atl 'atlbase.h') -TotalCount 3
 if (!(($marker -join ' ') -match 'OpenATL - Clean-room ATL subset')) {
   throw 'Refuse accidental use of Microsoft ATL instead of pinned OpenATL'
 }
-$wtlHeader=Get-ChildItem 'tools/wtl10' -Recurse -File -Filter atlapp.h |
-  Where-Object { $_.Directory.Name -ieq 'Include' } | Select-Object -First 1
-if (!$wtlHeader) { throw 'Official WTL10 atlapp.h missing' }
-$wtl=$wtlHeader.Directory.FullName
+$wtlTriplet="$TargetArchitecture-windows-static"
+if(!(Test-Path "vcpkg_installed/$wtlTriplet/include/atlapp.h")) {
+  throw "WTL is not installed by vcpkg for $wtlTriplet"
+}
 $demo=(Resolve-Path 'tools/wtl10-test').Path
 if (!(Test-Path (Join-Path $demo 'wtltest.rc'))) {throw 'Pinned wtltest.rc missing'}
 
@@ -37,7 +37,7 @@ $build="$OutRoot-$TargetArchitecture"
 $settings=@('-S','.','-B',$build,'-G','Ninja',
   '-DCMAKE_BUILD_TYPE=Release',
   '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
-  "-DOPENATL_WTL_INCLUDE_DIR=$wtl",
+  "-DVCPKG_TARGET_TRIPLET=$wtlTriplet",
   "-DOPENATL_WTL_DEMO_DIR=$demo",
   '-DOPENATL_BUILD_QUALIFICATION=ON')
 & cmake @settings
