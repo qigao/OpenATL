@@ -10,7 +10,7 @@ for cpu in x86_64 aarch64; do
   else
     triplet=arm64-openatl-mingw
   fi
-  WTL_INC="$PWD/vcpkg_installed/$triplet/include"
+  WTL_INC="$PWD/vcpkg_installed/$triplet/$triplet/include"
   test -s "$WTL_INC/atlapp.h"
   CXX="$BIN/$cpu-w64-mingw32-clang++"
   RC="$BIN/$cpu-w64-mingw32-windres"
