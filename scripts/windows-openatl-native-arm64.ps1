@@ -59,4 +59,4 @@ for($iteration=1;$iteration -le 5;$iteration++) {
     }
   }
 }
-Write-Host 'OpenTL true Windows ARM64 GUI/COM P0-P1C native run 5/5 PASS'
+Write-Host 'OpenATL true Windows ARM64 GUI/COM P0-P1C native run 5/5 PASS'

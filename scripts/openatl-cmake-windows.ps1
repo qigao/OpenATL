@@ -8,23 +8,23 @@ if (!$wtlFile) { throw 'Official WTL10 header missing' }
 $wtl=$wtlFile.Directory.FullName
 $toolchain=(Resolve-Path 'cmake/toolchains/llvm-mingw.cmake').Path
 foreach($arch in @('x86_64','aarch64')) {
-  $build="build-opentl-cmake-$arch"
+  $build="build-openatl-cmake-$arch"
   $args_=@('-S','.','-B',$build,'-G','Ninja',
     "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
-    "-DOPENTL_LLVM_MINGW_BIN=$LLVMRoot",
-    "-DOPENTL_TARGET_ARCH=$arch",
-    "-DOPENTL_ATL_INCLUDE_DIR=$atl",
-    "-DOPENTL_WTL_INCLUDE_DIR=$wtl",
-    '-DOPENTL_BUILD_QUALIFICATION=ON',
-    '-DOPENTL_TEST_PATCHES_APPLIED=ON')
+    "-DOPENATL_LLVM_MINGW_BIN=$LLVMRoot",
+    "-DOPENATL_TARGET_ARCH=$arch",
+    "-DOPENATL_ATL_INCLUDE_DIR=$atl",
+    "-DOPENATL_WTL_INCLUDE_DIR=$wtl",
+    '-DOPENATL_BUILD_QUALIFICATION=ON',
+    '-DOPENATL_TEST_PATCHES_APPLIED=ON')
   & cmake @args_
   if ($LASTEXITCODE -ne 0) { throw "CMake configure Windows $arch failed" }
   & cmake --build $build --parallel 2
   if ($LASTEXITCODE -ne 0) { throw "CMake build Windows $arch failed" }
-  python tests/wtl10/verify_pe_machine.py "$build/opentl_gui_runtime.exe" $arch --require-resources
+  python tests/wtl10/verify_pe_machine.py "$build/openatl_gui_runtime.exe" $arch --require-resources
   if ($LASTEXITCODE -ne 0) { throw "CMake GUI PE architecture mismatch: $arch" }
-  foreach($target in @('opentl_com_p0','opentl_com_p1','opentl_com_p1b',
-                       'opentl_registry_sandbox','opentl_registrar')) {
+  foreach($target in @('openatl_com_p0','openatl_com_p1','openatl_com_p1b',
+                       'openatl_registry_sandbox','openatl_registrar')) {
     python tests/wtl10/verify_pe_machine.py "$build/$target.exe" $arch
     if ($LASTEXITCODE -ne 0) { throw "CMake COM target PE machine mismatch: $target/$arch" }
   }
@@ -33,4 +33,4 @@ foreach($arch in @('x86_64','aarch64')) {
     if ($LASTEXITCODE -ne 0) { throw 'CMake native Windows x64 conformance failed' }
   }
 }
-Write-Host 'OpenTL independent CMake interface targets built x64/ARM64; x64 CTest 5/5 PASS'
+Write-Host 'OpenATL independent CMake interface targets built x64/ARM64; x64 CTest 5/5 PASS'

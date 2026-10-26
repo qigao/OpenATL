@@ -31,7 +31,7 @@ foreach ($arch in @('x86_64','aarch64')) {
     '-lshell32','-lshlwapi','-ldwmapi','-luser32')
   Checked python @('tests/wtl10/verify_pe_machine.py',$exe,$arch,'--require-resources')
 }
-Write-Host 'OpenTL WTL10 full upstream SDI + .rc PE x64/ARM64 linked; interactive GUI not qualified'
+Write-Host 'OpenATL WTL10 full upstream SDI + .rc PE x64/ARM64 linked; interactive GUI not qualified'
 # Mandatory native Windows x64 and cross-built Windows ARM64 conformance.
 & ./scripts/windows-wtl10-gui.ps1 -LLVMRoot $LLVMRoot
 & ./scripts/windows-atl-com-conformance.ps1 -LLVMRoot $LLVMRoot -OpenATLRoot 'tools/wtl10-openatl'
@@ -41,4 +41,4 @@ Write-Host 'OpenTL WTL10 full upstream SDI + .rc PE x64/ARM64 linked; interactiv
 & ./scripts/windows-atl-com-p1c.ps1 -LLVMRoot $LLVMRoot -OpenATLRoot 'tools/wtl10-openatl'
 & ./scripts/windows-atl-com-ratl-p1.ps1 -LLVMRoot $LLVMRoot
 & ./scripts/windows-atl-ratl-nested.ps1 -LLVMRoot $LLVMRoot
-Write-Host 'OpenTL independent native Windows x64 / ARM64 cross-build suite PASS'
+Write-Host 'OpenATL independent native Windows x64 / ARM64 cross-build suite PASS'

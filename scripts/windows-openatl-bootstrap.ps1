@@ -19,7 +19,7 @@ Run git @('-C','tools/wtl10-openatl','checkout','--quiet','--detach',$openPin)
 if ((git -C tools/wtl10-openatl rev-parse HEAD).Trim() -ne $openPin) {
   throw 'OpenATL immutable source mismatch'
 }
-# Patches are for conformance only; not an installable OpenTL ATL distribution.
+# Patches are for conformance only; not an installable OpenATL ATL distribution.
 foreach ($patch in @(
     'scripts/openatl-wx-hardening.py',
     'scripts/openatl-com-p1-hardening.py',
@@ -50,4 +50,4 @@ if (!($version -match 'WTL version 10\.0') -or !($version -match '_WTL_VER')) {
   throw 'Refuse WTL version mismatch or legacy WTL8'
 }
 '{}' | Set-Content 'build-wtl10/manifest.json' -Encoding utf8
-Write-Host 'OpenTL external WTL10/OpenATL sources exact-pinned; acceptance-only fixes applied'
+Write-Host 'OpenATL external WTL10/OpenATL sources exact-pinned; acceptance-only fixes applied'
