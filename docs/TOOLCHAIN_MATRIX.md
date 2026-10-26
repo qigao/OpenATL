@@ -10,13 +10,13 @@ official MS-PL WTL10 headers are used.
 | llvm-mingw 20261020 | Windows x64 → Windows ARM64 | ARM64 | PE machine/SHA256 → genuine ARM64 UI/utilities/client 5× |
 | llvm-mingw 20261020 | Linux and macOS | Windows x64 + ARM64 | independently cross-build GUI/utilities/client PE + SDI/.rc |
 | MSVC 2022 `cl.exe` / SDK `rc.exe` | Windows x64 | x64 | CMake **10/10** CTests 5×, SDI/.rc |
-| MSVC 2022 HostX64→ARM64 | Windows x64 | ARM64 | PE machine/SHA256 → genuine ARM64 UI/client 5× |
+| MSVC 2022 HostX64→ARM64 | Windows x64 | ARM64 | PE machine/SHA256 → genuine ARM64 UI/utilities/client 5× |
 
 MSVC developer-shell action is pinned to
 `ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756`.
 MSVC build uses `/MT`; llvm-mingw uses `-static`. Neither selects
 Microsoft ATL or a separate RATL provider. CMake refuses the retired
-\`OPENATL_ATL_INCLUDE_DIR\` setting; its source root is always \`include/\`. The GUI target
+`OPENATL_ATL_INCLUDE_DIR` setting; its source root is always `include/`. The GUI target
 `OpenATL::WTL` must not transitively link COM client libraries;
 `OpenATL::COMClient` is linked explicitly only by a COM consumer.
 
