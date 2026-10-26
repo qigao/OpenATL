@@ -16,6 +16,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Reject install/export/package paths in tracked CMake
         run: python3 tests/source_tree_policy.py
+      - name: Enforce pinned vcpkg WTL without Microsoft ATL
+        run: python3 tests/wtl_vcpkg_policy.py
 
   windows-x64-build:
     name: Windows x64 UI no-COM + COM client and ARM64 PE
