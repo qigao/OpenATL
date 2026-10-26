@@ -1,6 +1,6 @@
-# OpenTL
+# OpenATL
 
-**OpenTL** is a Windows-first, C++17 integration and compatibility project for
+**OpenATL** is a Windows-first, C++17 integration and compatibility project for
 **WTL 10.0.10320** (Windows Template Library) and a pinned **OpenATL** subset
 of the Active Template Library. It is built with `llvm-mingw` Clang++ on
 Windows, Linux, or macOS to produce Windows x64 and ARM64 PE binaries.
@@ -12,13 +12,13 @@ Windows runtime tests.
 
 ## Repository boundary
 
-- **OpenTL owns:** Windows WTL/ATL integration, CMake `OpenTL::ATL` and
-  `OpenTL::WTL` *interface targets*, GUI lifecycle/resource acceptance,
+- **OpenATL owns:** Windows WTL/ATL integration, CMake `OpenATL::ATL` and
+  `OpenATL::WTL` *interface targets*, GUI lifecycle/resource acceptance,
   COM identity/factory/object-map/isolated registry conformance, and Windows
   x64 + **real native ARM64** test admission.
 - **[qigao/tcc](https://github.com/qigao/tcc) owns:** TinyCC,
   C11/atomic/thread/assembler/compiler portability and TinyCC consumer tests.
-  OpenTL's default build does not require TinyCC or a C++/COM ABI bridge from it.
+  OpenATL's default build does not require TinyCC or a C++/COM ABI bridge from it.
 - **[kkhaike/OpenATL](https://github.com/kkhaike/openatl)** is the external
   MIT-licensed ATL header implementation. It is fetched at a fixed commit;
   the temporary W^X and COM acceptance patches are *test-only*, not shipped.
@@ -32,16 +32,16 @@ Windows runtime tests.
 ## Build consumer targets
 
 Provide Windows-targeting C++17 compiler and the two *separately obtained*
-include trees. Do **not** vendor Microsoft ATL or RATL in OpenTL:
+include trees. Do **not** vendor Microsoft ATL or RATL in OpenATL:
 
 ```sh
 cmake -S . -B build \
-  -DOPENTL_ATL_INCLUDE_DIR=/path/to/openatl/include \
-  -DOPENTL_WTL_INCLUDE_DIR=/path/to/WTL/Include
+  -DOPENATL_ATL_INCLUDE_DIR=/path/to/openatl/include \
+  -DOPENATL_WTL_INCLUDE_DIR=/path/to/WTL/Include
 ```
 
-Link against `OpenTL::ATL` (OpenATL headers and COM fundamentals) or
-`OpenTL::WTL` (the WTL10 layer, which depends on `OpenTL::ATL`).
+Link against `OpenATL::ATL` (OpenATL headers and COM fundamentals) or
+`OpenATL::WTL` (the WTL10 layer, which depends on `OpenATL::ATL`).
 These are **header-only build-configuration targets**, not binaries or
 complete Microsoft ATL API compatibility assurances.
 
@@ -49,7 +49,7 @@ complete Microsoft ATL API compatibility assurances.
 
 The `feature/wtl10-openatl-foundation` branch retains separate pinned
 test-only patches and Win32 fixtures previously exercised in the TinyCC
-POC. OpenTL's own workflows must pass on the **exact new commit** before
+POC. OpenATL's own workflows must pass on the **exact new commit** before
 the branch is considered qualified:
 
 - Windows x64: resource-linked WTL10 full SDI build, hidden native
@@ -69,5 +69,5 @@ MSVC ATL fallback, and mixed-provider header builds are not supported.
 
 No source from external dependencies is redistributed by default.
 Test patches modify **temporary pinned checkout** headers during CI only.
-OpenTL's Apache-2.0 license applies to its own independently authored
+OpenATL's Apache-2.0 license applies to its own independently authored
 project source; it does not relicense WTL, OpenATL, or RATL.

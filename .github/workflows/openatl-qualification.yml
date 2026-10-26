@@ -1,4 +1,4 @@
-name: OpenTL WTL10 / ATL qualification
+name: OpenATL WTL10 / ATL qualification
 
 on:
   pull_request:
@@ -28,21 +28,21 @@ jobs:
           $compiler=Get-ChildItem tools/llvm -Recurse -Filter x86_64-w64-mingw32-clang++.exe |
             Select-Object -First 1
           if (!$compiler) { throw 'Pinned clang++ is missing' }
-          "OPENTL_LLVM_BIN=$($compiler.Directory.FullName)" |
+          "OPENATL_LLVM_BIN=$($compiler.Directory.FullName)" |
             Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Exact-pinned OpenATL / official WTL10 checkout (qualification only)
         shell: pwsh
-        run: ./scripts/windows-opentl-bootstrap.ps1
+        run: ./scripts/windows-openatl-bootstrap.ps1
       - name: Full WTL10 SDI, native GUI and COM P0-P1D (required)
         shell: pwsh
-        run: ./scripts/windows-opentl-accept.ps1 -LLVMRoot $env:OPENTL_LLVM_BIN
-      - name: Compile OpenTL CMake interface targets x64 and ARM64 (required)
+        run: ./scripts/windows-openatl-accept.ps1 -LLVMRoot $env:OPENATL_LLVM_BIN
+      - name: Compile OpenATL CMake interface targets x64 and ARM64 (required)
         shell: pwsh
-        run: ./scripts/opentl-cmake-windows.ps1 -LLVMRoot $env:OPENTL_LLVM_BIN
+        run: ./scripts/openatl-cmake-windows.ps1 -LLVMRoot $env:OPENATL_LLVM_BIN
       - name: Upload ARM64 SHA256 provenance handoff
         uses: actions/upload-artifact@v4
         with:
-          name: opentl-native-arm64-acceptance
+          name: openatl-native-arm64-acceptance
           if-no-files-found: error
           retention-days: 7
           path: |
@@ -64,11 +64,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: opentl-native-arm64-acceptance
+          name: openatl-native-arm64-acceptance
           path: wtl10-arm64
       - name: Verify exact SHA256, ARM64 PE machine and native execution x5
         shell: pwsh
-        run: ./scripts/windows-opentl-native-arm64.ps1 -ArtifactRoot 'wtl10-arm64'
+        run: ./scripts/windows-openatl-native-arm64.ps1 -ArtifactRoot 'wtl10-arm64'
 
   linux-macos-cross:
     name: ${{ matrix.host }} cross-compile Windows x64 and ARM64
@@ -99,13 +99,13 @@ jobs:
         run: bash scripts/wtl10-gui-cross-host.sh
       - name: Cross-compile OpenATL COM P0-P1C and independent RATL x64 reference
         run: bash scripts/atl-com-cross-host.sh
-      - name: CMake OpenTL::ATL / OpenTL::WTL x64 and ARM64 PE targets
-        run: bash scripts/opentl-cmake-cross.sh
-      # RATL LGPL/GPL x64 test binaries must never be released as OpenTL SDKs.
+      - name: CMake OpenATL::ATL / OpenATL::WTL x64 and ARM64 PE targets
+        run: bash scripts/openatl-cmake-cross.sh
+      # RATL LGPL/GPL x64 test binaries must never be released as OpenATL SDKs.
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: opentl-cross-${{ matrix.host }}
+          name: openatl-cross-${{ matrix.host }}
           retention-days: 7
           if-no-files-found: error
           path: |
@@ -116,5 +116,5 @@ jobs:
             !build-wtl10-host/atl_ratl_registry_ref_*.exe
             !build-wtl10-host/ratl_nested_*.exe
             build-wtl10-host/*.res.o
-            build-opentl-cmake-*/opentl_gui_runtime.exe
-            build-opentl-cmake-*/opentl_com_p0.exe
+            build-openatl-cmake-*/openatl_gui_runtime.exe
+            build-openatl-cmake-*/openatl_com_p0.exe

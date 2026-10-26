@@ -1,14 +1,14 @@
-# OpenTL architecture
+# OpenATL architecture
 
 ## Libraries and ownership
 
-OpenTL is a standalone **WTL + ATL Windows GUI compatibility project**,
+OpenATL is a standalone **WTL + ATL Windows GUI compatibility project**,
 not a compiler. Dependency layers:
 
 ```
 Windows GUI application
-  -> OpenTL::WTL (official WTL10 headers, externally obtained, MS-PL)
-  -> OpenTL::ATL (pinned OpenATL headers, externally obtained, MIT)
+  -> OpenATL::WTL (official WTL10 headers, externally obtained, MS-PL)
+  -> OpenATL::ATL (pinned OpenATL headers, externally obtained, MIT)
   -> Windows COM / Win32 APIs and OS ABI
 ```
 
@@ -17,7 +17,7 @@ separate **x64-only** LGPL-licensed behavior reference for COM identity,
 object factories and registry/RGS scripts. No include-path fallback:
 never mix OpenATL and RATL headers in a translation unit or module.
 
-TinyCC and llvm-mingw portability are owned by `qigao/tcc`; OpenTL
+TinyCC and llvm-mingw portability are owned by `qigao/tcc`; OpenATL
 consumes a Clang-based Windows-targeting C++17 compiler.
 
 ## Version and licensing pins
@@ -32,7 +32,7 @@ consumes a Clang-based Windows-targeting C++17 compiler.
   full SDI+RC link is tested, interactive GUI execution is unqualified.
 - RATL: `katahiromz/RATL@2e2efa182d7c6ee9037454d23780991fb8543084`,
   **LGPL-2.1-or-later** for statreg.h and repo, some files carry their
-  own GPL notices. Reference PE executables are NOT OpenTL deliverables.
+  own GPL notices. Reference PE executables are NOT OpenATL deliverables.
 - llvm-mingw: UCRT build `20261020` pinned by per-host SHA256 in CI.
 
 ## Acceptance branches versus product
@@ -49,9 +49,9 @@ P1-D: **separate RATL** RGS regression (original false-success, test-only
 The checked-in `scripts/openatl-*-hardening.py` and
 `scripts/ratl-rgs-nested-test-patch.py` are explicit, exact-SHA
 **qualification-only** patches. They MUST NOT be exported as the
-production OpenTL ATL implementation: W^X thunk CFG/CET, concurrency,
+production OpenATL ATL implementation: W^X thunk CFG/CET, concurrency,
 modular unload and complete COM server/type-library support remain open.
 
-The OpenTL project itself is Apache-2.0. External source licenses remain
+The OpenATL project itself is Apache-2.0. External source licenses remain
 unmodified. RATL/ReactOS code snippets in the test patch are marked
 LGPL-2.1-or-later and must be considered separately from Apache-2.0.

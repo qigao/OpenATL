@@ -1,6 +1,6 @@
 # Conformance and CI exit criteria
 
-The standalone OpenTL CI must establish fresh exact-head evidence.
+The standalone OpenATL CI must establish fresh exact-head evidence.
 Historical green runs in `qigao/tcc` are migration references only.
 
 | Gate | Native Windows x64 | Native Windows ARM64 | Linux/macOS |
