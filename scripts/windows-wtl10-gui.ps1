@@ -12,15 +12,13 @@ function Invoke-Checked([string]$exe, [string[]]$argv) {
   }
 }
 $atl = (Resolve-Path 'include').Path
-$header = Get-ChildItem 'tools/wtl10' -Recurse -File -Filter atlapp.h |
-  Where-Object { $_.Directory.Name -ieq 'Include' } |
-  Select-Object -First 1
-if (-not $header) { throw 'WTL10 10.0 release not found' }
-$wtl = $header.Directory.FullName
 $root = (Resolve-Path 'tests/wtl10').Path
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 
 foreach ($cpu in @('x86_64','aarch64')) {
+  $triplet = if($cpu -eq 'x86_64') {'x64-openatl-mingw'} else {'arm64-openatl-mingw'}
+  $wtl = (Resolve-Path "vcpkg_installed/$triplet/include").Path
+  if(!(Test-Path (Join-Path $wtl 'atlapp.h'))) { throw "Missing manifest WTL $triplet" }
   $cxx = Join-Path $LLVMRoot "$cpu-w64-mingw32-clang++.exe"
   $windres = Join-Path $LLVMRoot "$cpu-w64-mingw32-windres.exe"
   foreach ($exe in @($cxx,$windres)) {
