@@ -39,9 +39,9 @@ jobs:
           if (!$compiler) { throw 'Pinned clang++ is missing' }
           "OPENATL_LLVM_BIN=$($compiler.Directory.FullName)" |
             Out-File -FilePath $env:GITHUB_ENV -Append
-      - name: Use repository-owned ATL / pinned official WTL10 bootstrap
+      - name: Install WTL from vcpkg.json (OpenATL is in-tree)
         shell: pwsh
-        run: ./scripts/windows-openatl-bootstrap.ps1
+        run: ./scripts/windows-openatl-bootstrap.ps1 -Toolchain LLVM
       - name: Full WTL10 SDI, native UI no-COM and COM client (required)
         shell: pwsh
         run: ./scripts/windows-openatl-accept.ps1 -LLVMRoot $env:OPENATL_LLVM_BIN
@@ -107,9 +107,9 @@ jobs:
             throw "Missing MSVC compiler or Windows SDK resource compiler"
           }
           Write-Host "MSVC compiler: $compiler; rc: $resource"
-      - name: Use in-tree OpenATL and pinned official WTL10
+      - name: Install WTL from vcpkg manifest for MSVC
         shell: pwsh
-        run: ./scripts/windows-openatl-bootstrap.ps1
+        run: ./scripts/windows-openatl-bootstrap.ps1 -Toolchain MSVC -TargetArchitecture '${{ matrix.target }}'
       - name: MSVC compile and native/PE conformance (required)
         shell: pwsh
         run: ./scripts/windows-msvc-qualification.ps1 -TargetArchitecture '${{ matrix.target }}'
@@ -163,7 +163,7 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - name: Verify in-tree OpenATL; fetch pinned WTL10 and llvm-mingw
+      - name: Bootstrap llvm-mingw and install WTL with vcpkg manifest
         env:
           HOST_LLVM_URL: https://github.com/mstorsjo/llvm-mingw/releases/download/20261020/${{ matrix.archive }}
           HOST_LLVM_SHA256: ${{ matrix.sha256 }}
@@ -174,7 +174,7 @@ jobs:
         run: bash scripts/wtl10-gui-cross-host.sh
       - name: Cross-compile optional OpenATL COM Client x64 and ARM64
         run: bash scripts/atl-com-client-cross-host.sh
-      - name: CMake OpenATL::ATL / OpenATL::WTL x64 and ARM64 PE targets
+      - name: CMake OpenATL::ATL with vcpkg WTL x64 and ARM64 PE targets
         run: bash scripts/openatl-cmake-cross.sh
       # Cross-build Windows UI and COM-client PE only; no server or RATL artifacts.
       - uses: actions/upload-artifact@v4
