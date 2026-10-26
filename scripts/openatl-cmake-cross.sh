@@ -24,8 +24,8 @@ for arch in x86_64 aarch64; do
   cmake --build "$dir" --parallel 2
   python3 tests/wtl10/verify_pe_machine.py "$dir/openatl_gui_runtime.exe" \
     "$arch" --require-resources
-  for base in openatl_com_client; do
+  for base in openatl_com_client openatl_thunk_fault; do
     python3 tests/wtl10/verify_pe_machine.py "$dir/$base.exe" "$arch"
   done
 done
-echo "OpenATL WTL UI(no COM) + COMClient CMake Windows x64/ARM64 PE PASS (cross-only)"
+echo "OpenATL WTL UI/no-COM + client + isolated W^X fault CMake Windows x64/ARM64 PE PASS (cross-only)"

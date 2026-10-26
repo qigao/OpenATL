@@ -21,5 +21,13 @@ for cpu in x86_64 aarch64; do
     -static -loleaut32 -lole32 -luuid -lcomctl32 -lgdi32 -luser32 \
     -lshell32 -lshlwapi -lcomdlg32 -luxtheme -lmsimg32
   python3 tests/wtl10/verify_pe_machine.py "$EXE" "$cpu" --require-resources
+
+  # W^X fault-only PE is isolated from the normal GUI executable.
+  FAULT="build-wtl10-host/wtl10_thunk_fault_$cpu.exe"
+  "$CXX" -std=c++17 -O0 -DNDEBUG -DUNICODE -D_UNICODE \
+    -DOPENATL_WX_FAULT_TEST=1 -D_WIN32_WINNT=0x0601 \
+    "-I$ATL_INC" tests/wtl10/thunk_fault.cpp -o "$FAULT" \
+    -static -lole32 -loleaut32 -luuid -luser32 -lgdi32
+  python3 tests/wtl10/verify_pe_machine.py "$FAULT" "$cpu"
 done
-echo "WTL10 native GUI acceptance code cross-build (not runtime) x64+ARM64 PASS"
+echo "WTL10 GUI + isolated thunk W^X fault PE cross-build (not runtime) x64+ARM64 PASS"

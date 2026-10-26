@@ -58,6 +58,13 @@ if(OPENATL_BUILD_QUALIFICATION)
     comdlg32 uxtheme msimg32 oleaut32 uuid)
   add_test(NAME openatl.ui_no_com COMMAND openatl_gui_runtime)
 
+  # Direct OS failure injection is available ONLY through the pinned
+  # temporary header patch and OPENATL_WX_FAULT_TEST compile definition.
+  add_executable(openatl_thunk_fault tests/wtl10/thunk_fault.cpp)
+  target_compile_definitions(openatl_thunk_fault PRIVATE OPENATL_WX_FAULT_TEST=1)
+  target_link_libraries(openatl_thunk_fault PRIVATE OpenATL::ATL)
+  add_test(NAME openatl.thunk_fault COMMAND openatl_thunk_fault)
+
   add_executable(openatl_com_client tests/atl_conformance/com_client.cpp)
   target_link_libraries(openatl_com_client PRIVATE OpenATL::COMClient)
   add_test(NAME openatl.com_client COMMAND openatl_com_client)
@@ -68,7 +75,7 @@ if(OPENATL_BUILD_QUALIFICATION)
              COMMAND openatl_com_client "--${_client_mode}")
   endforeach()
 
-  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client)
+  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)
     if(MSVC)
       set_property(TARGET ${_qualified} PROPERTY
