@@ -5,13 +5,17 @@ set -euo pipefail
 MINGW_CXX="$(find "$PWD/tools/wtl10-host/llvm" -name x86_64-w64-mingw32-clang++ -print -quit)"
 test -x "$MINGW_CXX"
 BIN="$(dirname "$MINGW_CXX")"
-WTL_HEADER="$(find "$PWD/tools/wtl10-host/wtl10" -name atlapp.h -print -quit)"
-test -f "$WTL_HEADER"
-WTL_INC="$(dirname "$WTL_HEADER")"
 ATL_INC="$PWD/include"
 DEMO="$PWD/tools/wtl10-host/wtltest"
 test -s "$DEMO/main.cpp" && test -s "$DEMO/wtltest.rc"
 for arch in x86_64 aarch64; do
+  if [ "$arch" = "x86_64" ]; then
+    triplet=x64-openatl-mingw
+  else
+    triplet=arm64-openatl-mingw
+  fi
+  WTL_INC="$PWD/vcpkg_installed/$triplet/include"
+  test -s "$WTL_INC/atlapp.h"
   CC="$BIN/$arch-w64-mingw32-clang++"
   WINDRES="$BIN/$arch-w64-mingw32-windres"
   test -x "$CC" && test -x "$WINDRES"
