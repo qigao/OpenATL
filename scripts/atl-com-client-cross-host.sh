@@ -16,5 +16,13 @@ for arch in x86_64 aarch64; do
     -static -lole32 -loleaut32 -luuid -lrpcrt4 \
     -lshlwapi -ladvapi32 -lgdi32 -luser32 -lkernel32
   python3 tests/wtl10/verify_pe_machine.py "$result" "$arch"
+
+  core="build-wtl10-host/atl_core_$arch.exe"
+  "$compiler" -std=c++17 -O0 -DNDEBUG -DUNICODE -D_UNICODE \
+    -D_WIN32_WINNT=0x0601 "-I$ATL/include" \
+    tests/atl_conformance/atl_core.cpp -o "$core" \
+    -static -lole32 -loleaut32 -luuid -lrpcrt4 \
+    -lshlwapi -ladvapi32 -lgdi32 -luser32 -lkernel32
+  python3 tests/wtl10/verify_pe_machine.py "$core" "$arch"
 done
-echo 'OpenATL COM client-only Windows x64+ARM64 PE cross-build PASS'
+echo 'OpenATL owned ATL utilities + optional COM client Windows x64+ARM64 PE cross-build PASS'

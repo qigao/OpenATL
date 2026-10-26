@@ -35,4 +35,5 @@ Write-Host 'OpenATL WTL10 full upstream SDI + .rc PE x64/ARM64 linked; interacti
 # UI must run WITHOUT COM initialization. COM client has its own apartment.
 & ./scripts/windows-wtl10-gui.ps1 -LLVMRoot $LLVMRoot
 & ./scripts/windows-atl-com-client.ps1 -LLVMRoot $LLVMRoot -OpenATLRoot '.'
-Write-Host 'OpenATL WTL10 UI(no COM) + isolated COM client Windows x64/ARM64 PASS'
+& ./scripts/windows-atl-core.ps1 -LLVMRoot $LLVMRoot
+Write-Host 'OpenATL WTL10 UI/no COM, opt-in COM Client and owned ATL file/string/sync x64/ARM64 PASS'
