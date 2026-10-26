@@ -46,7 +46,9 @@ such names, but this project does not qualify or ship those features.
   Historical Git commits preserve earlier research, not project scope.
 - Both llvm-mingw 20261020 and genuine MSVC 2022 build and test Windows
   x64+ARM64; WTL is manifest-installed on all toolchains including
-  Linux/macOS Windows cross-builds. No Microsoft ATL include-path fallback.
+  Linux/macOS Windows cross-builds. Each target triplet uses its own
+  vcpkg manifest install root; no x64/ARM64 clobbering is allowed.
+  No Microsoft ATL include-path fallback.
 
 The W^X thunk and test-only fault injection live in the checked-in
 `atlwin.h`; no external checkout is patched. Actual CFG/CET
