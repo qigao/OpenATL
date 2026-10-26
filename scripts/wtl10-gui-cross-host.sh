@@ -3,11 +3,15 @@
 set -euo pipefail
 BIN="$(dirname "$(find "$PWD/tools/wtl10-host/llvm" -name x86_64-w64-mingw32-clang++ -print -quit)")"
 test -n "$BIN"
-WTL_HEADER="$(find "$PWD/tools/wtl10-host/wtl10" -name atlapp.h -print -quit)"
-test -f "$WTL_HEADER"
-WTL_INC="$(dirname "$WTL_HEADER")"
 ATL_INC="$PWD/include"
 for cpu in x86_64 aarch64; do
+  if [ "$cpu" = "x86_64" ]; then
+    triplet=x64-openatl-mingw
+  else
+    triplet=arm64-openatl-mingw
+  fi
+  WTL_INC="$PWD/vcpkg_installed/$triplet/include"
+  test -s "$WTL_INC/atlapp.h"
   CXX="$BIN/$cpu-w64-mingw32-clang++"
   RC="$BIN/$cpu-w64-mingw32-windres"
   test -x "$CXX" && test -x "$RC"
