@@ -1,0 +1,63 @@
+diff --git a/include/atl/statreg.h b/include/atl/statreg.h
+--- a/include/atl/statreg.h
++++ b/include/atl/statreg.h
+@@ -207,15 +207,28 @@
+         if (lRes != ERROR_SUCCESS)
+             return lRes;
+ 
++        for (;;)
+-        dwSize = sizeof(szBuffer) / sizeof(szBuffer[0]);
+-        while (RegEnumKeyExW(parentKey, 0, szBuffer, &dwSize, NULL, NULL, NULL, &time) == ERROR_SUCCESS)
+         {
++            // Enumerate *childKey*, not parentKey: delete the child subtree.
++            dwSize = sizeof(szBuffer) / sizeof(szBuffer[0]);
++            lRes = RegEnumKeyExW(childKey, 0, szBuffer, &dwSize, NULL, NULL, NULL, &time);
++            if (lRes == ERROR_NO_MORE_ITEMS)
++                break;
++            if (lRes != ERROR_SUCCESS)
++            {
++                RegCloseKey(childKey);
++                return lRes; // Do not misreport buffer/access/race errors.
++            }
+             lRes = RegDeleteTreeX(childKey, szBuffer);
+             if (lRes != ERROR_SUCCESS)
++            {
++                RegCloseKey(childKey);
+                 return lRes;
++            }
+-            dwSize = sizeof(szBuffer) / sizeof(szBuffer[0]);
+         }
++        lRes = RegCloseKey(childKey);
++        if (lRes != ERROR_SUCCESS)
++            return lRes;
+-        RegCloseKey(childKey);
+         return RegDeleteKeyW(parentKey, subKeyName);
+     }
+ 
+@@ -543,12 +556,24 @@
+                 }
+                 else if (key_type == DO_DELETE)
+                 {
++                    lres = RegDeleteTreeX(parent_key, buf->str);
++                    if (lres != ERROR_SUCCESS && lres != ERROR_FILE_NOT_FOUND)
++                    {
++                        hres = HRESULT_FROM_WIN32(lres);
++                        break;
++                    }
+-                    RegDeleteTreeX(parent_key, buf->str);
+                 }
+                 else
+                 {
+                     if (key_type == FORCE_REMOVE)
++                    {
++                        lres = RegDeleteTreeX(parent_key, buf->str);
++                        if (lres != ERROR_SUCCESS && lres != ERROR_FILE_NOT_FOUND)
++                        {
++                            hres = HRESULT_FROM_WIN32(lres);
++                            break;
++                        }
++                    }
+-                        RegDeleteTreeX(parent_key, buf->str);
+                     lres = RegCreateKeyW(parent_key, buf->str, &hkey);
+                     if (lres != ERROR_SUCCESS)
+                     {
