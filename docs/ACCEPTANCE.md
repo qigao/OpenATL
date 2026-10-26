@@ -18,11 +18,15 @@ these paths separately on the exact branch HEAD.
 - WTL must not call `CoInitializeEx`; UI test checks
   `CoGetContextToken` reports `CO_E_NOTINITIALIZED` before and after
   window/dialog lifetime. This test links ole32 only for the assertion;
-  the `OpenATL::WTL` interface target has **no COM link dependency**.
+  WTL comes from vcpkg without introducing a COM apartment or a synthetic
+  `OpenATL::WTL` interface target. `OpenATL::ATL` has no COM-client link dependency.
 - A COM Client must initialize its own apartment, activate the Windows
   `CLSID_StdGlobalInterfaceTable` system component, query `IUnknown`,
   safely manage `CComPtr` ownership and release references before
   `CoUninitialize`. No app-owned COM server is needed.
+- Official WTL headers must be installed by the pinned `vcpkg.json`
+  manifest and checked-in `ports/wtl` overlay, with no Microsoft `atl` port
+  or independently downloaded WTL ZIP fallback.
 - The checked-in clean-room OpenATL header marker must be verified at
   CMake configuration and compile time. No external OpenATL checkout is used.
   MSVC's own ATL, WTL8 and RATL must never serve as fallbacks.
@@ -33,6 +37,6 @@ these paths separately on the exact branch HEAD.
 **Draft / DO NOT MERGE.** Passing tests qualify the scoped source-tree
 behavior only, not production GUI mitigation compliance.
 
-**Permanent exclusion:** no Installed SDK, `install()`/`export()` CMake
-rules, installable package metadata, or post-install consumer tests. Compile
-the checked-in OpenATL headers directly on every supported toolchain.
+**Permanent exclusion:** no OpenATL Installed SDK, OpenATL `install()`/
+`export()` CMake rules, OpenATL package metadata, or post-install consumers.
+vcpkg-installed external WTL headers are a dependency, not an OpenATL SDK.
