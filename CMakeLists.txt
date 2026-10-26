@@ -17,6 +17,14 @@ if(NOT EXISTS "${OPENATL_WTL_INCLUDE_DIR}/atlapp.h")
   message(FATAL_ERROR "OPENATL_WTL_INCLUDE_DIR must point to official WTL10 Include")
 endif()
 
+# Detect accidental use of the Microsoft Visual Studio ATL installation.
+# The ONLY ATL provider admitted by this qualification is the pinned
+# MIT-licensed clean-room OpenATL root selected by the caller.
+file(READ "${OPENATL_ATL_INCLUDE_DIR}/atlbase.h" _openatl_atl_header LIMIT 240)
+if(NOT _openatl_atl_header MATCHES "OpenATL - Clean-room ATL subset for WTL 10")
+  message(FATAL_ERROR "Refuse non-OpenATL ATL provider header, including MSVC ATL")
+endif()
+
 add_library(openatl_atl INTERFACE)
 add_library(OpenATL::ATL ALIAS openatl_atl)
 target_include_directories(openatl_atl INTERFACE "${OPENATL_ATL_INCLUDE_DIR}")
@@ -84,8 +92,43 @@ if(OPENATL_BUILD_QUALIFICATION)
       openatl_gui_runtime openatl_com_p0 openatl_com_p1
       openatl_com_p1b openatl_registry_sandbox openatl_registrar)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)
-    target_link_options(${_qualified} PRIVATE "-static")
+    if(MSVC)
+      # Keep MSVC's own ATL out of the include search. Use OpenATL above.
+      # /MT: no dependence on VC++ redistributable DLLs on ARM64 hosts.
+      set_property(TARGET ${_qualified} PROPERTY
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+      target_compile_options(${_qualified} PRIVATE /W3 /EHsc)
+      target_link_options(${_qualified} PRIVATE /INCREMENTAL:NO /DYNAMICBASE /NXCOMPAT)
+    else()
+      # Clang++/llvm-mingw native tests previously required static CRT.
+      target_link_options(${_qualified} PRIVATE "-static")
+    endif()
   endforeach()
+
+  # Compile/link the *original full* WTL10 SDI source and .rc, not only
+  # the hidden-window smoke test. Real interactive GUI still not qualified.
+  set(OPENATL_WTL_DEMO_DIR "" CACHE PATH "External pinned wtltest root, optional")
+  if(NOT OPENATL_WTL_DEMO_DIR STREQUAL "")
+    if(NOT EXISTS "${OPENATL_WTL_DEMO_DIR}/main.cpp" OR
+       NOT EXISTS "${OPENATL_WTL_DEMO_DIR}/wtltest.rc")
+      message(FATAL_ERROR "Full WTL10 sample requires main.cpp and wtltest.rc")
+    endif()
+    add_executable(openatl_wtl10_sdi WIN32
+      "${OPENATL_WTL_DEMO_DIR}/main.cpp"
+      "${OPENATL_WTL_DEMO_DIR}/wtltest.rc")
+    target_include_directories(openatl_wtl10_sdi PRIVATE "${OPENATL_WTL_DEMO_DIR}")
+    target_link_libraries(openatl_wtl10_sdi PRIVATE OpenATL::WTL
+      ole32 oleaut32 uuid comctl32 msimg32 uxtheme gdi32 comdlg32
+      shell32 shlwapi dwmapi user32)
+    if(MSVC)
+      set_property(TARGET openatl_wtl10_sdi PROPERTY
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+      target_compile_options(openatl_wtl10_sdi PRIVATE /W3 /EHsc)
+      target_link_options(openatl_wtl10_sdi PRIVATE /INCREMENTAL:NO /DYNAMICBASE /NXCOMPAT)
+    else()
+      target_link_options(openatl_wtl10_sdi PRIVATE -municode -mwindows -static)
+    endif()
+  endif()
 endif()
 
 # Interface targets deliberately are not installed or exported yet.
