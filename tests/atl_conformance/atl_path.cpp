@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <tchar.h>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <atlpath.h>
 #include <atlfile.h>
@@ -32,7 +33,7 @@ struct TestPaths {
         if(!::GetTempFileName(temp,_T("OAP"),0,seed)) return false;
         filename.assign(seed);
         // ASCII source and a genuine UTF-16 filename in the NT filesystem.
-        filename += _T("_\\u6D4B\\u8BD5.log");
+        filename += _T("_\u6D4B\u8BD5.log");
         return true;
     }
     ~TestPaths() {
@@ -47,7 +48,7 @@ int main() {
     ATL::CPath path(tmp.filename.c_str());
     if(path.IsEmpty() || path.IsRelative() ||
        _tcscmp(path.GetExtension(),_T(".log"))!=0 ||
-       !_tcsstr(path.GetFileName(),_T("_\\u6D4B\\u8BD5.log")))
+       !_tcsstr(path.GetFileName(),_T("_\u6D4B\u8BD5.log")))
         return fail(11,"unicode_name_and_extension");
 
     // Round trip a real OS file through the path helper and local CAtlFile.
@@ -66,7 +67,7 @@ int main() {
     DWORD received=0;
     if(file.Read(got,sizeof(payload)-1,&received)!=S_OK ||
        received!=sizeof(payload)-1 ||
-       ::memcmp(got,payload,sizeof(payload)-1)!=0 ||
+       std::memcmp(got,payload,sizeof(payload)-1)!=0 ||
        file.Close()!=S_OK)
         return fail(14,"Read_Close");
 
@@ -77,25 +78,25 @@ int main() {
     if(!rebuilt.Append(path.GetFileName()) ||
        _tcscmp(rebuilt.GetString(),path.GetString())!=0)
         return fail(16,"Append_relative");
-    if(rebuilt.Append(_T("C:\\\\escape.log")) ||
+    if(rebuilt.Append(_T("C:\\escape.log")) ||
        rebuilt.Append(_T("\\\\server\\\\share")) ||
        _tcscmp(rebuilt.GetString(),path.GetString())!=0)
         return fail(17,"Reject_rooted_component");
 
     ATL::CPath shortened(path.GetString());
     if(!shortened.RemoveExtension() ||
-       shortened.GetExtension()[0]!=_T('\\0') ||
+       shortened.GetExtension()[0]!=_T('\0') ||
        _tcscmp(shortened.GetFileName(),path.GetFileName())==0)
         return fail(18,"RemoveExtension");
-    ATL::CPath drive(_T("C:\\\\file.log"));
+    ATL::CPath drive(_T("C:\\file.log"));
     if(!drive.RemoveFileSpec() ||
-       _tcscmp(drive.GetString(),_T("C:\\\\"))!=0 ||
+       _tcscmp(drive.GetString(),_T("C:\\"))!=0 ||
        drive.IsRelative() ||
        !drive.AddBackslash())
         return fail(19,"Preserve_drive_root");
     ATL::CPath relative(_T("folder"));
     if(!relative.IsRelative() || !relative.Append(_T("leaf")) ||
-       _tcscmp(relative.GetString(),_T("folder\\\\leaf"))!=0)
+       _tcscmp(relative.GetString(),_T("folder\\leaf"))!=0)
         return fail(20,"relative_append");
 
     if(!::DeleteFile(path.GetString()) || path.FileExists())
