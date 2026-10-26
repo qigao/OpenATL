@@ -87,7 +87,7 @@ vcpkg does not install OpenATL.
 
 ## CI structure
 
-The redundant `scripts/` bootstrap and compiler wrappers are being removed in favor of CMake, CTest, and direct GitHub Actions steps. Windows ARM64 runtime checks live under `tests/wtl10/`.
+The former 14-file `scripts/` directory has been deleted. GitHub Actions now installs pinned WTL through `vcpkg.json`, invokes CMake and CTest directly, and validates Windows x64/ARM64 PE files. Real ARM64 SHA-256 and runtime checks are defined as acceptance tests in `tests/wtl10/native_arm64.py`. No standalone build wrapper or Installed SDK is provided.
 
 ## Required CI
 
