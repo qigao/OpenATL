@@ -30,5 +30,9 @@ these paths separately on the exact branch HEAD.
   provenance and executes on genuine Windows ARM64; cross-build != run.
 - No required test may be skipped, disabled, or replaced by a fake pass.
 
-**Draft / DO NOT MERGE.** Passing tests qualify the scoped behavior
-only, not a distributable SDK or production GUI mitigation compliance.
+**Draft / DO NOT MERGE.** Passing tests qualify the scoped source-tree
+behavior only, not production GUI mitigation compliance.
+
+**Permanent exclusion:** no Installed SDK, `install()`/`export()` CMake
+rules, installable package metadata, or post-install consumer tests. Compile
+the checked-in OpenATL headers directly on every supported toolchain.
