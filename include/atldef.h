@@ -7,6 +7,9 @@
 
 #pragma once
 
+// Compile-time source provenance for CI; never defined by an external ATL.
+#define OPENATL_REPOSITORY_HEADERS 0x4F41544CUL
+
 // Ensure Windows 7 minimum
 #ifndef WINVER
 #define WINVER 0x0601
