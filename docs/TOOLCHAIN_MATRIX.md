@@ -32,5 +32,5 @@ thunk unloading, real interactive SDI and production release.
 **Build boundary:** OpenATL is permanently source-tree-only. There is
 no OpenATL install/export/package config, Installed SDK, or installed-consumer
 test. External WTL headers are installed **by vcpkg** under
-`vcpkg_installed/<triplet>/include`; that is not an OpenATL SDK.
+`vcpkg_installed/<triplet>/<triplet>/include`; that is not an OpenATL SDK.
 Windows SDK means Microsoft's target OS headers and resource tools.
