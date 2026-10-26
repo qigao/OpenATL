@@ -91,8 +91,28 @@ public:
     operator LPCTSTR() const noexcept { return m_str.c_str(); }
 
     int GetLength() const noexcept { return (int)m_str.length(); }
+    LPCTSTR GetString() const noexcept { return m_str.c_str(); }
     bool IsEmpty() const noexcept { return m_str.empty(); }
     void Empty() { m_str.clear(); }
+    void Preallocate(int chars) {
+        if (chars > 0) m_str.reserve(static_cast<size_t>(chars));
+    }
+    void Truncate(int chars) {
+        if (chars < 0) chars = 0;
+        if (static_cast<size_t>(chars) < m_str.size())
+            m_str.resize(static_cast<size_t>(chars));
+    }
+    void Append(LPCTSTR text, int length = -1) {
+        if (!text) return;
+        if (length < 0) m_str.append(text);
+        else if (length > 0)
+            m_str.append(text, static_cast<size_t>(length));
+    }
+    int Remove(TCHAR character) {
+        const size_t previous = m_str.size();
+        m_str.erase(std::remove(m_str.begin(), m_str.end(), character), m_str.end());
+        return static_cast<int>(previous - m_str.size());
+    }
 
     TCHAR GetAt(int nIndex) const { return m_str.at(nIndex); }
     void SetAt(int nIndex, TCHAR ch) { m_str[nIndex] = ch; }
@@ -140,10 +160,21 @@ public:
     bool operator<(const TCHAR* psz) const { return Compare(psz) < 0; }
     bool operator>(const TCHAR* psz) const { return Compare(psz) > 0; }
 
-    CString Mid(int nFirst) const { return CString(m_str.substr(nFirst).c_str()); }
-    CString Mid(int nFirst, int nCount) const { return CString(m_str.substr(nFirst, nCount).c_str()); }
-    CString Left(int nCount) const { return CString(m_str.substr(0, nCount).c_str()); }
-    CString Right(int nCount) const { return CString(m_str.substr(m_str.length() - nCount).c_str()); }
+    CString Mid(int first) const { return Mid(first, GetLength()); }
+    CString Mid(int first, int count) const {
+        if (first < 0) first = 0;
+        if (count < 0) count = 0;
+        if (static_cast<size_t>(first) >= m_str.size()) return CString();
+        const auto part = m_str.substr(static_cast<size_t>(first),
+                                        static_cast<size_t>(count));
+        return CString(part.data(), static_cast<int>(part.size()));
+    }
+    CString Left(int count) const { return Mid(0, count); }
+    CString Right(int count) const {
+        if (count <= 0) return CString();
+        if (static_cast<size_t>(count) >= m_str.size()) return *this;
+        return Mid(static_cast<int>(m_str.size() - count), count);
+    }
 
     int Find(TCHAR ch, int nStart = 0) const
     {
@@ -273,20 +304,28 @@ public:
 
     int Delete(int nIndex, int nCount = 1)
     {
-        m_str.erase(nIndex, nCount);
-        return (int)m_str.length();
+        if (nIndex < 0 || nCount <= 0) return GetLength();
+        if (static_cast<size_t>(nIndex) >= m_str.size()) return GetLength();
+        m_str.erase(static_cast<size_t>(nIndex), static_cast<size_t>(nCount));
+        return GetLength();
     }
 
     int Insert(int nIndex, TCHAR ch)
     {
+        if (nIndex < 0) nIndex = 0;
+        if (static_cast<size_t>(nIndex) > m_str.size()) nIndex = GetLength();
         m_str.insert(m_str.begin() + nIndex, ch);
-        return (int)m_str.length();
+        return GetLength();
     }
 
     int Insert(int nIndex, const TCHAR* psz)
     {
-        if (psz) m_str.insert(nIndex, psz);
-        return (int)m_str.length();
+        if (psz) {
+            if (nIndex < 0) nIndex = 0;
+            if (static_cast<size_t>(nIndex) > m_str.size()) nIndex = GetLength();
+            m_str.insert(static_cast<size_t>(nIndex), psz);
+        }
+        return GetLength();
     }
 
 private:
