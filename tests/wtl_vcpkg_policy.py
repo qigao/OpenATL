@@ -34,13 +34,13 @@ def check() -> int:
                o.get("port-version") == port.get("port-version")
                for o in overrides):
         errors.append("vcpkg.json must pin exact WTL overlay revision")
-    if "vcpkg_from_sourceforge(" not in recipe or
-       "086a6cf6a49a4318a8c519136ba6019" not in recipe:
+    if ("vcpkg_from_sourceforge(" not in recipe or
+            "086a6cf6a49a4318a8c519136ba6019" not in recipe):
         errors.append("WTL vcpkg overlay must retain pinned upstream recipe")
     if re.search(r"(?i)OpenATL::WTL|add_library\s*\(\s*openatl_wtl\b", cmake):
         errors.append("OpenATL must not synthesize a WTL target")
-    if "VCPKG_TARGET_TRIPLET" not in cmake or
-       "vcpkg_installed" not in cmake:
+    if ("VCPKG_TARGET_TRIPLET" not in cmake or
+            "vcpkg_installed" not in cmake):
         errors.append("CMake must consume manifest-installed WTL")
     if "if(DEFINED OPENATL_WTL_INCLUDE_DIR)" not in cmake:
         errors.append("CMake must reject manually supplied WTL roots")
@@ -49,8 +49,8 @@ def check() -> int:
         src = (ROOT / name).read_text("utf-8")
         if "vcpkg" not in src or "install" not in src:
             errors.append(f"{name} must invoke manifest WTL install")
-        if "WTL10_10320_Final.zip" in src or
-           "WTL10_10320_Release.zip" in src:
+        if ("WTL10_10320_Final.zip" in src or
+                "WTL10_10320_Release.zip" in src):
             errors.append(f"{name} must not manually download WTL ZIP")
     if errors:
         for error in errors:
