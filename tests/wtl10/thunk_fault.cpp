@@ -118,6 +118,55 @@ static int recovered_reinit() {
         return reject(62,"recovered_thunk_not_released");
     return 0;
 }
+// Exercise failures at the real ATL window and dialog creation sites,
+// not only CWndProcThunk::Init directly. In each case Create must refuse
+// admission before publishing a HWND/window procedure.
+class FailedWindow : public ATL::CWindowImpl<FailedWindow> {
+public:
+    DECLARE_WND_CLASS(L"OpenATL_FailedWndProcThunk")
+    BEGIN_MSG_MAP(FailedWindow)
+    END_MSG_MAP()
+};
+class FailedDialog : public ATL::CDialogImpl<FailedDialog> {
+public:
+    enum { IDD = 1099 }; // Not opened: failure must occur before reading RC.
+    BEGIN_MSG_MAP(FailedDialog)
+    END_MSG_MAP()
+};
+static int fault_window_or_dialog(int stage,bool dialog) {
+    Thunk::TestFailNext(stage);
+    HWND admitted=nullptr;
+    bool ownerClean=false;
+    if(dialog) {
+        FailedDialog candidate;
+        admitted=candidate.Create(NULL);
+        ownerClean=(candidate.m_hWnd==nullptr &&
+                    candidate.m_thunk.GetCodeAddress()==nullptr);
+        if(admitted!=nullptr)::DestroyWindow(admitted);
+    } else {
+        FailedWindow candidate;
+        RECT bounds={0,0,80,40};
+        admitted=candidate.Create(NULL,bounds,L"Fault admission",WS_POPUP,0);
+        ownerClean=(candidate.m_hWnd==nullptr &&
+                    candidate.m_thunk.GetCodeAddress()==nullptr);
+        if(admitted!=nullptr)::DestroyWindow(admitted);
+    }
+    if(admitted!=nullptr || !ownerClean || Thunk::testInjectedCount!=1 ||
+       Thunk::testFailureStage!=0 || Thunk::testLivePages!=0)
+        return reject(dialog?80:70,"window_or_dialog_published_on_thunk_failure");
+    if(stage==1) {
+        if(Thunk::testLastAllocated!=nullptr ||
+           Thunk::testLastReleased!=nullptr)
+            return reject(81,"window_alloc_denial_leaked_memory");
+    } else {
+        if(Thunk::testLastAllocated==nullptr ||
+           Thunk::testLastAllocated!=Thunk::testLastReleased ||
+           !no_executable_page(Thunk::testLastReleased))
+            return reject(82,"window_failed_thunk_page_retained");
+    }
+    return 0;
+}
+
 int main() {
     for(int i=0;i<24;++i) {
         int status=fault_new(1,10); if(status)return status;
@@ -125,7 +174,13 @@ int main() {
         status=fault_new(4,30); if(status)return status;
         status=fault_reinit_rw(); if(status)return status;
         status=recovered_reinit(); if(status)return status;
+        status=fault_window_or_dialog(1,false); if(status)return status;
+        status=fault_window_or_dialog(3,false); if(status)return status;
+        status=fault_window_or_dialog(4,false); if(status)return status;
+        status=fault_window_or_dialog(1,true); if(status)return status;
+        status=fault_window_or_dialog(3,true); if(status)return status;
+        status=fault_window_or_dialog(4,true); if(status)return status;
     }
-    std::puts("THUNK_FAULT_OK alloc=1 rx=1 flush=1 reinit_rw=1 free=1 recovery=1 no_rwx=1");
+    std::puts("THUNK_FAULT_OK alloc=1 rx=1 flush=1 reinit_rw=1 free=1 recovery=1 no_rwx=1 window_denied=1 dialog_denied=1");
     return 0;
 }
