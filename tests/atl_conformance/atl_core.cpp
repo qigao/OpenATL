@@ -15,6 +15,10 @@
 #include <atlsync.h>
 #include <atlstr.h>
 
+#if !defined(OPENATL_REPOSITORY_HEADERS) || OPENATL_REPOSITORY_HEADERS != 0x4F41544CUL
+#error "This target must compile repository-owned OpenATL headers"
+#endif
+
 static int failure(int code, const char* stage) {
     std::fprintf(stderr, "ATL_CORE_FAIL code=%d stage=%s winerr=%lu\n",
                   code,stage,static_cast<unsigned long>(::GetLastError()));
