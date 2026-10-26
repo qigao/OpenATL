@@ -30,7 +30,7 @@ jobs:
           if (!$compiler) { throw 'Pinned clang++ is missing' }
           "OPENATL_LLVM_BIN=$($compiler.Directory.FullName)" |
             Out-File -FilePath $env:GITHUB_ENV -Append
-      - name: Exact-pinned OpenATL / official WTL10 checkout (qualification only)
+      - name: Use repository-owned ATL / pinned official WTL10 bootstrap
         shell: pwsh
         run: ./scripts/windows-openatl-bootstrap.ps1
       - name: Full WTL10 SDI, native UI no-COM and COM client (required)
@@ -50,6 +50,7 @@ jobs:
             build-wtl10/wtl10_thunk_fault_aarch64.exe
             build-wtl10/atl_com_client_arm64.exe
             build-wtl10/atl_core_arm64.exe
+            build-wtl10/atl_path_arm64.exe
             build-wtl10/manifest.json
 
   windows-arm64-native:
@@ -97,7 +98,7 @@ jobs:
             throw "Missing MSVC compiler or Windows SDK resource compiler"
           }
           Write-Host "MSVC compiler: $compiler; rc: $resource"
-      - name: Fetch exact-pinned OpenATL and WTL10 (NEVER Microsoft ATL)
+      - name: Use in-tree OpenATL and pinned official WTL10
         shell: pwsh
         run: ./scripts/windows-openatl-bootstrap.ps1
       - name: MSVC compile and native/PE conformance (required)
@@ -115,6 +116,7 @@ jobs:
             build-msvc-arm64/openatl_thunk_fault.exe
             build-msvc-arm64/openatl_com_client.exe
             build-msvc-arm64/openatl_atl_core.exe
+            build-msvc-arm64/openatl_atl_path.exe
             build-msvc-arm64/openatl_wtl10_sdi.exe
             build-msvc-arm64/manifest-msvc-arm64.json
 
@@ -152,7 +154,7 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch and pin WTL10 / OpenATL / llvm-mingw from this host
+      - name: Verify in-tree OpenATL; fetch pinned WTL10 and llvm-mingw
         env:
           HOST_LLVM_URL: https://github.com/mstorsjo/llvm-mingw/releases/download/20261020/${{ matrix.archive }}
           HOST_LLVM_SHA256: ${{ matrix.sha256 }}
@@ -180,3 +182,4 @@ jobs:
             build-openatl-cmake-*/openatl_com_client.exe
             build-openatl-cmake-*/openatl_thunk_fault.exe
             build-openatl-cmake-*/openatl_atl_core.exe
+            build-openatl-cmake-*/openatl_atl_path.exe
