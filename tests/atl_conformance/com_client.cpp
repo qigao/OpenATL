@@ -16,6 +16,10 @@
 #include <atlbase.h>
 #include <atlcomcli.h>
 
+#if !defined(OPENATL_REPOSITORY_HEADERS) || OPENATL_REPOSITORY_HEADERS != 0x4F41544CUL
+#error "This target must compile repository-owned OpenATL headers"
+#endif
+
 #if defined(__RATL__)
 #error "COM client must use pinned clean-room OpenATL headers"
 #endif
