@@ -12,7 +12,6 @@ if(DEFINED OPENATL_ATL_INCLUDE_DIR)
   message(FATAL_ERROR "OPENATL_ATL_INCLUDE_DIR is obsolete; only source-tree include/ is supported")
 endif()
 set(_openatl_atl_include "${CMAKE_CURRENT_SOURCE_DIR}/include")
-set(OPENATL_WTL_INCLUDE_DIR "" CACHE PATH "Official WTL10 Include directory")
 if(NOT EXISTS "${_openatl_atl_include}/atlbase.h" OR
    NOT EXISTS "${_openatl_atl_include}/atlwin.h" OR
    NOT EXISTS "${_openatl_atl_include}/atlfile.h" OR
@@ -20,8 +19,8 @@ if(NOT EXISTS "${_openatl_atl_include}/atlbase.h" OR
    NOT EXISTS "${_openatl_atl_include}/atlsync.h")
   message(FATAL_ERROR "Missing repository-owned OpenATL headers")
 endif()
-if(NOT EXISTS "${OPENATL_WTL_INCLUDE_DIR}/atlapp.h")
-  message(FATAL_ERROR "OPENATL_WTL_INCLUDE_DIR must point to official WTL10 Include")
+if(DEFINED OPENATL_WTL_INCLUDE_DIR)
+  message(FATAL_ERROR "Manual WTL header roots are forbidden; install WTL with vcpkg.json")
 endif()
 file(READ "${_openatl_atl_include}/atlbase.h" _openatl_marker LIMIT 240)
 file(READ "${_openatl_atl_include}/atldef.h" _openatl_def_marker LIMIT 2048)
@@ -38,11 +37,6 @@ target_compile_features(openatl_atl INTERFACE cxx_std_17)
 target_compile_definitions(openatl_atl INTERFACE
   UNICODE _UNICODE _WIN32_WINNT=0x0601 WINVER=0x0601 _WIN32_IE=0x0601)
 
-add_library(openatl_wtl INTERFACE)
-add_library(OpenATL::WTL ALIAS openatl_wtl)
-target_include_directories(openatl_wtl INTERFACE "${OPENATL_WTL_INCLUDE_DIR}")
-target_link_libraries(openatl_wtl INTERFACE OpenATL::ATL)
-
 # Optional client-side COM convenience; not in the UI transitive link closure.
 # Consumers explicitly link OpenATL::COMClient and manage their own apartment.
 add_library(openatl_comclient INTERFACE)
@@ -52,13 +46,34 @@ target_link_libraries(openatl_comclient INTERFACE
 
 option(OPENATL_BUILD_QUALIFICATION "Compile native UI, ATL utility and COM client tests" OFF)
 if(OPENATL_BUILD_QUALIFICATION)
+  # WTL is a vcpkg manifest dependency, not an OpenATL library or target.
+  # Never fall back to system/MSVC ATL, downloaded WTL ZIPs or user paths.
+  if(NOT DEFINED VCPKG_TARGET_TRIPLET OR VCPKG_TARGET_TRIPLET STREQUAL "")
+    message(FATAL_ERROR "Set VCPKG_TARGET_TRIPLET after vcpkg manifest installation of wtl")
+  endif()
+  if(DEFINED VCPKG_INSTALLED_DIR AND NOT VCPKG_INSTALLED_DIR STREQUAL "")
+    set(_wtl_prefix "${VCPKG_INSTALLED_DIR}")
+  else()
+    set(_wtl_prefix "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed")
+  endif()
+  set(_wtl_headers "${_wtl_prefix}/${VCPKG_TARGET_TRIPLET}/include")
+  if(NOT EXISTS "${_wtl_headers}/atlapp.h")
+    message(FATAL_ERROR "Missing vcpkg-installed wtl: ${_wtl_headers}/atlapp.h")
+  endif()
+  if(EXISTS "${_wtl_prefix}/${VCPKG_TARGET_TRIPLET}/share/atl")
+    message(FATAL_ERROR "The Microsoft ATL vcpkg dependency is forbidden: use ports/wtl overlay")
+  endif()
+  file(READ "${_wtl_headers}/atlapp.h" _wtl_version_probe LIMIT 8192)
+  if(NOT _wtl_version_probe MATCHES "WTL version 10\\.0")
+    message(FATAL_ERROR "Unrecognized vcpkg WTL version; expected WTL10")
+  endif()
   enable_language(RC)
   enable_testing()
 
   add_executable(openatl_gui_runtime
     tests/wtl10/gui_runtime.cpp tests/wtl10/gui_runtime.rc)
-  target_include_directories(openatl_gui_runtime PRIVATE tests/wtl10)
-  target_link_libraries(openatl_gui_runtime PRIVATE OpenATL::WTL
+  target_include_directories(openatl_gui_runtime PRIVATE tests/wtl10 "${_wtl_headers}")
+  target_link_libraries(openatl_gui_runtime PRIVATE OpenATL::ATL
     # ole32 is used by the test ONLY to prove COM stays uninitialized.
     ole32 comctl32 gdi32 user32 shell32 shlwapi
     comdlg32 uxtheme msimg32 oleaut32 uuid)
@@ -113,8 +128,8 @@ if(OPENATL_BUILD_QUALIFICATION)
     add_executable(openatl_wtl10_sdi WIN32
       "${OPENATL_WTL_DEMO_DIR}/main.cpp"
       "${OPENATL_WTL_DEMO_DIR}/wtltest.rc")
-    target_include_directories(openatl_wtl10_sdi PRIVATE "${OPENATL_WTL_DEMO_DIR}")
-    target_link_libraries(openatl_wtl10_sdi PRIVATE OpenATL::WTL
+    target_include_directories(openatl_wtl10_sdi PRIVATE "${OPENATL_WTL_DEMO_DIR}" "${_wtl_headers}")
+    target_link_libraries(openatl_wtl10_sdi PRIVATE OpenATL::ATL
       ole32 oleaut32 uuid comctl32 msimg32 uxtheme gdi32 comdlg32
       shell32 shlwapi dwmapi user32)
     if(MSVC)
