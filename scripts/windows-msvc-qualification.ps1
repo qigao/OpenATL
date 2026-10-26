@@ -37,7 +37,6 @@ $build="$OutRoot-$TargetArchitecture"
 $settings=@('-S','.','-B',$build,'-G','Ninja',
   '-DCMAKE_BUILD_TYPE=Release',
   '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
-  "-DOPENATL_ATL_INCLUDE_DIR=$atl",
   "-DOPENATL_WTL_INCLUDE_DIR=$wtl",
   "-DOPENATL_WTL_DEMO_DIR=$demo",
   '-DOPENATL_BUILD_QUALIFICATION=ON',
