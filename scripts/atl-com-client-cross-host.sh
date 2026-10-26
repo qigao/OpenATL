@@ -4,8 +4,8 @@ set -euo pipefail
 CXX="$(find "$PWD/tools/wtl10-host/llvm" -name x86_64-w64-mingw32-clang++ -print -quit)"
 test -x "$CXX"
 BIN="$(dirname "$CXX")"
-ATL="$PWD/tools/wtl10-host/openatl"
-test "$(git -C "$ATL" rev-parse HEAD)" = 7b587f3e10f3f8d93a01522033de80007368bad5
+ATL="$PWD"
+test -s "$ATL/include/atlbase.h" && test -s "$ATL/include/atlcomcli.h"
 for arch in x86_64 aarch64; do
   compiler="$BIN/$arch-w64-mingw32-clang++"
   test -x "$compiler"

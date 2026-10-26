@@ -1,7 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$LLVMRoot)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-$atl=(Resolve-Path tools/wtl10-openatl/include).Path
+$atl=(Resolve-Path include).Path
 $wtlFile=Get-ChildItem 'tools/wtl10' -Recurse -File -Filter atlapp.h |
   Where-Object { $_.Directory.Name -ieq 'Include' } | Select-Object -First 1
 if (!$wtlFile) { throw 'Official WTL10 header missing' }
