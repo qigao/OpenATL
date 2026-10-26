@@ -23,10 +23,13 @@ test "$(git -C tools/vcpkg rev-parse HEAD)" = "$VCPKG_SHA"
 bash tools/vcpkg/bootstrap-vcpkg.sh -disableMetrics
 VCPKG="$PWD/tools/vcpkg/vcpkg"
 for triplet in x64-openatl-mingw arm64-openatl-mingw; do
-  "$VCPKG" install "--triplet=$triplet" "--overlay-triplets=$PWD/cmake/vcpkg-triplets"
-  WTL_INC="$PWD/vcpkg_installed/$triplet/include"
+  # vcpkg manifest mode deletes a previous triplet from a shared root.
+  # Isolate each target root, so x64 and ARM64 are both usable afterward.
+  install_root="$PWD/vcpkg_installed/$triplet"
+  "$VCPKG" install "--triplet=$triplet" "--overlay-triplets=$PWD/cmake/vcpkg-triplets" "--x-install-root=$install_root"
+  WTL_INC="$install_root/$triplet/include"
   test -s "$WTL_INC/atlapp.h" || { echo "Missing vcpkg WTL ($triplet)" >&2; exit 3; }
-  test ! -d "$PWD/vcpkg_installed/$triplet/share/atl" || {
+  test ! -d "$install_root/$triplet/share/atl" || {
     echo "WTL resolved Microsoft ATL stub ($triplet)" >&2; exit 3;
   }
   grep -q 'WTL version 10.0' "$WTL_INC/atlapp.h"
