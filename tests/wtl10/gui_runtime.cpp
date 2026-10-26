@@ -28,6 +28,10 @@
 #include <atlctrls.h>
 #include "gui_runtime_resource.h"
 
+#if !defined(OPENATL_REPOSITORY_HEADERS) || OPENATL_REPOSITORY_HEADERS != 0x4F41544CUL
+#error "This target must compile repository-owned OpenATL headers"
+#endif
+
 static_assert(sizeof(void*) == 8, "WTL10 GUI native runtime expects x64/ARM64");
 static_assert(_WTL_VER >= 0x1000, "Official WTL10 headers required");
 
