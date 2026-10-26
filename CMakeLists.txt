@@ -6,30 +6,34 @@ project(OpenATL VERSION 0.1.0 LANGUAGES CXX)
 if(NOT WIN32)
   message(FATAL_ERROR "OpenATL targets Windows; cross-compile with llvm-mingw")
 endif()
-# OpenATL owns its complete MIT-derived header implementation in-tree.
-# Never accept a second provider/root via cmake cache or MSVC's ATL.
-if(DEFINED OPENATL_ATL_INCLUDE_DIR AND
-   NOT OPENATL_ATL_INCLUDE_DIR STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}/include")
-  message(FATAL_ERROR "External ATL include providers are forbidden: use repository-owned include/")
+# ATL headers are built from this checkout, never an external cache provider.
+# There is deliberately no supported OPENATL_ATL_INCLUDE_DIR override.
+if(DEFINED OPENATL_ATL_INCLUDE_DIR)
+  message(FATAL_ERROR "OPENATL_ATL_INCLUDE_DIR is obsolete; only source-tree include/ is supported")
 endif()
-set(OPENATL_ATL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
+set(_openatl_atl_include "${CMAKE_CURRENT_SOURCE_DIR}/include")
 set(OPENATL_WTL_INCLUDE_DIR "" CACHE PATH "Official WTL10 Include directory")
-if(NOT EXISTS "${OPENATL_ATL_INCLUDE_DIR}/atlbase.h" OR
-   NOT EXISTS "${OPENATL_ATL_INCLUDE_DIR}/atlwin.h")
-  message(FATAL_ERROR "OPENATL_ATL_INCLUDE_DIR must point to clean-room OpenATL")
+if(NOT EXISTS "${_openatl_atl_include}/atlbase.h" OR
+   NOT EXISTS "${_openatl_atl_include}/atlwin.h" OR
+   NOT EXISTS "${_openatl_atl_include}/atlfile.h" OR
+   NOT EXISTS "${_openatl_atl_include}/atlpath.h" OR
+   NOT EXISTS "${_openatl_atl_include}/atlsync.h")
+  message(FATAL_ERROR "Missing repository-owned OpenATL headers")
 endif()
 if(NOT EXISTS "${OPENATL_WTL_INCLUDE_DIR}/atlapp.h")
   message(FATAL_ERROR "OPENATL_WTL_INCLUDE_DIR must point to official WTL10 Include")
 endif()
-file(READ "${OPENATL_ATL_INCLUDE_DIR}/atlbase.h" _openatl_marker LIMIT 240)
-if(NOT _openatl_marker MATCHES "OpenATL - Clean-room ATL subset for WTL 10")
-  message(FATAL_ERROR "Refuse Microsoft ATL or unknown fallback provider")
+file(READ "${_openatl_atl_include}/atlbase.h" _openatl_marker LIMIT 240)
+file(READ "${_openatl_atl_include}/atldef.h" _openatl_def_marker LIMIT 2048)
+if(NOT _openatl_marker MATCHES "OpenATL - Clean-room ATL subset for WTL 10"
+   OR NOT _openatl_def_marker MATCHES "OPENATL_REPOSITORY_HEADERS")
+  message(FATAL_ERROR "Refuse missing, external, or unmarked ATL headers")
 endif()
 
 # UI requires neither CoInitializeEx nor a COM Server/Object Map.
 add_library(openatl_atl INTERFACE)
 add_library(OpenATL::ATL ALIAS openatl_atl)
-target_include_directories(openatl_atl INTERFACE "${OPENATL_ATL_INCLUDE_DIR}")
+target_include_directories(openatl_atl INTERFACE "${_openatl_atl_include}")
 target_compile_features(openatl_atl INTERFACE cxx_std_17)
 target_compile_definitions(openatl_atl INTERFACE
   UNICODE _UNICODE _WIN32_WINNT=0x0601 WINVER=0x0601 _WIN32_IE=0x0601)
@@ -46,12 +50,8 @@ add_library(OpenATL::COMClient ALIAS openatl_comclient)
 target_link_libraries(openatl_comclient INTERFACE
   OpenATL::ATL ole32 oleaut32 uuid)
 
-option(OPENATL_BUILD_QUALIFICATION "Compile standalone UI and COM client tests" OFF)
-option(OPENATL_TEST_PATCHES_APPLIED "Explicitly enable exact-pinned W^X qualification checkout" OFF)
+option(OPENATL_BUILD_QUALIFICATION "Compile native UI, ATL utility and COM client tests" OFF)
 if(OPENATL_BUILD_QUALIFICATION)
-  if(NOT OPENATL_TEST_PATCHES_APPLIED)
-    message(FATAL_ERROR "Qualification requires pinned temporary OpenATL W^X patch")
-  endif()
   enable_language(RC)
   enable_testing()
 
@@ -70,8 +70,13 @@ if(OPENATL_BUILD_QUALIFICATION)
   target_link_libraries(openatl_atl_core PRIVATE OpenATL::ATL ole32)
   add_test(NAME openatl.atl_core_no_com COMMAND openatl_atl_core)
 
-  # Direct OS failure injection is available ONLY through the pinned
-  # temporary header patch and OPENATL_WX_FAULT_TEST compile definition.
+  # Repository-owned path and Unicode Win32 file test. No COM dependency.
+  add_executable(openatl_atl_path tests/atl_conformance/atl_path.cpp)
+  target_link_libraries(openatl_atl_path PRIVATE OpenATL::ATL)
+  add_test(NAME openatl.atl_path COMMAND openatl_atl_path)
+
+  # Direct OS failure injection is compiled from the in-repo atlwin.h
+  # and isolated behind OPENATL_WX_FAULT_TEST.
   add_executable(openatl_thunk_fault tests/wtl10/thunk_fault.cpp)
   target_compile_definitions(openatl_thunk_fault PRIVATE OPENATL_WX_FAULT_TEST=1)
   target_link_libraries(openatl_thunk_fault PRIVATE OpenATL::ATL)
@@ -87,7 +92,7 @@ if(OPENATL_BUILD_QUALIFICATION)
              COMMAND openatl_com_client "--${_client_mode}")
   endforeach()
 
-  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_atl_core)
+  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_atl_core openatl_atl_path)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)
     if(MSVC)
       set_property(TARGET ${_qualified} PROPERTY
@@ -125,4 +130,5 @@ endif()
 
 # No COM server targets, class factories, registry writers, RGS or RATL.
 # The clean-room MIT ATL implementation is owned here under include/.
+# No checkout patch or external ATL implementation is ever used.
 # No install/export until CFG/CET and installed-consumer acceptance.
