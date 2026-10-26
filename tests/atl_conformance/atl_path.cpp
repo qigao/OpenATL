@@ -84,10 +84,17 @@ int main() {
         return fail(17,"Reject_rooted_component");
 
     ATL::CPath shortened(path.GetString());
+    // The temporary seed may itself contain a dot. RemoveExtension removes
+    // only the final extension; an earlier dot is not an error.
     if(!shortened.RemoveExtension() ||
-       shortened.GetExtension()[0]!=_T('\0') ||
-       _tcscmp(shortened.GetFileName(),path.GetFileName())==0)
+       _tcscmp(shortened.GetString(),path.GetString())==0 ||
+       _tcslen(shortened.GetString())+4 != _tcslen(path.GetString()) ||
+       _tcscmp(path.GetString()+_tcslen(shortened.GetString()),_T(".log"))!=0)
         return fail(18,"RemoveExtension");
+    ATL::CPath simple(_T("leaf.log"));
+    if(!simple.RemoveExtension() || simple.GetExtension()[0]!=_T('\0') ||
+       _tcscmp(simple.GetString(),_T("leaf"))!=0)
+        return fail(22,"Simple_RemoveExtension");
     ATL::CPath drive(_T("C:\\file.log"));
     if(!drive.RemoveFileSpec() ||
        _tcscmp(drive.GetString(),_T("C:\\"))!=0 ||
