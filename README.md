@@ -25,8 +25,11 @@ ATL header declarations. No RATL source, fallback or compatibility layer.
 - `OpenATL::COMClient`: **opt-in** ATL client helpers, depending on
   `OpenATL::ATL`, Windows `ole32`, `oleaut32` and `uuid`.
 
-These are currently **source-tree interface targets, not an installable
-SDK**. OpenATL always builds the headers checked into this repository's
+These are **permanently source-tree CMake INTERFACE targets**. OpenATL
+will not provide an Installed SDK, a package configuration, exported
+targets, or a `cmake --install` workflow. Consumers integrate the source
+repository directly via `add_subdirectory()` or `FetchContent`.
+OpenATL always builds the headers checked into this repository's
 `include/`; no external ATL header root or fallback is accepted:
 
 ```sh
@@ -78,5 +81,6 @@ See [architecture](docs/ARCHITECTURE.md),
 [toolchain matrix](docs/TOOLCHAIN_MATRIX.md).
 
 **Draft / qualification only.** Full GUI CFG/CET, failure cleanup, DSO
-unloading, interactive SDI and an installed SDK still need explicit
-acceptance. No WTL8 fallback, no Salts production ABI or compiler switch.
+unloading and interactive SDI still need explicit acceptance. No WTL8
+fallback, no Salts production ABI or compiler switch. **Installed SDK is
+permanently out of scope**; there is no future installation gate.
