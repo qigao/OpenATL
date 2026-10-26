@@ -54,7 +54,9 @@ if(OPENATL_BUILD_QUALIFICATION)
   if(DEFINED VCPKG_INSTALLED_DIR AND NOT VCPKG_INSTALLED_DIR STREQUAL "")
     set(_wtl_prefix "${VCPKG_INSTALLED_DIR}")
   else()
-    set(_wtl_prefix "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed")
+    # Each triplet is installed by vcpkg into an independent manifest root.
+    # This avoids vcpkg pruning x64 when the ARM64 manifest is installed.
+    set(_wtl_prefix "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}")
   endif()
   set(_wtl_headers "${_wtl_prefix}/${VCPKG_TARGET_TRIPLET}/include")
   if(NOT EXISTS "${_wtl_headers}/atlapp.h")
