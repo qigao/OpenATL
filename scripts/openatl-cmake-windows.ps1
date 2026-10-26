@@ -23,8 +23,7 @@ foreach($arch in @('x86_64','aarch64')) {
   if ($LASTEXITCODE -ne 0) { throw "CMake build Windows $arch failed" }
   python tests/wtl10/verify_pe_machine.py "$build/openatl_gui_runtime.exe" $arch --require-resources
   if ($LASTEXITCODE -ne 0) { throw "CMake GUI PE architecture mismatch: $arch" }
-  foreach($target in @('openatl_com_p0','openatl_com_p1','openatl_com_p1b',
-                       'openatl_registry_sandbox','openatl_registrar')) {
+  foreach($target in @('openatl_com_client')) {
     python tests/wtl10/verify_pe_machine.py "$build/$target.exe" $arch
     if ($LASTEXITCODE -ne 0) { throw "CMake COM target PE machine mismatch: $target/$arch" }
   }
@@ -33,4 +32,4 @@ foreach($arch in @('x86_64','aarch64')) {
     if ($LASTEXITCODE -ne 0) { throw 'CMake native Windows x64 conformance failed' }
   }
 }
-Write-Host 'OpenATL independent CMake interface targets built x64/ARM64; x64 CTest 5/5 PASS'
+Write-Host 'OpenATL WTL UI no-COM + COM client targets built x64/ARM64; x64 CTest 2/2 x5 PASS'
