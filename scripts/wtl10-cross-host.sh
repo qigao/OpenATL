@@ -20,7 +20,18 @@ git init -q tools/vcpkg
 git -C tools/vcpkg fetch --quiet --depth 1 https://github.com/microsoft/vcpkg.git "$VCPKG_SHA"
 git -C tools/vcpkg checkout -q --detach FETCH_HEAD
 test "$(git -C tools/vcpkg rev-parse HEAD)" = "$VCPKG_SHA"
-bash tools/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+# The pinned bootstrap downloads a host vcpkg binary. Transient CDN
+# disconnects are transport failures, not acceptance failures: retry only
+# this download/bootstrap step, never the build or conformance tests.
+bootstrapped=0
+for attempt in 1 2 3; do
+  if bash tools/vcpkg/bootstrap-vcpkg.sh -disableMetrics; then
+    bootstrapped=1
+    break
+  fi
+  if [ "$attempt" -lt 3 ]; then sleep $((attempt * 3)); fi
+done
+test "$bootstrapped" = 1 || { echo 'Pinned vcpkg bootstrap failed after three transport attempts' >&2; exit 2; }
 VCPKG="$PWD/tools/vcpkg/vcpkg"
 for triplet in x64-openatl-mingw arm64-openatl-mingw; do
   # vcpkg manifest mode deletes a previous triplet from a shared root.
