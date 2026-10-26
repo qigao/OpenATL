@@ -44,6 +44,9 @@ def check() -> int:
     if not CMAKE_FILES:
         print("FAIL: no tracked OpenATL CMake files found", file=sys.stderr)
         return 1
+    if any(name.startswith("scripts/") for name in TRACKED if name):
+        print("FAIL: legacy scripts/ directory is forbidden", file=sys.stderr)
+        return 1
     violations: list[str] = []
     for tracked in TRACKED:
         if not tracked:
