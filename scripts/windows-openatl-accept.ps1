@@ -7,12 +7,11 @@ function Checked([string]$tool,[string[]]$argv) {
 }
 $demo=(Resolve-Path 'tools/wtl10-test').Path
 $atl=(Resolve-Path 'include').Path
-$wtlHeader=Get-ChildItem 'tools/wtl10' -File -Recurse -Filter atlapp.h |
-  Where-Object { $_.Directory.Name -ieq 'Include' } | Select-Object -First 1
-if (!$wtlHeader) { throw 'WTL10 official header missing' }
-$wtl=$wtlHeader.Directory.FullName
 if (!(Test-Path (Join-Path $demo 'wtltest.rc'))) { throw 'WTL10 demo RC missing' }
 foreach ($arch in @('x86_64','aarch64')) {
+  $triplet=if($arch -eq 'x86_64'){'x64-openatl-mingw'}else{'arm64-openatl-mingw'}
+  $wtl=(Resolve-Path "vcpkg_installed/$triplet/include").Path
+  if(!(Test-Path (Join-Path $wtl 'atlapp.h'))) {throw "vcpkg WTL is missing for $triplet"}
   $cxx=Join-Path $LLVMRoot "$arch-w64-mingw32-clang++.exe"
   $windres=Join-Path $LLVMRoot "$arch-w64-mingw32-windres.exe"
   if (!(Test-Path $cxx) -or !(Test-Path $windres)) {
