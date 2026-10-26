@@ -6,7 +6,7 @@ function Checked([string]$tool,[string[]]$argv) {
   if ($LASTEXITCODE -ne 0) { throw "$tool failed exit $LASTEXITCODE" }
 }
 $demo=(Resolve-Path 'tools/wtl10-test').Path
-$atl=(Resolve-Path 'tools/wtl10-openatl/include').Path
+$atl=(Resolve-Path 'include').Path
 $wtlHeader=Get-ChildItem 'tools/wtl10' -File -Recurse -Filter atlapp.h |
   Where-Object { $_.Directory.Name -ieq 'Include' } | Select-Object -First 1
 if (!$wtlHeader) { throw 'WTL10 official header missing' }
@@ -34,5 +34,5 @@ foreach ($arch in @('x86_64','aarch64')) {
 Write-Host 'OpenATL WTL10 full upstream SDI + .rc PE x64/ARM64 linked; interactive GUI not qualified'
 # UI must run WITHOUT COM initialization. COM client has its own apartment.
 & ./scripts/windows-wtl10-gui.ps1 -LLVMRoot $LLVMRoot
-& ./scripts/windows-atl-com-client.ps1 -LLVMRoot $LLVMRoot -OpenATLRoot 'tools/wtl10-openatl'
+& ./scripts/windows-atl-com-client.ps1 -LLVMRoot $LLVMRoot -OpenATLRoot '.'
 Write-Host 'OpenATL WTL10 UI(no COM) + isolated COM client Windows x64/ARM64 PASS'

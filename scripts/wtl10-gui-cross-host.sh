@@ -6,7 +6,7 @@ test -n "$BIN"
 WTL_HEADER="$(find "$PWD/tools/wtl10-host/wtl10" -name atlapp.h -print -quit)"
 test -f "$WTL_HEADER"
 WTL_INC="$(dirname "$WTL_HEADER")"
-ATL_INC="$PWD/tools/wtl10-host/openatl/include"
+ATL_INC="$PWD/include"
 for cpu in x86_64 aarch64; do
   CXX="$BIN/$cpu-w64-mingw32-clang++"
   RC="$BIN/$cpu-w64-mingw32-windres"

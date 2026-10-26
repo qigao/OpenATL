@@ -11,7 +11,7 @@ function Invoke-Checked([string]$exe, [string[]]$argv) {
     throw "$exe returned $LASTEXITCODE"
   }
 }
-$atl = (Resolve-Path 'tools/wtl10-openatl/include').Path
+$atl = (Resolve-Path 'include').Path
 $header = Get-ChildItem 'tools/wtl10' -Recurse -File -Filter atlapp.h |
   Where-Object { $_.Directory.Name -ieq 'Include' } |
   Select-Object -First 1

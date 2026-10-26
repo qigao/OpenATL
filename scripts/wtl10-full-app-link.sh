@@ -8,7 +8,7 @@ BIN="$(dirname "$MINGW_CXX")"
 WTL_HEADER="$(find "$PWD/tools/wtl10-host/wtl10" -name atlapp.h -print -quit)"
 test -f "$WTL_HEADER"
 WTL_INC="$(dirname "$WTL_HEADER")"
-ATL_INC="$PWD/tools/wtl10-host/openatl/include"
+ATL_INC="$PWD/include"
 DEMO="$PWD/tools/wtl10-host/wtltest"
 test -s "$DEMO/main.cpp" && test -s "$DEMO/wtltest.rc"
 for arch in x86_64 aarch64; do
