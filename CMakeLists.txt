@@ -35,9 +35,9 @@ target_link_libraries(openatl_wtl INTERFACE OpenATL::ATL)
 
 # Optional client-side COM convenience; not in the UI transitive link closure.
 # Consumers explicitly link OpenATL::COMClient and manage their own apartment.
-add_library(openatl_com_client INTERFACE)
-add_library(OpenATL::COMClient ALIAS openatl_com_client)
-target_link_libraries(openatl_com_client INTERFACE
+add_library(openatl_comclient INTERFACE)
+add_library(OpenATL::COMClient ALIAS openatl_comclient)
+target_link_libraries(openatl_comclient INTERFACE
   OpenATL::ATL ole32 oleaut32 uuid)
 
 option(OPENATL_BUILD_QUALIFICATION "Compile standalone UI and COM client tests" OFF)
