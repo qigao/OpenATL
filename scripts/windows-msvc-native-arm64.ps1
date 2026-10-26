@@ -8,7 +8,7 @@ if([Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne
 $manifest=Get-Content (Join-Path $ArtifactRoot 'manifest-msvc-arm64.json') -Raw |
   ConvertFrom-Json -AsHashtable
 $files=@('openatl_gui_runtime.exe','openatl_com_client.exe',
-  'openatl_thunk_fault.exe','openatl_atl_core.exe','openatl_wtl10_sdi.exe')
+  'openatl_thunk_fault.exe','openatl_atl_core.exe','openatl_atl_path.exe','openatl_wtl10_sdi.exe')
 foreach($file in $files) {
   $path=(Resolve-Path (Join-Path $ArtifactRoot $file)).Path
   $data=[IO.File]::ReadAllBytes($path)
@@ -30,6 +30,7 @@ $expected=@{
   'openatl_gui_runtime.exe'='WTL10 GUI runtime PASS: no COM apartment, W^X thunk x64/ARM64, message maps, resource dialog, NCDESTROY, OnFinalMessage'
   'openatl_com_client.exe'='ATL_COM_CLIENT_OK activate=1 qi=1 comptr=1 bstr=1 variant=1 unregister=0'
   'openatl_atl_core.exe'='ATL_CORE_OK file=1 string=1 sync=1 no_com=1'
+  'openatl_atl_path.exe'='ATL_PATH_OK unicode=1 file=1 relative=1 root=1'
   'openatl_thunk_fault.exe'='THUNK_FAULT_OK alloc=1 rx=1 flush=1 reinit_rw=1 free=1 recovery=1 no_rwx=1 window_denied=1 dialog_denied=1'
 }
 function Run-Exact([string]$file,[string]$value,[string]$arguments='') {
