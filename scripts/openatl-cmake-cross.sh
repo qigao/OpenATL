@@ -23,7 +23,7 @@ for arch in x86_64 aarch64; do
   cmake --build "$dir" --parallel 2
   python3 tests/wtl10/verify_pe_machine.py "$dir/openatl_gui_runtime.exe" \
     "$arch" --require-resources
-  for base in openatl_com_client openatl_thunk_fault; do
+  for base in openatl_com_client openatl_thunk_fault openatl_atl_core; do
     python3 tests/wtl10/verify_pe_machine.py "$dir/$base.exe" "$arch"
   done
 done

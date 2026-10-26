@@ -64,6 +64,12 @@ if(OPENATL_BUILD_QUALIFICATION)
     comdlg32 uxtheme msimg32 oleaut32 uuid)
   add_test(NAME openatl.ui_no_com COMMAND openatl_gui_runtime)
 
+  # Repository-owned ATL utilities (file/string/sync), independent of COM.
+  # ole32 belongs ONLY to this test to verify apartment stays uninitialized.
+  add_executable(openatl_atl_core tests/atl_conformance/atl_core.cpp)
+  target_link_libraries(openatl_atl_core PRIVATE OpenATL::ATL ole32)
+  add_test(NAME openatl.atl_core_no_com COMMAND openatl_atl_core)
+
   # Direct OS failure injection is available ONLY through the pinned
   # temporary header patch and OPENATL_WX_FAULT_TEST compile definition.
   add_executable(openatl_thunk_fault tests/wtl10/thunk_fault.cpp)
@@ -81,7 +87,7 @@ if(OPENATL_BUILD_QUALIFICATION)
              COMMAND openatl_com_client "--${_client_mode}")
   endforeach()
 
-  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault)
+  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_atl_core)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)
     if(MSVC)
       set_property(TARGET ${_qualified} PROPERTY
