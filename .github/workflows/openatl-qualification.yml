@@ -1,4 +1,4 @@
-name: OpenATL WTL10 / ATL qualification
+name: OpenATL WTL10 UI (no COM) and optional COM client
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   windows-x64-build:
-    name: Windows x64 native GUI/COM and ARM64 PE build
+    name: Windows x64 UI no-COM + COM client and ARM64 PE
     runs-on: windows-2022
     timeout-minutes: 40
     steps:
@@ -33,13 +33,13 @@ jobs:
       - name: Exact-pinned OpenATL / official WTL10 checkout (qualification only)
         shell: pwsh
         run: ./scripts/windows-openatl-bootstrap.ps1
-      - name: Full WTL10 SDI, native GUI and COM P0-P1D (required)
+      - name: Full WTL10 SDI, native UI no-COM and COM client (required)
         shell: pwsh
         run: ./scripts/windows-openatl-accept.ps1 -LLVMRoot $env:OPENATL_LLVM_BIN
       - name: Compile OpenATL CMake interface targets x64 and ARM64 (required)
         shell: pwsh
         run: ./scripts/openatl-cmake-windows.ps1 -LLVMRoot $env:OPENATL_LLVM_BIN
-      - name: Upload ARM64 SHA256 provenance handoff
+      - name: Upload GUI + client ARM64 SHA256 provenance
         uses: actions/upload-artifact@v4
         with:
           name: openatl-native-arm64-acceptance
@@ -47,15 +47,11 @@ jobs:
           retention-days: 7
           path: |
             build-wtl10/wtl10_gui_runtime_aarch64.exe
-            build-wtl10/atl_com_openatl_arm64.exe
-            build-wtl10/atl_com_p1_openatl_arm64.exe
-            build-wtl10/atl_com_p1b_openatl_arm64.exe
-            build-wtl10/atl_registry_sandbox_arm64.exe
-            build-wtl10/atl_p1c_registrar_arm64.exe
+            build-wtl10/atl_com_client_arm64.exe
             build-wtl10/manifest.json
 
   windows-arm64-native:
-    name: Genuine Windows ARM64 GUI/COM P0-P1C runtime
+    name: Genuine Windows ARM64 UI no-COM and COM Client
     needs: windows-x64-build
     if: needs.windows-x64-build.result == 'success'
     runs-on: windows-11-vs2026-arm
@@ -71,7 +67,7 @@ jobs:
         run: ./scripts/windows-openatl-native-arm64.ps1 -ArtifactRoot 'wtl10-arm64'
 
   msvc-windows:
-    name: MSVC cl.exe Windows ${{ matrix.target }} WTL10/COM
+    name: MSVC cl.exe Windows ${{ matrix.target }} UI and COM Client
     runs-on: windows-2022
     timeout-minutes: 35
     strategy:
@@ -114,16 +110,12 @@ jobs:
           if-no-files-found: error
           path: |
             build-msvc-arm64/openatl_gui_runtime.exe
-            build-msvc-arm64/openatl_com_p0.exe
-            build-msvc-arm64/openatl_com_p1.exe
-            build-msvc-arm64/openatl_com_p1b.exe
-            build-msvc-arm64/openatl_registry_sandbox.exe
-            build-msvc-arm64/openatl_registrar.exe
+            build-msvc-arm64/openatl_com_client.exe
             build-msvc-arm64/openatl_wtl10_sdi.exe
             build-msvc-arm64/manifest-msvc-arm64.json
 
   msvc-arm64-native:
-    name: MSVC genuine Windows ARM64 WTL10/COM P0-P1C native
+    name: MSVC genuine Windows ARM64 UI no-COM and COM Client
     needs: msvc-windows
     if: needs.msvc-windows.result == 'success'
     runs-on: windows-11-vs2026-arm
@@ -163,13 +155,13 @@ jobs:
         run: bash scripts/wtl10-cross-host.sh
       - name: Full WTL10 SDI and real Windows .rc PE link
         run: bash scripts/wtl10-full-app-link.sh
-      - name: Cross-compile WTL10 native GUI runtime x64 and ARM64
+      - name: Cross-compile WTL10 UI without COM apartment x64 and ARM64
         run: bash scripts/wtl10-gui-cross-host.sh
-      - name: Cross-compile OpenATL COM P0-P1C and independent RATL x64 reference
-        run: bash scripts/atl-com-cross-host.sh
+      - name: Cross-compile optional OpenATL COM Client x64 and ARM64
+        run: bash scripts/atl-com-client-cross-host.sh
       - name: CMake OpenATL::ATL / OpenATL::WTL x64 and ARM64 PE targets
         run: bash scripts/openatl-cmake-cross.sh
-      # RATL LGPL/GPL x64 test binaries must never be released as OpenATL SDKs.
+      # Cross-build Windows UI and COM-client PE only; no server or RATL artifacts.
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -179,10 +171,6 @@ jobs:
           path: |
             build-wtl10-host/*.dll
             build-wtl10-host/*.exe
-            !build-wtl10-host/atl_com_ratl_*.exe
-            !build-wtl10-host/atl_com_p1_ratl_*.exe
-            !build-wtl10-host/atl_ratl_registry_ref_*.exe
-            !build-wtl10-host/ratl_nested_*.exe
             build-wtl10-host/*.res.o
             build-openatl-cmake-*/openatl_gui_runtime.exe
-            build-openatl-cmake-*/openatl_com_p0.exe
+            build-openatl-cmake-*/openatl_com_client.exe
