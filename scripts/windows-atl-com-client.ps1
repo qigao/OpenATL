@@ -40,4 +40,21 @@ for($i=1;$i -le 5;++$i) {
     throw "OpenATL COM Client native x64 run $i failed code=$($status): $actual"
   }
 }
-Write-Host 'OpenATL COM CLIENT Windows x64 5/5 PASS; Windows ARM64 PE+SHA256 ready'
+$clientModes = @{
+  '--sta'='ATL_COM_CLIENT_MODE_OK mode=sta apartment=1 activation=1 balance=1 changed=0'
+  '--mta'='ATL_COM_CLIENT_MODE_OK mode=mta apartment=1 activation=1 balance=1 changed=0'
+  '--changed-sta'='ATL_COM_CLIENT_MODE_OK mode=changed-sta apartment=1 activation=1 balance=1 changed=1'
+  '--changed-mta'='ATL_COM_CLIENT_MODE_OK mode=changed-mta apartment=1 activation=1 balance=1 changed=1'
+  '--uninitialized'='ATL_COM_CLIENT_MODE_OK mode=uninitialized apartment=0 activation_denied=1'
+}
+for($i=1;$i -le 5;++$i) {
+  foreach($mode in $clientModes.Keys) {
+    $out=@(& $native $mode 2>&1)
+    $status=$LASTEXITCODE
+    $actual=($out|ForEach-Object{"$_".Trim()})-join ''
+    if($status -ne 0 -or $actual -cne $clientModes[$mode]) {
+      throw "OpenATL COM client $mode native x64 run $i failed exit=$($status): $actual"
+    }
+  }
+}
+Write-Host 'OpenATL COM Client Windows x64 default + five apartment modes 5/5 PASS; ARM64 PE/SHA256 ready'

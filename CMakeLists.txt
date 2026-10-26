@@ -61,6 +61,12 @@ if(OPENATL_BUILD_QUALIFICATION)
   add_executable(openatl_com_client tests/atl_conformance/com_client.cpp)
   target_link_libraries(openatl_com_client PRIVATE OpenATL::COMClient)
   add_test(NAME openatl.com_client COMMAND openatl_com_client)
+  # Every mode is its own process: COM apartment state is thread-local,
+  # never shared with WTL UI or another COM client mode.
+  foreach(_client_mode IN ITEMS sta mta changed-sta changed-mta uninitialized)
+    add_test(NAME "openatl.com_client_${_client_mode}"
+             COMMAND openatl_com_client "--${_client_mode}")
+  endforeach()
 
   foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)

@@ -71,7 +71,7 @@ foreach($name in $names) {
 if ($TargetArchitecture -eq 'x64') {
   & ctest --test-dir $build --output-on-failure --repeat until-fail:5
   if($LASTEXITCODE -ne 0){throw 'MSVC x64 COM/WTL test failure'}
-  Write-Host 'MSVC x64: WTL10 UI WITHOUT COM apartment + optional COM client 2 CTests x5 PASS'
+  Write-Host 'MSVC x64: WTL10 UI no-COM + COM client 7 CTests x5 PASS (STA/MTA, changed mode)'
 } else {
   # Handoff to genuine Windows ARM64 runner after verifying SHA256.
   $manifest=@{}

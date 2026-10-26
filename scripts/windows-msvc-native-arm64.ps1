@@ -29,9 +29,10 @@ $expected=@{
   'openatl_gui_runtime.exe'='WTL10 GUI runtime PASS: no COM apartment, W^X thunk x64/ARM64, message maps, resource dialog, NCDESTROY, OnFinalMessage'
   'openatl_com_client.exe'='ATL_COM_CLIENT_OK activate=1 qi=1 comptr=1 bstr=1 variant=1 unregister=0'
 }
-function Run-Exact([string]$file,[string]$value) {
+function Run-Exact([string]$file,[string]$value,[string]$arguments='') {
   $psi=New-Object System.Diagnostics.ProcessStartInfo
   $psi.FileName=(Resolve-Path (Join-Path $ArtifactRoot $file)).Path
+  $psi.Arguments=$arguments
   $psi.UseShellExecute=$false
   $psi.CreateNoWindow=$true
   $psi.RedirectStandardOutput=$true
@@ -53,4 +54,16 @@ function Run-Exact([string]$file,[string]$value) {
 for($i=1;$i -le 5;$i++) {
   foreach($key in $expected.Keys) {Run-Exact $key $expected[$key]}
 }
-Write-Host 'MSVC native ARM64 UI no-COM + COM client 5/5 PASS; full SDI built but not run'
+$clientModes=@{
+  '--sta'='ATL_COM_CLIENT_MODE_OK mode=sta apartment=1 activation=1 balance=1 changed=0'
+  '--mta'='ATL_COM_CLIENT_MODE_OK mode=mta apartment=1 activation=1 balance=1 changed=0'
+  '--changed-sta'='ATL_COM_CLIENT_MODE_OK mode=changed-sta apartment=1 activation=1 balance=1 changed=1'
+  '--changed-mta'='ATL_COM_CLIENT_MODE_OK mode=changed-mta apartment=1 activation=1 balance=1 changed=1'
+  '--uninitialized'='ATL_COM_CLIENT_MODE_OK mode=uninitialized apartment=0 activation_denied=1'
+}
+for($i=1;$i -le 5;++$i) {
+  foreach($mode in $clientModes.Keys) {
+    Run-Exact 'openatl_com_client.exe' $clientModes[$mode] $mode
+  }
+}
+Write-Host 'MSVC native ARM64 UI no-COM + COM client apartment modes 5/5 PASS; SDI link only'

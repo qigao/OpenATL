@@ -39,4 +39,22 @@ for($repeat=1;$repeat -le 5;$repeat++) {
     }
   }
 }
-Write-Host 'llvm-mingw native Windows ARM64 WTL UI no-COM + COM CLIENT 5/5 PASS'
+$clientModes=@{
+  '--sta'='ATL_COM_CLIENT_MODE_OK mode=sta apartment=1 activation=1 balance=1 changed=0'
+  '--mta'='ATL_COM_CLIENT_MODE_OK mode=mta apartment=1 activation=1 balance=1 changed=0'
+  '--changed-sta'='ATL_COM_CLIENT_MODE_OK mode=changed-sta apartment=1 activation=1 balance=1 changed=1'
+  '--changed-mta'='ATL_COM_CLIENT_MODE_OK mode=changed-mta apartment=1 activation=1 balance=1 changed=1'
+  '--uninitialized'='ATL_COM_CLIENT_MODE_OK mode=uninitialized apartment=0 activation_denied=1'
+}
+$client=(Resolve-Path (Join-Path $ArtifactRoot 'atl_com_client_arm64.exe')).Path
+for($i=1;$i -le 5;++$i) {
+  foreach($mode in $clientModes.Keys) {
+    $out=@(& $client $mode 2>&1)
+    $status=$LASTEXITCODE
+    $actual=($out|ForEach-Object {"$_".Trim()})-join ''
+    if($status -ne 0 -or $actual -cne $clientModes[$mode]) {
+      throw "llvm-mingw ARM64 COM client $mode failed repeat $i exit=$($status): $actual"
+    }
+  }
+}
+Write-Host 'llvm-mingw native Windows ARM64 WTL UI no-COM + COM client apartments 5/5 PASS'

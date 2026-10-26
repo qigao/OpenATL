@@ -32,4 +32,4 @@ foreach($arch in @('x86_64','aarch64')) {
     if ($LASTEXITCODE -ne 0) { throw 'CMake native Windows x64 conformance failed' }
   }
 }
-Write-Host 'OpenATL WTL UI no-COM + COM client targets built x64/ARM64; x64 CTest 2/2 x5 PASS'
+Write-Host 'OpenATL WTL UI no-COM + COM client apartments built x64/ARM64; x64 CTest 7/7 x5 PASS'
