@@ -39,8 +39,7 @@ $settings=@('-S','.','-B',$build,'-G','Ninja',
   '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
   "-DOPENATL_WTL_INCLUDE_DIR=$wtl",
   "-DOPENATL_WTL_DEMO_DIR=$demo",
-  '-DOPENATL_BUILD_QUALIFICATION=ON',
-  '-DOPENATL_TEST_PATCHES_APPLIED=ON')
+  '-DOPENATL_BUILD_QUALIFICATION=ON')
 & cmake @settings
 if($LASTEXITCODE -ne 0){throw "MSVC CMake configure failed for $TargetArchitecture"}
 & cmake --build $build --config Release --parallel 2
@@ -52,7 +51,7 @@ if(!$ident -or !(Select-String -Path $ident.FullName -Pattern 'CMAKE_CXX_COMPILE
 }
 
 $machine=if($TargetArchitecture -eq 'x64'){'x86_64'}else{'aarch64'}
-$names=@('openatl_gui_runtime','openatl_com_client','openatl_thunk_fault','openatl_atl_core','openatl_wtl10_sdi')
+$names=@('openatl_gui_runtime','openatl_com_client','openatl_thunk_fault','openatl_atl_core','openatl_atl_path','openatl_wtl10_sdi')
 foreach($name in $names) {
   $binary=Join-Path $build "$name.exe"
   $args_=@('tests/wtl10/verify_pe_machine.py',$binary,$machine)
@@ -66,7 +65,7 @@ foreach($name in $names) {
 if ($TargetArchitecture -eq 'x64') {
   & ctest --test-dir $build --output-on-failure --repeat until-fail:5
   if($LASTEXITCODE -ne 0){throw 'MSVC x64 COM/WTL test failure'}
-  Write-Host 'MSVC x64: UI/Client + W^X fault + owned ATL core utilities 9 CTests x5 PASS'
+  Write-Host 'MSVC x64: UI/Client + W^X fault + owned ATL core/path utilities 10 CTests x5 PASS'
 } else {
   # Handoff to genuine Windows ARM64 runner after verifying SHA256.
   $manifest=@{}
