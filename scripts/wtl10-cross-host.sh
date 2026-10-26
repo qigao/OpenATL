@@ -21,15 +21,13 @@ HEADER="$(find "$PWD/tools/wtl10-host/wtl10" -type f -iname atlapp.h -print -qui
 test -f "$HEADER" && grep -q 'WTL version 10.0' "$HEADER"
 WTL_INC="$(dirname "$HEADER")"
 
-git clone --quiet https://github.com/kkhaike/openatl.git tools/wtl10-host/openatl
-git -C tools/wtl10-host/openatl checkout --quiet --detach 7b587f3e10f3f8d93a01522033de80007368bad5
-test "$(git -C tools/wtl10-host/openatl rev-parse HEAD)" = 7b587f3e10f3f8d93a01522033de80007368bad5
-python3 scripts/openatl-wx-hardening.py tools/wtl10-host/openatl
+# Repository-owned clean-room MIT headers. Do not fetch a second ATL.
+test -s include/atlbase.h && test -s include/atlwin.h
 git clone --quiet https://github.com/kkhaike/wtltest.git tools/wtl10-host/wtltest
 git -C tools/wtl10-host/wtltest checkout --quiet --detach 63ba6a992cb3d79d56be66cd283f6615c6646b3d
 test "$(git -C tools/wtl10-host/wtltest rev-parse HEAD)" = 63ba6a992cb3d79d56be66cd283f6615c6646b3d
 
-ATL_INC="$PWD/tools/wtl10-host/openatl/include"
+ATL_INC="$PWD/include"
 TEST_DIR="$PWD/tools/wtl10-host/wtltest"
 test -s "$ATL_INC/atlbase.h"
 test -s "$ATL_INC/atlwin.h"
@@ -37,4 +35,4 @@ test -s "$TEST_DIR/main.cpp"
 test -s "$TEST_DIR/wtltest.rc"
 # Compiler acceptance now lives in mandatory GUI/COM-client and full SDI
 # steps; do NOT compile the removed TinyCC bridge or server/RATL code.
-echo "OpenATL UI + COM-client pinned llvm-mingw/WTL10 checkout ready on $(uname -s)"
+echo "OpenATL in-repo MIT headers + pinned llvm-mingw/WTL10 source ready on $(uname -s)"

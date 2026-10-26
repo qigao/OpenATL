@@ -6,7 +6,13 @@ project(OpenATL VERSION 0.1.0 LANGUAGES CXX)
 if(NOT WIN32)
   message(FATAL_ERROR "OpenATL targets Windows; cross-compile with llvm-mingw")
 endif()
-set(OPENATL_ATL_INCLUDE_DIR "" CACHE PATH "Pinned clean-room OpenATL include root")
+# OpenATL owns its complete MIT-derived header implementation in-tree.
+# Never accept a second provider/root via cmake cache or MSVC's ATL.
+if(DEFINED OPENATL_ATL_INCLUDE_DIR AND
+   NOT OPENATL_ATL_INCLUDE_DIR STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}/include")
+  message(FATAL_ERROR "External ATL include providers are forbidden: use repository-owned include/")
+endif()
+set(OPENATL_ATL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 set(OPENATL_WTL_INCLUDE_DIR "" CACHE PATH "Official WTL10 Include directory")
 if(NOT EXISTS "${OPENATL_ATL_INCLUDE_DIR}/atlbase.h" OR
    NOT EXISTS "${OPENATL_ATL_INCLUDE_DIR}/atlwin.h")
@@ -112,4 +118,5 @@ if(OPENATL_BUILD_QUALIFICATION)
 endif()
 
 # No COM server targets, class factories, registry writers, RGS or RATL.
-# No install/export: source-pinned test-only W^X work is not an SDK.
+# The clean-room MIT ATL implementation is owned here under include/.
+# No install/export until CFG/CET and installed-consumer acceptance.
