@@ -20,12 +20,8 @@ if ($actualTarget) {
   } else {$actualTarget -eq 'arm64'}
   if (!$ok) { throw "MSVC Developer Command Prompt target $actualTarget != $expectedTarget" }
 }
-$atlPin='7b587f3e10f3f8d93a01522033de80007368bad5'
-$atlCheckout='tools/wtl10-openatl'
-if ((git -C $atlCheckout rev-parse HEAD).Trim() -ne $atlPin) {
-  throw 'Refuse non-pinned OpenATL source in MSVC lane'
-}
-$atl=(Resolve-Path "$atlCheckout/include").Path
+# MSVC must compile this repository's MIT ATL implementation.
+$atl=(Resolve-Path 'include').Path
 $marker=Get-Content (Join-Path $atl 'atlbase.h') -TotalCount 3
 if (!(($marker -join ' ') -match 'OpenATL - Clean-room ATL subset')) {
   throw 'Refuse accidental use of Microsoft ATL instead of pinned OpenATL'

@@ -5,9 +5,9 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-$pin='7b587f3e10f3f8d93a01522033de80007368bad5'
-$actual=(git -C $OpenATLRoot rev-parse HEAD).Trim()
-if($LASTEXITCODE -ne 0 -or $actual -ne $pin) {throw "OpenATL client pin mismatch $actual"}
+if (!(Test-Path (Join-Path $OpenATLRoot 'include/atlcomcli.h'))) {
+  throw 'Missing repository-owned OpenATL COM Client header'
+}
 $includes=(Resolve-Path (Join-Path $OpenATLRoot 'include')).Path
 $source=(Resolve-Path 'tests/atl_conformance/com_client.cpp').Path
 $expected='ATL_COM_CLIENT_OK activate=1 qi=1 comptr=1 bstr=1 variant=1 unregister=0'
