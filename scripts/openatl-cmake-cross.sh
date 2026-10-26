@@ -18,12 +18,11 @@ for arch in x86_64 aarch64; do
     "-DOPENATL_LLVM_MINGW_BIN=$BIN" \
     "-DOPENATL_TARGET_ARCH=$arch" \
     "-DOPENATL_WTL_INCLUDE_DIR=$WTL_INC" \
-    -DOPENATL_BUILD_QUALIFICATION=ON \
-    -DOPENATL_TEST_PATCHES_APPLIED=ON
+    -DOPENATL_BUILD_QUALIFICATION=ON
   cmake --build "$dir" --parallel 2
   python3 tests/wtl10/verify_pe_machine.py "$dir/openatl_gui_runtime.exe" \
     "$arch" --require-resources
-  for base in openatl_com_client openatl_thunk_fault openatl_atl_core; do
+  for base in openatl_com_client openatl_thunk_fault openatl_atl_core openatl_atl_path; do
     python3 tests/wtl10/verify_pe_machine.py "$dir/$base.exe" "$arch"
   done
 done
