@@ -57,7 +57,7 @@ if(!$ident -or !(Select-String -Path $ident.FullName -Pattern 'CMAKE_CXX_COMPILE
 }
 
 $machine=if($TargetArchitecture -eq 'x64'){'x86_64'}else{'aarch64'}
-$names=@('openatl_gui_runtime','openatl_com_client','openatl_wtl10_sdi')
+$names=@('openatl_gui_runtime','openatl_com_client','openatl_thunk_fault','openatl_wtl10_sdi')
 foreach($name in $names) {
   $binary=Join-Path $build "$name.exe"
   $args_=@('tests/wtl10/verify_pe_machine.py',$binary,$machine)
@@ -71,7 +71,7 @@ foreach($name in $names) {
 if ($TargetArchitecture -eq 'x64') {
   & ctest --test-dir $build --output-on-failure --repeat until-fail:5
   if($LASTEXITCODE -ne 0){throw 'MSVC x64 COM/WTL test failure'}
-  Write-Host 'MSVC x64: WTL10 UI no-COM + COM client 7 CTests x5 PASS (STA/MTA, changed mode)'
+  Write-Host 'MSVC x64: WTL10 UI no-COM + COM client + W^X OS fault admission 8 CTests x5 PASS'
 } else {
   # Handoff to genuine Windows ARM64 runner after verifying SHA256.
   $manifest=@{}

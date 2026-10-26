@@ -47,6 +47,7 @@ jobs:
           retention-days: 7
           path: |
             build-wtl10/wtl10_gui_runtime_aarch64.exe
+            build-wtl10/wtl10_thunk_fault_aarch64.exe
             build-wtl10/atl_com_client_arm64.exe
             build-wtl10/manifest.json
 
@@ -110,6 +111,7 @@ jobs:
           if-no-files-found: error
           path: |
             build-msvc-arm64/openatl_gui_runtime.exe
+            build-msvc-arm64/openatl_thunk_fault.exe
             build-msvc-arm64/openatl_com_client.exe
             build-msvc-arm64/openatl_wtl10_sdi.exe
             build-msvc-arm64/manifest-msvc-arm64.json
@@ -174,3 +176,4 @@ jobs:
             build-wtl10-host/*.res.o
             build-openatl-cmake-*/openatl_gui_runtime.exe
             build-openatl-cmake-*/openatl_com_client.exe
+            build-openatl-cmake-*/openatl_thunk_fault.exe

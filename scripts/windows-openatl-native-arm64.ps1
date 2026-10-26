@@ -10,6 +10,7 @@ $manifest=Get-Content (Join-Path $ArtifactRoot 'manifest.json') -Raw |
 $expected=@{
   'wtl10_gui_runtime_aarch64.exe'='WTL10 GUI runtime PASS: no COM apartment, W^X thunk x64/ARM64, message maps, resource dialog, NCDESTROY, OnFinalMessage'
   'atl_com_client_arm64.exe'='ATL_COM_CLIENT_OK activate=1 qi=1 comptr=1 bstr=1 variant=1 unregister=0'
+  'wtl10_thunk_fault_aarch64.exe'='THUNK_FAULT_OK alloc=1 rx=1 flush=1 reinit_rw=1 free=1 recovery=1 no_rwx=1'
 }
 foreach($filename in $expected.Keys) {
   $path=(Resolve-Path (Join-Path $ArtifactRoot $filename)).Path
