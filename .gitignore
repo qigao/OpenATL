@@ -2,6 +2,7 @@
 /build/
 /build-*/
 /tools/
+/vcpkg_installed/
 /.cache/
 *.obj
 *.o
