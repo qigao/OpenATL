@@ -15,7 +15,7 @@ $vcpkgPin='3037cbe976a6872e56e8b07152e19a8344360491'
 if (!(Test-Path 'include/atlbase.h') -or !(Test-Path 'include/atlwin.h')) {
   throw 'Missing repository-owned OpenATL headers; no remote fallback'
 }
-if (Test-Path 'tools/vcpkg' -or (Test-Path 'tools/wtl10')) {
+if ((Test-Path 'tools/vcpkg') -or (Test-Path 'tools/wtl10')) {
   throw 'Refuse reused vcpkg or legacy manual WTL checkout'
 }
 New-Item -ItemType Directory -Force 'build-wtl10' | Out-Null
