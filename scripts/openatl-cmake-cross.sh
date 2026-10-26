@@ -14,7 +14,7 @@ for arch in x86_64 aarch64; do
   else
     triplet=arm64-openatl-mingw
   fi
-  test -s "$PWD/vcpkg_installed/$triplet/include/atlapp.h"
+  test -s "$PWD/vcpkg_installed/$triplet/$triplet/include/atlapp.h"
   dir="build-openatl-cmake-$arch"
   cmake -S . -B "$dir" -G "$GENERATOR" \
     -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/toolchains/llvm-mingw.cmake" \
