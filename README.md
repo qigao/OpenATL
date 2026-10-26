@@ -1,80 +1,71 @@
 # OpenATL
 
-**OpenATL** is a Windows-first, C++17 integration and compatibility project for
-**WTL 10.0.10320** (Windows Template Library) and a pinned **OpenATL** subset
-of the Active Template Library. Its conformance suite is built using
-**llvm-mingw Clang++ and Microsoft Visual C++ (MSVC)**. llvm-mingw cross-builds
-Windows x64/ARM64 PE on Windows, Linux and macOS; MSVC builds them using
-Microsoft's Visual Studio/Windows SDK tools on genuine Windows hosts.
+**OpenATL is a Windows UI library for ATL-style Win32 windowing, official
+WTL 10, and optional COM *client* helpers.** Its only supported scope is:
 
-**Status: experimental / qualification only.** This repository is not a full
-replacement for Microsoft ATL, an ActiveX implementation, or an installable
-production COM server. A passing cross-compilation does not replace real
-Windows runtime tests.
+- Win32 GUI: `CWindowImpl`, `CDialogImpl`, message maps, common controls,
+  resources and WTL10 frames, without `CoInitializeEx()`.
+- COM **client**: `CComPtr`, `CComBSTR`, `CComVariant`, and
+  `CoCreateInstance` of existing Windows components after the *application*
+  explicitly initializes a COM apartment.
 
-## Repository boundary
+**Not supported:** COM server creation, `IClassFactory` implementations,
+`OBJECT_ENTRY_AUTO`, `DllRegisterServer/UnregisterServer`, RGS,
+registry-based COM server installation, ActiveX hosting or a production
+class-object map. Do not infer these capabilities from unmodified upstream
+ATL header declarations. No RATL source, fallback or compatibility layer.
 
-- **OpenATL owns:** Windows WTL/ATL integration, CMake `OpenATL::ATL` and
-  `OpenATL::WTL` *interface targets*, GUI lifecycle/resource acceptance,
-  COM identity/factory/object-map/isolated registry conformance, and Windows
-  x64 + **real native ARM64** test admission.
-- **[qigao/tcc](https://github.com/qigao/tcc) owns:** TinyCC,
-  C11/atomic/thread/assembler/compiler portability and TinyCC consumer tests.
-  OpenATL's default build does not require TinyCC or a C++/COM ABI bridge from it.
-- **[kkhaike/OpenATL](https://github.com/kkhaike/openatl)** is the external
-  MIT-licensed ATL header implementation. It is fetched at a fixed commit;
-  the temporary W^X and COM acceptance patches are *test-only*, not shipped.
-- **[Win32-WTL/WTL](https://github.com/Win32-WTL/WTL)** supplies the external
-  Microsoft Public License (MS-PL) WTL 10.0.10320 headers/resources.
-- **[katahiromz/RATL](https://github.com/katahiromz/RATL)** is used only for
-  independently compiled Windows x64 reference executables under its own
-  LGPL/GPL file notices. Never combine RATL and OpenATL C++ headers or
-  ownership. No RATL Windows ARM64 support is claimed.
+## CMake consumer targets
 
-## Build consumer targets
+- `OpenATL::ATL`: clean-room ATL header subset for Win32 UI utilities.
+- `OpenATL::WTL`: official WTL10, depending only on `OpenATL::ATL`;
+  **does not transitively link COM libraries**.
+- `OpenATL::COMClient`: **opt-in** ATL client helpers, depending on
+  `OpenATL::ATL`, Windows `ole32`, `oleaut32` and `uuid`.
 
-Provide Windows-targeting C++17 compiler and the two *separately obtained*
-include trees. Do **not** vendor Microsoft ATL or RATL in OpenATL:
+These are currently **source-tree interface targets, not an installable
+SDK**. External source headers must be supplied explicitly:
 
 ```sh
 cmake -S . -B build \
-  -DOPENATL_ATL_INCLUDE_DIR=/path/to/openatl/include \
-  -DOPENATL_WTL_INCLUDE_DIR=/path/to/WTL/Include
+  -DOPENATL_ATL_INCLUDE_DIR=/path/to/clean-room-openatl/include \
+  -DOPENATL_WTL_INCLUDE_DIR=/path/to/official-WTL10/Include
 ```
 
-Link against `OpenATL::ATL` (OpenATL headers and COM fundamentals) or
-`OpenATL::WTL` (the WTL10 layer, which depends on `OpenATL::ATL`).
-These are **header-only build-configuration targets**, not binaries or
-complete Microsoft ATL API compatibility assurances.
+GUI-only applications link `OpenATL::WTL`. Applications that actually
+need COM also link `OpenATL::COMClient` and manage their own
+`CoInitializeEx` / `CoUninitialize` lifecycle. A basic WTL window must
+not need to initialize COM.
 
-## Qualification
+## Dependencies and licensing
 
-The `feature/wtl10-openatl-foundation` branch retains separate pinned
-test-only patches and Win32 fixtures previously exercised in the TinyCC
-POC. OpenATL's own workflows must pass on the **exact new commit** before
-the branch is considered qualified:
+OpenATL project code: **Apache-2.0**; separately fetched external
+[OpenATL clean-room headers](https://github.com/kkhaike/openatl):
+**MIT** (pinned `7b587f3e10f3f8d93a01522033de80007368bad5`);
+[official WTL10](https://github.com/Win32-WTL/WTL) version
+`10.0.10320`: **MS-PL**, pinned ZIP SHA256
+`13de5cd7ed41454b8f287e9bcc4525234c6ac8c85905e4d4fe1a0776709fd78f`.
+No external source is vendored as the production provider.
+`qigao/tcc` separately owns TinyCC/C11/compiler portability.
 
-- **llvm-mingw**: Windows x64 native and real Windows ARM64 GUI/COM runtime
-  5×; Linux/macOS independently cross-build x64+ARM64 PE and link official
-  WTL10 SDI with real `.rc` resources. RATL x64 differential tests remain
-  in their separate, license-scoped reference executables.
-- **MSVC**: Windows x64 genuine native CTest 6/6 repeated 5×, and an
-  independent VS2022 `cl.exe` HostX64→ARM64 cross-build. A real Windows
-  ARM64 runner must execute MSVC-produced GUI/COM PE 5× after verifying
-  machine ID and SHA256. Both MSVC targets also link full WTL10 SDI
-  with real Windows SDK `rc.exe`; interactive SDI is not qualified.
-- Both compilers must use the **same pinned MIT OpenATL provider**,
-  never Microsoft's ATL fallback or RATL mixed headers. No test-only
-  patched third-party source is a production SDK.
+Only the exact-pinned OpenATL **WTL W^X thunk patch** is applied to a
+temporary CI checkout. It is not a production-ready CFG/CET,
+concurrency-safe or installable implementation.
 
-See [architecture and licensing](docs/ARCHITECTURE.md) and
-[conformance boundaries](docs/ACCEPTANCE.md) and
-[toolchain matrix](docs/TOOLCHAIN_MATRIX.md). Legacy WTL8/WTL4MinGW,
-MSVC ATL fallback, and mixed-provider header builds are not supported.
+## Required CI
 
-## Development status
+- **llvm-mingw** on Windows x64, real Windows ARM64, plus Linux/macOS
+  Windows x64+ARM64 cross compilation and real WTL10 SDI resource link.
+- **MSVC** x64 native and HostX64→ARM64 build plus real Windows ARM64,
+  compiling the same pinned *clean-room* OpenATL (never Microsoft's ATL).
+- Separate native assertions: WTL UI runs **with COM uninitialized**;
+  COM Client starts its own apartment and activates a built-in system COM
+  component. Both must pass five repetitions and SHA256/PE checks.
 
-No source from external dependencies is redistributed by default.
-Test patches modify **temporary pinned checkout** headers during CI only.
-OpenATL's Apache-2.0 license applies to its own independently authored
-project source; it does not relicense WTL, OpenATL, or RATL.
+See [architecture](docs/ARCHITECTURE.md),
+[acceptance](docs/ACCEPTANCE.md), and
+[toolchain matrix](docs/TOOLCHAIN_MATRIX.md).
+
+**Draft / qualification only.** Full GUI CFG/CET, failure cleanup, DSO
+unloading, interactive SDI and an installed SDK still need explicit
+acceptance. No WTL8 fallback, no Salts production ABI or compiler switch.
