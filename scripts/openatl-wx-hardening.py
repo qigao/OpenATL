@@ -26,15 +26,19 @@ REPLACEMENTS = [
 """        // Fail closed: never leave executable thunk pages writable.
         // Caller guarantees no concurrent execution while reinitializing.
         if (pThunkCode == NULL) {
-            pThunkCode = (ThunkCode*)::VirtualAlloc(NULL, sizeof(ThunkCode),
+            pThunkCode = (ThunkCode*)ThunkAlloc(NULL, sizeof(ThunkCode),
                 MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             if (pThunkCode == NULL)
                 return FALSE;
         } else {
             DWORD oldProtection = 0;
-            if (!::VirtualProtect(pThunkCode, sizeof(ThunkCode), PAGE_READWRITE,
-                                  &oldProtection))
+            if (!ThunkProtect(pThunkCode, sizeof(ThunkCode), PAGE_READWRITE,
+                                  &oldProtection)) {
+                // A failed re-init must never retain a callable old thunk.
+                ThunkFree(pThunkCode);
+                pThunkCode = NULL;
                 return FALSE;
+            }
         }"""
 ),
 (
@@ -49,11 +53,11 @@ REPLACEMENTS = [
 """        // Commit RX only after all stores. A protection/flush failure must
         // never expose a writable-and-executable thunk to a window.
         DWORD oldProtection = 0;
-        if (!::VirtualProtect(pThunkCode, sizeof(ThunkCode), PAGE_EXECUTE_READ,
+        if (!ThunkProtect(pThunkCode, sizeof(ThunkCode), PAGE_EXECUTE_READ,
                               &oldProtection) ||
-            !::FlushInstructionCache(::GetCurrentProcess(), pThunkCode,
+            !ThunkFlush(::GetCurrentProcess(), pThunkCode,
                                      sizeof(ThunkCode))) {
-            ::VirtualFree(pThunkCode, 0, MEM_RELEASE);
+            ThunkFree(pThunkCode);
             pThunkCode = NULL;
             return FALSE;
         }
@@ -160,6 +164,24 @@ REPLACEMENTS = [
             // OnFinalMessage can delete pThis. Only return the local result.
         }
         return result;"""
+),
+(
+"""    ThunkCode* pThunkCode;
+
+    BOOL Init(WNDPROC proc, void* pThis) noexcept""",
+"    // Windows OS calls remain REAL. Only OPENATL_WX_FAULT_TEST injects a\n    // deterministic failure before the named call; this is test-checkout\n    // instrumentation, never a shipped API or a production backend.\n#if defined(OPENATL_WX_FAULT_TEST)\n    inline static int testFailureStage = 0; // 1 alloc, 2 RW, 3 RX, 4 flush\n    inline static int testLivePages = 0;\n    inline static int testInjectedCount = 0;\n    inline static void* testLastAllocated = NULL;\n    inline static void* testLastReleased = NULL;\n    static void TestFailNext(int stage) noexcept {\n        testFailureStage = stage;\n        testInjectedCount = 0;\n        testLastAllocated = NULL;\n        testLastReleased = NULL;\n    }\n    static bool TestTakeFailure(int expected) noexcept {\n        if (testFailureStage != expected)\n            return false;\n        testFailureStage = 0;\n        ++testInjectedCount;\n        ::SetLastError(expected == 1 ? ERROR_OUTOFMEMORY : ERROR_ACCESS_DENIED);\n        return true;\n    }\n#endif\n    static void* ThunkAlloc(void* address, SIZE_T length, DWORD allocation,\n                            DWORD protection) noexcept {\n#if defined(OPENATL_WX_FAULT_TEST)\n        if (TestTakeFailure(1)) return NULL;\n#endif\n        void* result = ::VirtualAlloc(address, length, allocation, protection);\n#if defined(OPENATL_WX_FAULT_TEST)\n        if (result != NULL) {\n            ++testLivePages;\n            testLastAllocated = result;\n        }\n#endif\n        return result;\n    }\n    static BOOL ThunkProtect(void* address, SIZE_T length, DWORD protection,\n                             DWORD* prior) noexcept {\n#if defined(OPENATL_WX_FAULT_TEST)\n        if (protection == PAGE_READWRITE && TestTakeFailure(2)) return FALSE;\n        if (protection == PAGE_EXECUTE_READ && TestTakeFailure(3)) return FALSE;\n#endif\n        return ::VirtualProtect(address, length, protection, prior);\n    }\n    static BOOL ThunkFlush(HANDLE process, const void* address,\n                            SIZE_T length) noexcept {\n#if defined(OPENATL_WX_FAULT_TEST)\n        if (TestTakeFailure(4)) return FALSE;\n#endif\n        return ::FlushInstructionCache(process, address, length);\n    }\n    static BOOL ThunkFree(void* address) noexcept {\n        BOOL released = ::VirtualFree(address, 0, MEM_RELEASE);\n#if defined(OPENATL_WX_FAULT_TEST)\n        if (released) {\n            --testLivePages;\n            testLastReleased = address;\n        }\n#endif\n        return released;\n    }\n\n    ThunkCode* pThunkCode;\n\n    BOOL Init(WNDPROC proc, void* pThis) noexcept"
+),
+(
+"""            ::VirtualFree(pThunkCode, 0, MEM_RELEASE);
+            pThunkCode = NULL;
+        }
+    }
+};""",
+"""            ThunkFree(pThunkCode);
+            pThunkCode = NULL;
+        }
+    }
+};"""
 ),
 ]
 
