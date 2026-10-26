@@ -5,6 +5,8 @@ WTL 10, and optional COM *client* helpers.** Its only supported scope is:
 
 - Win32 GUI: `CWindowImpl`, `CDialogImpl`, message maps, common controls,
   resources and WTL10 frames, without `CoInitializeEx()`.
+- In-tree ATL utilities: `CString`, `CAtlFile`, `CPath`, and Win32
+  synchronization wrappers; no COM apartment needed.
 - COM **client**: `CComPtr`, `CComBSTR`, `CComVariant`, and
   `CoCreateInstance` of existing Windows components after the *application*
   explicitly initializes a COM apartment.
@@ -24,13 +26,18 @@ ATL header declarations. No RATL source, fallback or compatibility layer.
   `OpenATL::ATL`, Windows `ole32`, `oleaut32` and `uuid`.
 
 These are currently **source-tree interface targets, not an installable
-SDK**. External source headers must be supplied explicitly:
+SDK**. OpenATL always builds the headers checked into this repository's
+`include/`; no external ATL header root or fallback is accepted:
 
 ```sh
 cmake -S . -B build \
-  -DOPENATL_ATL_INCLUDE_DIR=/path/to/clean-room-openatl/include \
   -DOPENATL_WTL_INCLUDE_DIR=/path/to/official-WTL10/Include
 ```
+
+On Linux/macOS, add the checked-in llvm-mingw toolchain file and its
+`OPENATL_LLVM_MINGW_BIN` and `OPENATL_TARGET_ARCH` settings. Only WTL10,
+its demo, and the toolchain are fetched as pinned test dependencies;
+`OPENATL_ATL_INCLUDE_DIR` is explicitly rejected.
 
 GUI-only applications link `OpenATL::WTL`. Applications that actually
 need COM also link `OpenATL::COMClient` and manage their own
@@ -39,18 +46,19 @@ not need to initialize COM.
 
 ## Dependencies and licensing
 
-OpenATL project code: **Apache-2.0**; separately fetched external
-[OpenATL clean-room headers](https://github.com/kkhaike/openatl):
-**MIT** (pinned `7b587f3e10f3f8d93a01522033de80007368bad5`);
+New OpenATL utilities, tests and CI glue: **Apache-2.0**; the checked-in
+clean-room ATL subset derived from
+[kkhaike/openatl](https://github.com/kkhaike/openatl):
+**MIT** (original revision `7b587f3e10f3f8d93a01522033de80007368bad5`);
 [official WTL10](https://github.com/Win32-WTL/WTL) version
 `10.0.10320`: **MS-PL**, pinned ZIP SHA256
 `13de5cd7ed41454b8f287e9bcc4525234c6ac8c85905e4d4fe1a0776709fd78f`.
-No external source is vendored as the production provider.
+There is one ATL implementation: the files owned under `include/`.
 `qigao/tcc` separately owns TinyCC/C11/compiler portability.
 
-Only the exact-pinned OpenATL **WTL W^X thunk patch** is applied to a
-temporary CI checkout. It is not a production-ready CFG/CET,
-concurrency-safe or installable implementation.
+The in-tree `atlwin.h` includes W^X thunk hardening and test-only
+fault injection. No external OpenATL checkout or runtime patch is used.
+CFG/CET, concurrency and installability remain unqualified.
 
 ## Required CI
 
@@ -58,9 +66,12 @@ concurrency-safe or installable implementation.
   Windows x64+ARM64 cross compilation and real WTL10 SDI resource link.
 - **MSVC** x64 native and HostX64→ARM64 build plus real Windows ARM64,
   compiling the same pinned *clean-room* OpenATL (never Microsoft's ATL).
-- Separate native assertions: WTL UI runs **with COM uninitialized**;
-  COM Client starts its own apartment and activates a built-in system COM
-  component. Both must pass five repetitions and SHA256/PE checks.
+- Separate native assertions: UI and the repository-owned file/string/sync
+  utilities run **without COM initialization**; the standalone Unicode
+  `CPath` test exercises actual Windows file creation and path handling.
+  The optional COM Client starts its own apartment and activates a built-in
+  Windows component. All native suites run five repetitions on Windows
+  x64/ARM64, with SHA256/PE checks for ARM64 handoff.
 
 See [architecture](docs/ARCHITECTURE.md),
 [acceptance](docs/ACCEPTANCE.md), and
