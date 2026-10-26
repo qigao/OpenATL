@@ -26,4 +26,9 @@ COM server tests. Do **not** interpret it as evidence for the new boundary.
 The new branch HEAD requires its own full CI acceptance.
 
 Still unqualified: CFG/CET, aggressive failure injection and concurrent
-thunk unloading, real interactive SDI, installed SDK and production release.
+thunk unloading, real interactive SDI and production release.
+
+**Build boundary:** OpenATL is permanently source-tree-only. No install,
+export, package configuration, Installed SDK, or installed-consumer test is
+planned or permitted. Windows SDK in the matrix means Microsoft's target
+OS headers and resource tools, **not** an OpenATL distributable.
