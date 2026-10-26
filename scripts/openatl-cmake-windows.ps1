@@ -5,7 +5,7 @@ $atl=(Resolve-Path include).Path
 $toolchain=(Resolve-Path 'cmake/toolchains/llvm-mingw.cmake').Path
 foreach($arch in @('x86_64','aarch64')) {
   $triplet=if($arch -eq 'x86_64'){'x64-openatl-mingw'}else{'arm64-openatl-mingw'}
-  if(!(Test-Path "vcpkg_installed/$triplet/include/atlapp.h")){throw "No vcpkg WTL: $triplet"}
+  if(!(Test-Path "vcpkg_installed/$triplet/$triplet/include/atlapp.h")){throw "No vcpkg WTL: $triplet"}
   $build="build-openatl-cmake-$arch"
   $args_=@('-S','.','-B',$build,'-G','Ninja',
     "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
