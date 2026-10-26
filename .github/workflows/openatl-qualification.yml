@@ -70,6 +70,74 @@ jobs:
         shell: pwsh
         run: ./scripts/windows-openatl-native-arm64.ps1 -ArtifactRoot 'wtl10-arm64'
 
+  msvc-windows:
+    name: MSVC cl.exe Windows ${{ matrix.target }} WTL10/COM
+    runs-on: windows-2022
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x64
+            vc_arch: amd64
+          - target: arm64
+            vc_arch: amd64_arm64
+    steps:
+      - uses: actions/checkout@v4
+      # Pin the developer environment action to an immutable commit.
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: ${{ matrix.vc_arch }}
+      - name: Verify native MSVC and Microsoft Windows SDK tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $compiler=(Get-Command cl.exe -ErrorAction Stop).Source
+          $resource=(Get-Command rc.exe -ErrorAction Stop).Source
+          if (!$compiler.ToLowerInvariant().EndsWith('cl.exe') -or
+              !$resource.ToLowerInvariant().EndsWith('rc.exe')) {
+            throw "Missing MSVC compiler or Windows SDK resource compiler"
+          }
+          Write-Host "MSVC compiler: $compiler; rc: $resource"
+      - name: Fetch exact-pinned OpenATL and WTL10 (NEVER Microsoft ATL)
+        shell: pwsh
+        run: ./scripts/windows-openatl-bootstrap.ps1
+      - name: MSVC compile and native/PE conformance (required)
+        shell: pwsh
+        run: ./scripts/windows-msvc-qualification.ps1 -TargetArchitecture '${{ matrix.target }}'
+      - name: Upload exact MSVC ARM64 PE and SHA256 for native ARM64 execution
+        if: matrix.target == 'arm64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: openatl-msvc-arm64-acceptance
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            build-msvc-arm64/openatl_gui_runtime.exe
+            build-msvc-arm64/openatl_com_p0.exe
+            build-msvc-arm64/openatl_com_p1.exe
+            build-msvc-arm64/openatl_com_p1b.exe
+            build-msvc-arm64/openatl_registry_sandbox.exe
+            build-msvc-arm64/openatl_registrar.exe
+            build-msvc-arm64/openatl_wtl10_sdi.exe
+            build-msvc-arm64/manifest-msvc-arm64.json
+
+  msvc-arm64-native:
+    name: MSVC genuine Windows ARM64 WTL10/COM P0-P1C native
+    needs: msvc-windows
+    if: needs.msvc-windows.result == 'success'
+    runs-on: windows-11-vs2026-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: openatl-msvc-arm64-acceptance
+          path: msvc-arm64
+      - name: Verify MSVC PE machine/SHA256 and native GUI+COM 5 times
+        shell: pwsh
+        run: ./scripts/windows-msvc-native-arm64.ps1 -ArtifactRoot 'msvc-arm64'
+
   linux-macos-cross:
     name: ${{ matrix.host }} cross-compile Windows x64 and ARM64
     strategy:
