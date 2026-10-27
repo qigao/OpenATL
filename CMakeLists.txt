@@ -19,7 +19,8 @@ if(NOT EXISTS "${_openatl_atl_include}/atlbase.h" OR
    NOT EXISTS "${_openatl_atl_include}/atlsync.h" OR
    NOT EXISTS "${_openatl_atl_include}/atlmem.h" OR
    NOT EXISTS "${_openatl_atl_include}/atltime.h" OR
-   NOT EXISTS "${_openatl_atl_include}/atlcoll.h")
+   NOT EXISTS "${_openatl_atl_include}/atlcoll.h" OR
+   NOT EXISTS "${_openatl_atl_include}/atlimage.h")
   message(FATAL_ERROR "Missing repository-owned OpenATL headers")
 endif()
 if(DEFINED OPENATL_WTL_INCLUDE_DIR)
@@ -107,6 +108,12 @@ if(OPENATL_BUILD_QUALIFICATION)
   target_link_libraries(openatl_atl_mapping PRIVATE OpenATL::ATL ole32)
   add_test(NAME openatl.atl_mapping_no_com COMMAND openatl_atl_mapping)
 
+  # GDI-only image handling: no COM initialization, with ole32 used
+  # only by the test to assert that the COM apartment remains absent.
+  add_executable(openatl_atl_image tests/atl_conformance/atl_image.cpp)
+  target_link_libraries(openatl_atl_image PRIVATE OpenATL::ATL gdi32 ole32)
+  add_test(NAME openatl.atl_image_no_com COMMAND openatl_atl_image)
+
   # Direct OS failure injection is compiled from the in-repo atlwin.h
   # and isolated behind OPENATL_WX_FAULT_TEST.
   add_executable(openatl_thunk_fault tests/wtl10/thunk_fault.cpp)
@@ -124,7 +131,7 @@ if(OPENATL_BUILD_QUALIFICATION)
              COMMAND openatl_com_client "--${_client_mode}")
   endforeach()
 
-  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping)
+  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)
     if(MSVC)
       set_property(TARGET ${_qualified} PROPERTY
