@@ -181,8 +181,16 @@ _openatl_replace_between(
     "// Implementation"
     ""
     "MRU registry persistence")
-if(_wtl_ui_text MATCHES "ATL::CRegKey")
-    message(FATAL_ERROR "WTL UI-only: atlmisc.h still declares CRegKey registry access")
+string(FIND "${_wtl_ui_text}" "ATL::CRegKey" _wtl_reg_position)
+if(NOT _wtl_reg_position EQUAL -1)
+    # Show only the relevant source neighborhood, so exact SourceForge
+    # ownership can be corrected without dropping unrelated UI utilities.
+    math(EXPR _wtl_reg_begin "${_wtl_reg_position} - 160")
+    if(_wtl_reg_begin LESS 0)
+        set(_wtl_reg_begin 0)
+    endif()
+    string(SUBSTRING "${_wtl_ui_text}" ${_wtl_reg_begin} 340 _wtl_reg_context)
+    message(FATAL_ERROR "WTL UI-only: registry symbol at ${_wtl_reg_position}: ${_wtl_reg_context}")
 endif()
 if(_wtl_ui_text MATCHES "ReadFromRegistry\\(" OR
    _wtl_ui_text MATCHES "WriteToRegistry\\(")

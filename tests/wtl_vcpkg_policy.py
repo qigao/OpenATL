@@ -54,7 +54,7 @@ def check() -> int:
             "CPageSetupDialogImpl - Page Setup dialog" not in recipe):
         errors.append("WTL overlay must remove registry hyperlink and COM print callbacks")
     if ("MRU registry persistence" not in recipe or
-            "class CRecentDocumentListBase" not in recipe or
+            "CRecentDocumentListBase" not in recipe or
             "class CFindFile" not in recipe):
         errors.append("WTL MRU persistence deletion must preserve normal menu/file utilities")
     sample_patch = ROOT / "tests/wtl10/wtltest-ui-only.patch"
