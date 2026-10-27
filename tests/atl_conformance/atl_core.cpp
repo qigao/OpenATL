@@ -201,9 +201,9 @@ static int registry() {
     if (key.QueryStringValue(_T("Label"), nullptr, &chars) != ERROR_SUCCESS ||
         chars < _tcslen(label) + 1 || chars > 64)
         return failure(54, "registry_string_size");
-    TCHAR small[2] = {};
+    TCHAR shortBuffer[2] = {};
     ULONG capacity = 2;
-    if (key.QueryStringValue(_T("Label"), small, &capacity) != ERROR_MORE_DATA ||
+    if (key.QueryStringValue(_T("Label"), shortBuffer, &capacity) != ERROR_MORE_DATA ||
         capacity < _tcslen(label) + 1)
         return failure(55, "registry_small_buffer");
     TCHAR text[64] = {};
