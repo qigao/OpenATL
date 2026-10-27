@@ -110,8 +110,9 @@ is part of this repository (not a second ATL provider).
   `Seek(STREAM_SEEK_CUR, 0)`; otherwise it returns `STG_E_READFAULT`.
   Failed source read HRESULTs propagate unchanged. This accommodates
   Windows HGLOBAL streams without accepting arbitrary silent truncation.
-  If `Stat` and a nonmoving `Seek(CUR, 0)` are supported, a known
-  remaining encoded range above 64 MiB is rejected before the first read;
+  File `Load` also checks the 64 MiB encoded-file size before starting
+  GDI+. If `Stat` and a nonmoving `Seek(CUR, 0)` are supported, a known
+  remaining IStream range above 64 MiB is rejected before the first read;
   otherwise the running byte counter enforces the same cap.
   All `CImage` pixel buffers are bounded to 128 MiB (including ordinary
   DIB `Create`); decoder dimensions are rejected before allocating the
