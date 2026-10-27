@@ -62,7 +62,9 @@ public:
         const size_t pitch = ((bitmapBits + 31) / 32) * 4;
         if (pitch > static_cast<size_t>((std::numeric_limits<int>::max)()))
             return FALSE;
-        if (static_cast<size_t>(height) > (std::numeric_limits<size_t>::max)() / pitch)
+        if (static_cast<size_t>(height) > (std::numeric_limits<size_t>::max)() / pitch ||
+            static_cast<ULONGLONG>(height) > kMaximumDecodedBytes /
+                                              static_cast<ULONGLONG>(pitch))
             return FALSE;
 
         BITMAPINFO info{};
