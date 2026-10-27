@@ -99,8 +99,16 @@ is part of this repository (not a second ATL provider).
   A caller-owned `IStream*` can also be used for BMP/PNG `Load` and
   `Save` using an explicit `ImageFormatBMP` or `ImageFormatPNG` GUID.
   OpenATL borrows (never closes or retains) the stream; callers position and
-  release their streams themselves. File and stream paths share the same
-  validated decoder, pixel copy, encoder selection and cleanup.
+  release their streams themselves. Stream saving encodes into an OS-owned
+  temporary memory stream before writing in 8 KiB chunks to the caller's
+  `IStream`. A short successful write returns `STG_E_WRITEFAULT`, and a
+  failed write returns the destination's original HRESULT. A failed write
+  may leave a partial output in the **caller** stream; arbitrary IStreams
+  do not provide atomic rollback. The image and stream ownership remain
+  unchanged. Image stream codec callers link both `gdiplus` and `ole32`
+  explicitly; neither is a transitive `OpenATL::ATL`/WTL dependency.
+  File and stream paths share validated decoder, pixel copy, encoder
+  selection and cleanup.
   GIF/JPEG/TIFF codecs, alpha compositing, GDI+ metadata, and the full
   Microsoft ATL CImage API are **not implemented or qualified**.
 
