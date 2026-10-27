@@ -24,8 +24,12 @@ Acceptance conditions:
   RetireCallers remains BUSY while any lease exists, even after the DLL
   worker has joined. Every lease is released only after joining its
   corresponding producer. Acquisitions after STOP and double release are
-  rejected by native regression tests. This handoff remains a cooperating
-  test-fixture contract, not a general thread enumerator.
+  rejected by native regression tests. The lease capacity is explicitly
+  limited to 1024: an additional acquire returns ERROR_NOT_ENOUGH_QUOTA,
+  and a release past zero returns ERROR_INVALID_PARAMETER. The host verifies
+  both limits and full recovery before starting concurrent producers. This
+  handoff remains a cooperating test-fixture contract, not a general thread
+  enumerator.
 - All sender threads have exited the DLL export before FreeLibrary.
 - GetModuleHandle confirms the DLL was unloaded and the next cycle can
   independently load and repeat all checks without a COM apartment.

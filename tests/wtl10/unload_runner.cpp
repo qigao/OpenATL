@@ -103,6 +103,21 @@ int main() {
         if(canUnload()!=ERROR_BUSY || retireCallers()!=ERROR_BUSY ||
            releaseLease()!=ERROR_INVALID_PARAMETER)
             return fail(round,"early_unload_admitted",ERROR_INVALID_DATA);
+        // Exercise lease saturation explicitly, including the first rejected
+        // acquire and an extra release. This must not change the number
+        // of leases visible to the later STOP/RetireCallers handshake.
+        if(round==0) {
+            for(int i=0;i<1024;++i)
+                if(acquireLease()!=ERROR_SUCCESS)
+                    return fail(round,"lease_capacity_admit",ERROR_GEN_FAILURE);
+            if(acquireLease()!=ERROR_NOT_ENOUGH_QUOTA)
+                return fail(round,"lease_capacity_overflow",ERROR_INVALID_DATA);
+            for(int i=0;i<1024;++i)
+                if(releaseLease()!=ERROR_SUCCESS)
+                    return fail(round,"lease_capacity_drain",ERROR_GEN_FAILURE);
+            if(releaseLease()!=ERROR_INVALID_PARAMETER)
+                return fail(round,"lease_capacity_underflow",ERROR_INVALID_DATA);
+        }
         for(int i=0;i<32;++i)
             if(submit()!=ERROR_SUCCESS)
                 return fail(round,"seed_message",ERROR_GEN_FAILURE);
@@ -189,6 +204,6 @@ int main() {
             return fail(round,"COM_initialized_after_unload",
                         ERROR_INVALID_STATE);
     }
-    std::puts("OPENATL_UNLOAD_OK rounds=12 events=1 lease=1 held=1 blocked=1 callers_joined=1 caller_leases=1 thunk_freed=1 class_unregistered=1 dll_unmapped=1 no_com=1");
+    std::puts("OPENATL_UNLOAD_OK rounds=12 events=1 lease=1 held=1 blocked=1 callers_joined=1 caller_leases=1 lease_bounds=1 thunk_freed=1 class_unregistered=1 dll_unmapped=1 no_com=1");
     return 0;
 }
