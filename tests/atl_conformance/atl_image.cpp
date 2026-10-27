@@ -354,6 +354,27 @@ static int codec_roundtrip() {
     if (SUCCEEDED(hr) || !rejected.IsNull())
         return fail(62, "missing_file_cleanup");
 
+    // The exact file input-size policy must fail before GDI+ tries to
+    // decode an oversized file. Reuse the invalid fixture and extend it
+    // without allocating a 64 MiB user-space buffer.
+    HANDLE tooLargeFile = ::CreateFileW(paths.corrupt, GENERIC_WRITE, 0,
+                     NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (tooLargeFile == INVALID_HANDLE_VALUE)
+        return fail(129, "encoded_file_limit_open");
+    LARGE_INTEGER overBudget{};
+    overBudget.QuadPart = 64LL * 1024LL * 1024LL + 1;
+    const BOOL adjusted = ::SetFilePointerEx(tooLargeFile, overBudget,
+                                            NULL, FILE_BEGIN) &&
+                          ::SetEndOfFile(tooLargeFile);
+    (void)::CloseHandle(tooLargeFile);
+    if (!adjusted)
+        return fail(130, "encoded_file_limit_resize");
+    hr = rejected.Load(paths.corrupt);
+    if (hr != HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE) ||
+        !rejected.IsNull() || rejected.GetBits() != nullptr)
+        return fail(131, "encoded_file_limit_preflight");
+
+
     // GDI+ itself can decode GIF, but this bounded OpenATL API must
     // reject it instead of silently expanding support beyond BMP/PNG.
     static constexpr BYTE smallGif[] = {
