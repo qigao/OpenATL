@@ -181,6 +181,13 @@ _openatl_replace_between(
     "// Implementation"
     ""
     "MRU registry persistence")
+# This SourceForge release has a separate CRegProperty registry-backed
+# serializer, independent of the real MRU and CFindFile UI helpers.
+_openatl_replace_between(
+    "// CRegProperty and CRegPropertyImpl<> - properties stored in registry"
+    "// Global functions for stock GDI objects"
+    ""
+    "registry-only CRegProperty module")
 string(FIND "${_wtl_ui_text}" "ATL::CRegKey" _wtl_reg_position)
 if(NOT _wtl_reg_position EQUAL -1)
     # Show only the relevant source neighborhood, so exact SourceForge
@@ -193,7 +200,8 @@ if(NOT _wtl_reg_position EQUAL -1)
     message(FATAL_ERROR "WTL UI-only: registry symbol at ${_wtl_reg_position}: ${_wtl_reg_context}")
 endif()
 if(_wtl_ui_text MATCHES "ReadFromRegistry\\(" OR
-   _wtl_ui_text MATCHES "WriteToRegistry\\(")
+   _wtl_ui_text MATCHES "WriteToRegistry\\(" OR
+   _wtl_ui_text MATCHES "class CRegProperty")
     message(FATAL_ERROR "WTL UI-only: atlmisc.h still exposes MRU registry methods")
 endif()
 if(NOT _wtl_ui_text MATCHES "CRecentDocumentListBase")
@@ -201,6 +209,9 @@ if(NOT _wtl_ui_text MATCHES "CRecentDocumentListBase")
 endif()
 if(NOT _wtl_ui_text MATCHES "CFindFile")
     message(FATAL_ERROR "WTL UI-only: CFindFile helper missing")
+endif()
+if(NOT _wtl_ui_text MATCHES "AtlGetStockPen")
+    message(FATAL_ERROR "WTL UI-only: stock Win32 GDI helper missing")
 endif()
 file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
 

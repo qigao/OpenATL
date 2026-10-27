@@ -88,8 +88,10 @@ if(OPENATL_BUILD_QUALIFICATION)
   if(_wtl_mru_scope MATCHES "ATL::CRegKey" OR
      _wtl_mru_scope MATCHES "ReadFromRegistry\\(" OR
      _wtl_mru_scope MATCHES "WriteToRegistry\\(" OR
+     _wtl_mru_scope MATCHES "class CRegProperty" OR
      NOT _wtl_mru_scope MATCHES "CRecentDocumentListBase" OR
-     NOT _wtl_mru_scope MATCHES "class CFindFile")
+     NOT _wtl_mru_scope MATCHES "class CFindFile" OR
+     NOT _wtl_mru_scope MATCHES "AtlGetStockPen")
     message(FATAL_ERROR "WTL UI-only: registry MRU or missing menu/file utilities")
   endif()
   file(READ "${_wtl_headers}/atlctrlx.h" _wtl_hyperlink_scope)
