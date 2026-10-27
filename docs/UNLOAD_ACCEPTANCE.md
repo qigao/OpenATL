@@ -20,7 +20,12 @@ Acceptance conditions:
 - The DLL-internal STOP/owner quiescence is necessary but NOT sufficient:
   CanUnload remains BUSY after owner join until the external host has joined
   ALL callers and invokes RetireCallers as an explicit ownership handoff.
-  This handoff is a test-fixture contract, not a general thread enumerator.
+  The host must first acquire one explicit bounded caller lease per producer;
+  RetireCallers remains BUSY while any lease exists, even after the DLL
+  worker has joined. Every lease is released only after joining its
+  corresponding producer. Acquisitions after STOP and double release are
+  rejected by native regression tests. This handoff remains a cooperating
+  test-fixture contract, not a general thread enumerator.
 - All sender threads have exited the DLL export before FreeLibrary.
 - GetModuleHandle confirms the DLL was unloaded and the next cycle can
   independently load and repeat all checks without a COM apartment.

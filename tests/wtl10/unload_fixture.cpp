@@ -23,7 +23,7 @@ HANDLE held_event=nullptr, release_event=nullptr;
 HWND live_window=nullptr;
 volatile LONG phase=idle, accepted=0, processed=0, callbacks=0;
 volatile LONG finalized=0, destroyed=0, released=0, unregistered=0;
-volatile LONG held_timed_out=0, callers_retired=0;
+volatile LONG held_timed_out=0, callers_retired=0, caller_leases=0;
 
 LONG read(volatile LONG* value) noexcept {
     return ::InterlockedCompareExchange(value,0,0);
@@ -139,6 +139,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI OpenATLUnloadStart() {
     ::InterlockedExchange(&unregistered,0);
     ::InterlockedExchange(&held_timed_out,0);
     ::InterlockedExchange(&callers_retired,0);
+    ::InterlockedExchange(&caller_leases,0);
     ::InterlockedExchange(&phase,starting);
     ready_event=::CreateEventW(nullptr,TRUE,FALSE,nullptr);
     if(!ready_event) {
@@ -244,6 +245,34 @@ extern "C" __declspec(dllexport) DWORD WINAPI OpenATLUnloadStop() {
     ::ReleaseSRWLockExclusive(&gate);
     return clean?ERROR_SUCCESS:ERROR_INVALID_DATA;
 }
+// The host creates one explicit lease for each external producer BEFORE
+// starting that producer. Releasing it is allowed only after the host has
+// joined its thread, which is an outside-DLL ownership fact. A quiesced
+// window owner alone does not authorize RetireCallers with live leases.
+extern "C" __declspec(dllexport) DWORD WINAPI OpenATLUnloadAcquireCallerLease() {
+    ::AcquireSRWLockExclusive(&gate);
+    if(read(&phase)!=live || read(&callers_retired)!=0) {
+        ::ReleaseSRWLockExclusive(&gate);
+        return ERROR_BUSY;
+    }
+    if(read(&caller_leases)>=1024) {
+        ::ReleaseSRWLockExclusive(&gate);
+        return ERROR_NOT_ENOUGH_QUOTA;
+    }
+    ::InterlockedIncrement(&caller_leases);
+    ::ReleaseSRWLockExclusive(&gate);
+    return ERROR_SUCCESS;
+}
+extern "C" __declspec(dllexport) DWORD WINAPI OpenATLUnloadReleaseCallerLease() {
+    ::AcquireSRWLockExclusive(&gate);
+    if(read(&caller_leases)<=0 || read(&callers_retired)!=0) {
+        ::ReleaseSRWLockExclusive(&gate);
+        return ERROR_INVALID_PARAMETER;
+    }
+    ::InterlockedDecrement(&caller_leases);
+    ::ReleaseSRWLockExclusive(&gate);
+    return ERROR_SUCCESS;
+}
 // The external host owns its producer threads; Windows provides no general
 // safe way for this DLL to discover all callers about to enter an export.
 // The host calls this function ONLY after it has joined every producer.
@@ -256,7 +285,8 @@ extern "C" __declspec(dllexport) DWORD WINAPI OpenATLUnloadRetireCallers() {
                          read(&accepted)==read(&processed) &&
                          read(&destroyed)==1 && read(&finalized)==1 &&
                          read(&released)==1 && read(&unregistered)==1 &&
-                         read(&held_timed_out)==0;
+                         read(&held_timed_out)==0 &&
+                         read(&caller_leases)==0;
     if(ownerDone) ::InterlockedExchange(&callers_retired,1);
     ::ReleaseSRWLockExclusive(&gate);
     return ownerDone?ERROR_SUCCESS:ERROR_BUSY;
@@ -265,6 +295,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI OpenATLUnloadRetireCallers() {
 extern "C" __declspec(dllexport) DWORD WINAPI OpenATLUnloadCanUnload() {
     ::AcquireSRWLockShared(&gate);
     bool ready=read(&phase)==quiesced && read(&callers_retired)==1 &&
+               read(&caller_leases)==0 &&
                thread_handle==nullptr && ready_event==nullptr &&
                held_event==nullptr && release_event==nullptr &&
                live_window==nullptr && read(&callbacks)==0 &&

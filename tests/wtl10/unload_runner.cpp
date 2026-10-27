@@ -88,16 +88,20 @@ int main() {
         Operation canUnload=fn("OpenATLUnloadCanUnload");
         Operation processed=fn("OpenATLUnloadCount");
         Operation retireCallers=fn("OpenATLUnloadRetireCallers");
+        Operation acquireLease=fn("OpenATLUnloadAcquireCallerLease");
+        Operation releaseLease=fn("OpenATLUnloadReleaseCallerLease");
         Operation hold=fn("OpenATLUnloadHold");
         Operation waitHeld=fn("OpenATLUnloadWaitHeld");
         Operation releaseHeld=fn("OpenATLUnloadReleaseHeld");
         Operation isClosing=fn("OpenATLUnloadIsClosing");
         if(!start || !submit || !stop || !canUnload || !processed ||
-           !retireCallers || !hold || !waitHeld || !releaseHeld || !isClosing)
+           !retireCallers || !acquireLease || !releaseLease ||
+           !hold || !waitHeld || !releaseHeld || !isClosing)
             return fail(round,"exports",ERROR_PROC_NOT_FOUND);
         if(start()!=ERROR_SUCCESS)
             return fail(round,"create_owner_thread",ERROR_GEN_FAILURE);
-        if(canUnload()!=ERROR_BUSY)
+        if(canUnload()!=ERROR_BUSY || retireCallers()!=ERROR_BUSY ||
+           releaseLease()!=ERROR_INVALID_PARAMETER)
             return fail(round,"early_unload_admitted",ERROR_INVALID_DATA);
         for(int i=0;i<32;++i)
             if(submit()!=ERROR_SUCCESS)
@@ -111,6 +115,11 @@ int main() {
 
         Producer producers[nProducers]{};
         HANDLE threads[nProducers]{};
+        // Claim one owner-visible lease for each potential DLL caller.
+        // The host only releases it AFTER joining that exact producer.
+        for(int i=0;i<nProducers;++i)
+            if(acquireLease()!=ERROR_SUCCESS)
+                return fail(round,"acquire_producer_lease",ERROR_GEN_FAILURE);
         for(int i=0;i<nProducers;++i) {
             producers[i].submit=submit;
             threads[i]=::CreateThread(nullptr,0,send_messages,
@@ -130,6 +139,8 @@ int main() {
               ::GetTickCount64()<admissionEnd)
             ::Sleep(1);
         if(isClosing()!=ERROR_SUCCESS || canUnload()!=ERROR_BUSY ||
+           retireCallers()!=ERROR_BUSY ||
+           acquireLease()!=ERROR_BUSY ||
            ::WaitForSingleObject(stopperThread,25)!=WAIT_TIMEOUT)
             return fail(round,"blocked_callback_close_fence",ERROR_INVALID_DATA);
         if(releaseHeld()!=ERROR_SUCCESS)
@@ -144,7 +155,8 @@ int main() {
             return fail(round,"owner_drain_and_join",stopper.status);
         // STOP drained the DLL owner but the host still has producer threads
         // that may have entered an export; unload MUST remain inadmissible.
-        if(canUnload()!=ERROR_BUSY || submit()!=ERROR_BUSY)
+        if(canUnload()!=ERROR_BUSY || submit()!=ERROR_BUSY ||
+           retireCallers()!=ERROR_BUSY || acquireLease()!=ERROR_BUSY)
             return fail(round,"owner_done_but_callers_live",ERROR_INVALID_DATA);
         DWORD accepted=33; // 32 ordinary posts + one held callback
         for(int i=0;i<nProducers;++i) {
@@ -158,12 +170,15 @@ int main() {
             if(!ok)
                 return fail(round,"submission_overlap",producers[i].failure);
             accepted+=producers[i].successes;
+            if(releaseLease()!=ERROR_SUCCESS)
+                return fail(round,"release_joined_producer_lease",ERROR_GEN_FAILURE);
         }
         if(processed()!=accepted)
             return fail(round,"accepted_messages_lost",ERROR_INVALID_DATA);
         // Only the host can prove every thread that could invoke the DLL
         // exports has exited. Publish that proof after joining them all.
-        if(retireCallers()!=ERROR_SUCCESS || canUnload()!=ERROR_SUCCESS)
+        if(retireCallers()!=ERROR_SUCCESS || canUnload()!=ERROR_SUCCESS ||
+           releaseLease()!=ERROR_INVALID_PARAMETER)
             return fail(round,"retire_callers_before_FreeLibrary",
                         ERROR_INVALID_DATA);
         if(!::FreeLibrary(dllModule))
@@ -174,6 +189,6 @@ int main() {
             return fail(round,"COM_initialized_after_unload",
                         ERROR_INVALID_STATE);
     }
-    std::puts("OPENATL_UNLOAD_OK rounds=12 events=1 lease=1 held=1 blocked=1 callers_joined=1 thunk_freed=1 class_unregistered=1 dll_unmapped=1 no_com=1");
+    std::puts("OPENATL_UNLOAD_OK rounds=12 events=1 lease=1 held=1 blocked=1 callers_joined=1 caller_leases=1 thunk_freed=1 class_unregistered=1 dll_unmapped=1 no_com=1");
     return 0;
 }
