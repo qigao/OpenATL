@@ -34,8 +34,11 @@ The explicit mandatory enforcement gate is:
 When HSP is unavailable or only in audit mode this command fails with
 exit 77 (rather than skipping or passing). With enforcement active, a
 normal child call must return normally; the tampered-return child must
-terminate with a recognized control-protection exception (0xC0000602 or
-0xC000060A), not a generic access violation.
+terminate with STATUS_STACK_BUFFER_OVERRUN (0xC0000409) *and* the
+Windows debug event's FAST_FAIL_CONTROL_INVALID_RETURN_ADDRESS subcode 0x39.
+A process exit code alone is insufficient: generic stack cookie/CFG crashes
+also produce 0xC0000409. The parent uses DEBUG_ONLY_THIS_PROCESS solely
+for the isolated corrupted-return child and preserves the exception record.
 
 Build through normal manifest-installed WTL/OpenATL source-tree CMake with:
 
