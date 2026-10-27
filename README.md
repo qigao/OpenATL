@@ -105,8 +105,11 @@ is part of this repository (not a second ATL provider).
   failed write returns the destination's original HRESULT. A failed write
   may leave a partial output in the **caller** stream; arbitrary IStreams
   do not provide atomic rollback. Stream `Load` reads a bounded (64 MiB)
-  snapshot into an OS-owned memory stream before decoding, rejects short
-  `S_OK` reads with `STG_E_READFAULT`, and propagates failing read HRESULTs.
+  snapshot into an OS-owned memory stream before decoding. A short `S_OK`
+  read requires an exact EOF proof through `IStream::Stat` and a nonmoving
+  `Seek(STREAM_SEEK_CUR, 0)`; otherwise it returns `STG_E_READFAULT`.
+  Failed source read HRESULTs propagate unchanged. This accommodates
+  Windows HGLOBAL streams without accepting arbitrary silent truncation.
   Callers must account for the source stream's advanced position on failure.
   The image and stream ownership remain unchanged. Image stream codec
   callers link both `gdiplus` and `ole32` explicitly; neither is a
