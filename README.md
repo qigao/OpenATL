@@ -90,10 +90,14 @@ is part of this repository (not a second ATL provider).
   explicitly size the underlying file through `CAtlFile` first.
 - `atlimage.h`: a bounded Win32 GDI `CImage` subset with owned
   `HBITMAP`, Create/Attach/Detach/Destroy, top-down and bottom-up DIB
-  pixel access, GetDC/ReleaseDC and BitBlt/StretchBlt-based Draw. Only
-  24/32-bpp `Create` is supported, and GDI+ file codecs, Load/Save,
-  alpha compositing and the full Microsoft ATL CImage API are **not
-  implemented or qualified**.
+  pixel access, GetDC/ReleaseDC and BitBlt/StretchBlt-based Draw. `Load`
+  and `Save` support BMP and PNG through the Windows GDI+ runtime,
+  with full BGRA pixel copying and PNG alpha preservation. Codec state
+  is scoped to each call and always shut down before returning. Consumers
+  invoking `CImage::Load/Save` must link Windows `gdiplus` explicitly;
+  basic GDI and WTL UI targets do **not** link `gdiplus` transitively.
+  GIF/JPEG/TIFF encoders, IStream codecs, alpha compositing, GDI+ metadata,
+  and the full Microsoft ATL CImage API are **not implemented or qualified**.
 
 The public API is a subset of ATL; unsupported functions are not advertised
 as implemented. These utilities are CI-qualified through
