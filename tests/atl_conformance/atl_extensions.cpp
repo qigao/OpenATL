@@ -144,6 +144,148 @@ static int test_array() {
     return 0;
 }
 
+
+struct ThrowingCopy {
+    static bool reject;
+    int value;
+    explicit ThrowingCopy(int n) noexcept : value(n) {}
+    ThrowingCopy(const ThrowingCopy& other) : value(other.value) {
+        if (reject) throw std::runtime_error("injected copy failure");
+    }
+    ThrowingCopy& operator=(const ThrowingCopy&) = default;
+};
+bool ThrowingCopy::reject = false;
+
+static int test_list() {
+    static_assert(!std::is_copy_constructible<ATL::CAtlList<int>>::value,
+                  "CAtlList must own its nodes exclusively");
+    static_assert(std::is_nothrow_move_constructible<ATL::CAtlList<int>>::value,
+                  "Moving ownership of a list cannot allocate");
+
+    ATL::CAtlList<int> list;
+    if (!list.IsEmpty() || list.GetCount() != 0 ||
+        list.GetHeadPosition() || list.GetTailPosition() ||
+        list.FindIndex(0) || list.Find(15))
+        return fail(41, "list_empty");
+
+    POSITION a = list.AddTail(10);
+    POSITION d = list.AddTail(40);
+    POSITION b = list.InsertAfter(a, 20);
+    POSITION c = list.InsertBefore(d, 30);
+    if (!a || !b || !c || !d || list.GetCount() != 4 ||
+        list.GetHead() != 10 || list.GetTail() != 40 ||
+        list.GetAt(b) != 20 || list.Find(30) != c ||
+        list.FindIndex(0) != a || list.FindIndex(3) != d ||
+        list.FindIndex(4) != nullptr || list.Find(10, a) != nullptr)
+        return fail(42, "list_insertion");
+
+    const ATL::CAtlList<int>& readOnly = list;
+    POSITION forward = readOnly.GetHeadPosition();
+    const int expectedForward[] = {10, 20, 30, 40};
+    for (int value : expectedForward)
+        if (forward == nullptr || readOnly.GetNext(forward) != value)
+            return fail(43, "list_forward_iteration");
+    if (forward != nullptr)
+        return fail(44, "list_forward_termination");
+    POSITION backward = list.GetTailPosition();
+    const int expectedBackward[] = {40, 30, 20, 10};
+    for (int value : expectedBackward)
+        if (backward == nullptr || list.GetPrev(backward) != value)
+            return fail(45, "list_backward_iteration");
+    if (backward != nullptr)
+        return fail(46, "list_backward_termination");
+
+    list.SwapElements(b, c); // Adjacent: 10,30,20,40.
+    if (list.GetAt(b) != 20 || list.GetAt(c) != 30 ||
+        list.FindIndex(1) != c || list.FindIndex(2) != b)
+        return fail(47, "list_adjacent_swap_stable_positions");
+
+    list.SwapElements(a, d); // Nonadjacent heads/tails: 40,30,20,10.
+    if (list.GetHeadPosition() != d || list.GetTailPosition() != a ||
+        list.GetHead() != 40 || list.GetTail() != 10 ||
+        list.FindIndex(1) != c || list.FindIndex(2) != b)
+        return fail(48, "list_nonadjacent_swap");
+
+    list.SwapElements(b, c); // Reversed adjacent.
+    if (list.FindIndex(1) != b || list.FindIndex(2) != c)
+        return fail(49, "list_reverse_adjacent_swap");
+    list.SwapElements(a, a);
+    if (list.GetTailPosition() != a)
+        return fail(50, "list_same_position_swap");
+
+    ATL::CAtlList<int> foreign;
+    POSITION foreignPos = foreign.AddTail(999);
+    try {
+        list.RemoveAt(foreignPos);
+        return fail(51, "list_foreign_cursor_admitted");
+    } catch (const std::out_of_range&) {}
+    if (list.GetCount() != 4 || list.GetTailPosition() != a)
+        return fail(52, "list_foreign_cursor_state");
+    try {
+        (void)list.GetAt(nullptr);
+        return fail(53, "list_null_cursor_admitted");
+    } catch (const std::out_of_range&) {}
+    try {
+        (void)list.Find(999, foreignPos);
+        return fail(54, "list_foreign_find_cursor_admitted");
+    } catch (const std::out_of_range&) {}
+
+    // Moving the list keeps live POSITION handles with the objects.
+    ATL::CAtlList<int> moved(std::move(list));
+    if (!list.IsEmpty() || !moved.GetCount() ||
+        moved.GetHeadPosition() != d || moved.GetTailPosition() != a ||
+        moved.GetAt(a) != 10)
+        return fail(55, "list_move_owner");
+
+    moved.RemoveAt(c);
+    if (moved.GetCount() != 3 || moved.Find(30) != nullptr ||
+        moved.RemoveHead() != 40 || moved.RemoveTail() != 10 ||
+        moved.GetHead() != 20)
+        return fail(56, "list_unlink_head_tail");
+    moved.RemoveAll();
+    if (!moved.IsEmpty() || moved.GetHeadPosition() || moved.GetTailPosition())
+        return fail(57, "list_remove_all");
+
+    {
+        ATL::CAtlList<Tracked> objects;
+        Tracked value(7);
+        POSITION first = objects.AddTail(value);
+        POSITION second = objects.AddHead(value);
+        if (Tracked::live != 3 || objects.GetCount() != 2 ||
+            objects.GetAt(first).value != 7 ||
+            objects.GetAt(second).value != 7)
+            return fail(58, "list_nontrivial_lifetime");
+        objects.RemoveAt(first);
+        if (Tracked::live != 2 || objects.GetCount() != 1)
+            return fail(59, "list_nontrivial_unlink");
+        objects.RemoveAll();
+        if (Tracked::live != 1 || objects.GetCount() != 0)
+            return fail(60, "list_nontrivial_cleanup");
+    }
+    if (Tracked::live != 0)
+        return fail(61, "list_node_leak");
+
+    // A throwing constructor/copy cannot attach half-constructed nodes
+    // or change list order/count. RemoveHead must copy before unlinking.
+    ATL::CAtlList<ThrowingCopy> exceptionList;
+    ThrowingCopy original(9);
+    POSITION only = exceptionList.AddTail(original);
+    ThrowingCopy::reject = true;
+    bool appendThrew = false;
+    try { (void)exceptionList.AddTail(original); }
+    catch (const std::runtime_error&) { appendThrew = true; }
+    bool removeThrew = false;
+    try { (void)exceptionList.RemoveHead(); }
+    catch (const std::runtime_error&) { removeThrew = true; }
+    ThrowingCopy::reject = false;
+    if (!appendThrew || !removeThrew || exceptionList.GetCount() != 1 ||
+        exceptionList.GetHeadPosition() != only ||
+        exceptionList.GetHead().value != 9)
+        return fail(62, "list_exception_guarantee");
+    exceptionList.RemoveAll();
+    return 0;
+}
+
 int main() {
     static_assert(sizeof(void*) == 8, "Only Windows x64 and ARM64 qualified");
     ULONG_PTR token = 0;
@@ -152,8 +294,9 @@ int main() {
     if (int rc = test_heap()) return rc;
     if (int rc = test_filetime()) return rc;
     if (int rc = test_array()) return rc;
+    if (int rc = test_list()) return rc;
     if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED)
         return fail(2, "implicit_com_apartment");
-    std::puts("ATL_EXTENSIONS_OK heap=1 filetime=1 array=1 no_com=1");
+    std::puts("ATL_EXTENSIONS_OK heap=1 filetime=1 array=1 list=1 no_com=1");
     return 0;
 }

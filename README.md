@@ -81,8 +81,15 @@ is part of this repository (not a second ATL provider).
   with explicit non-owning heap lifetime.
 - `atltime.h`: 100-nanosecond `FILETIME` values, signed spans, comparisons,
   arithmetic and optional overflow-checked addition.
-- `atlcoll.h`: typed `CAtlArray` with safe object lifetime, capacity
-  growth, removal and allocation failure reporting.
+- `atlcoll.h`: `CAtlArray` and `CAtlList`, with safe nontrivial
+  object lifetime and stable node-specific opaque `POSITION` handles.
+  The list supports bidirectional traversal, head/tail insertion and
+  removal, search, and adjacent/nonadjacent node exchanges; foreign
+  or removed positions are validated before dereference. Unlike the
+  incomplete RATL list allocator, every node has one clear owner,
+  and throwing element copies leave the list unchanged.
+  The optional ATL block-pool constructor is deliberately not offered:
+  node allocation uses owned C++ `new`/`delete`, not fake pool behavior.
 - `atlfile.h`: file-backed and named shared-memory mapping, including
   unaligned Win32 view offsets, explicit close/unmap, move ownership,
   independent handle/view duplication with `CopyFrom` and bounded mapping

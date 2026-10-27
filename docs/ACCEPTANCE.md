@@ -10,7 +10,7 @@ these paths separately on the exact branch HEAD.
 | COM Client `CoCreateInstance`, `CComPtr`, BSTR, Variant | 5× native | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
 | In-tree file/string/sync utility tests | 5× native | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
 | In-tree Unicode `CPath` + Win32 file test | 5× native | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
-| Source-owned ATL heap, FILETIME and typed array utilities | 5× native, **no COM apartment** | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
+| Source-owned ATL heap, FILETIME, typed array and linked-list (`POSITION`, swap, ownership, throwing copy) | 5× native, **no COM apartment** | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
 | Win32 `CAtlFileMapping`: unaligned offsets, file/writeback, duplicate section ownership, named shared memory | 5× native, **no COM apartment** | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
 | Win32 `CImage`: 24/32-bpp DIB, HBITMAP/DC lifecycle, BMP/PNG file and caller-owned IStream Save/Load, BGRA alpha, unsupported GIF, fail-closed short/zero IStream writes, failing reads on first/second chunk, unproven short S_OK reads, verified HGLOBAL-style EOF, premature EOF, rejected empty input, 64 MiB one-open file snapshot and IStream preflight, 128 MiB decoded budget including 24bpp row padding, exclusive handle-release checks | 5× native, **no COM apartment** | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
 | Full official WTL10 SDI + .rc | PE + `.rsrc` link | PE machine/link | PE + `.rsrc` link | PE machine/link | llvm-mingw PE/link |

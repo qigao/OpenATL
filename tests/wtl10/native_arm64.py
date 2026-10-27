@@ -30,7 +30,7 @@ CASES = (
     ("openatl_gui_runtime", (), "WTL10 GUI runtime PASS: no COM apartment, W^X thunk x64/ARM64, message maps, resource dialog, NCDESTROY, OnFinalMessage"),
     ("openatl_atl_core", (), "ATL_CORE_OK file=1 string=1 sync=1 no_com=1"),
     ("openatl_atl_path", (), "ATL_PATH_OK unicode=1 file=1 relative=1 root=1"),
-    ("openatl_atl_extensions", (), "ATL_EXTENSIONS_OK heap=1 filetime=1 array=1 no_com=1"),
+    ("openatl_atl_extensions", (), "ATL_EXTENSIONS_OK heap=1 filetime=1 array=1 list=1 no_com=1"),
     ("openatl_atl_mapping", (), "ATL_MAPPING_OK file=1 offset=1 copy=1 shared=1 cleanup=1 no_com=1"),
     ("openatl_atl_image", (), "ATL_IMAGE_OK dib=1 attach=1 draw=1 orientation=1 codec=1 stream=1 shortwrite=1 shortread=1 budget=1 alpha=1 cleanup=1 no_com=1"),
     ("openatl_thunk_fault", (), "THUNK_FAULT_OK alloc=1 rx=1 flush=1 reinit_rw=1 free=1 recovery=1 no_rwx=1 window_denied=1 dialog_denied=1"),
