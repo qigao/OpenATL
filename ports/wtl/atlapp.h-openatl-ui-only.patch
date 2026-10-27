@@ -1,17 +1,6 @@
 --- a/Include/atlapp.h
 +++ b/Include/atlapp.h
-@@ -23,10 +23,6 @@
- 	#error WTL10 doesn't support Windows CE
- #endif
- 
--#ifdef _ATL_NO_COMMODULE
--	#error WTL requires that _ATL_NO_COMMODULE is not defined
--#endif
--
- #ifdef _ATL_NO_WIN_SUPPORT
- 	#error WTL requires that _ATL_NO_WIN_SUPPORT is not defined
- #endif
-@@ -92,7 +88,6 @@
+@@ -92,7 +92,6 @@
  // CMessageLoop
  //
  // CAppModule
@@ -19,7 +8,7 @@
  //
  // Global functions:
  //   AtlInitCommonControls()
-@@ -710,7 +705,7 @@
+@@ -710,7 +709,7 @@
  public:
  	ATL::CComCritSecLock<ATL::CComCriticalSection> m_cslock;
  
@@ -28,7 +17,7 @@
  	{ }
  
  	HRESULT Lock()
-@@ -754,38 +749,55 @@
+@@ -754,38 +753,55 @@
    #pragma warning(disable : 4312)
  #endif
  
@@ -116,7 +105,7 @@
  // Message loop map methods
  	BOOL AddMessageLoop(CMessageLoop* pMsgLoop)
  	{
-@@ -974,104 +986,6 @@
+@@ -974,104 +990,6 @@
  #endif
  
  
