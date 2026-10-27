@@ -152,6 +152,10 @@ if(OPENATL_BUILD_QUALIFICATION)
   # stub. A separate process repeatedly loads it, dispatches a blocked
   # WndProc thunk, refuses premature unload, drains and finally FreeLibrary.
   add_library(openatl_unload_probe SHARED tests/wtl10/unload_probe.cpp)
+  # MinGW normally adds a lib prefix to SHARED target filenames. Our
+  # independently SHA-verified native load acceptance requires one exact
+  # DLL name on MSVC and llvm-mingw, with no runtime search fallback.
+  set_target_properties(openatl_unload_probe PROPERTIES PREFIX "")
   target_link_libraries(openatl_unload_probe PRIVATE OpenATL::ATL user32)
   add_executable(openatl_unload_native tests/wtl10/unload_native.cpp)
   target_link_libraries(openatl_unload_native PRIVATE OpenATL::ATL ole32 user32)
