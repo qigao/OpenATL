@@ -52,8 +52,10 @@ def check() -> int:
     sample_patch = ROOT / "tests/wtl10/wtltest-ui-only.patch"
     if not sample_patch.exists() or (
             "-    hRes = _Module.Init(NULL, hInstance);" not in
+            sample_patch.read_text("utf-8") or
+            "-#include <atlcom.h>" not in
             sample_patch.read_text("utf-8")):
-        errors.append("Pinned SDI must call Init(hInstance)")
+        errors.append("Pinned SDI must call Init(hInstance) without COM Server header")
     if re.search(r"(?i)OpenATL::WTL|add_library\s*\(\s*openatl_wtl\b", cmake):
         errors.append("OpenATL must not synthesize a WTL target")
     if ("VCPKG_TARGET_TRIPLET" not in cmake or

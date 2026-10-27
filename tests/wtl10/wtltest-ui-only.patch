@@ -1,6 +1,14 @@
 --- a/main.cpp
 +++ b/main.cpp
-@@ -1585,7 +1585,7 @@
+@@ -22,7 +22,6 @@
+ // ATL headers
+ #include <atlbase.h>
+ #include <atlwin.h>
+-#include <atlcom.h>
+ #include <atlstr.h>
+ 
+ // WTL headers
+@@ -1585,7 +1584,7 @@
      (void)hRichEdit;
  
      // Initialize application module
