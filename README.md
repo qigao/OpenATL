@@ -110,7 +110,13 @@ is part of this repository (not a second ATL provider).
   `Seek(STREAM_SEEK_CUR, 0)`; otherwise it returns `STG_E_READFAULT`.
   Failed source read HRESULTs propagate unchanged. This accommodates
   Windows HGLOBAL streams without accepting arbitrary silent truncation.
-  Callers must account for the source stream's advanced position on failure.
+  If `Stat` and a nonmoving `Seek(CUR, 0)` are supported, a known
+  remaining encoded range above 64 MiB is rejected before the first read;
+  otherwise the running byte counter enforces the same cap.
+  All `CImage` pixel buffers are bounded to 128 MiB (including ordinary
+  DIB `Create`); decoder dimensions are rejected before allocating the
+  destination bitmap or locking GDI+ pixels. Callers must account for the
+  source stream's advanced position on failure.
   The image and stream ownership remain unchanged. Image stream codec
   callers link both `gdiplus` and `ole32` explicitly; neither is a
   transitive `OpenATL::ATL`/WTL dependency.
