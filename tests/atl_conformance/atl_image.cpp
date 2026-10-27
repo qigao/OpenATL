@@ -180,6 +180,39 @@ static bool signature(const wchar_t* path, const BYTE* prefix, DWORD count) {
     return true;
 }
 
+// Inspect the actual BMP file payload, not merely its decoded pixels.
+// For 24bpp 3-pixel rows, the final three bytes are unused row padding
+// and must be deterministic zeros even if the source DIB padding is poisoned.
+static bool bmp_row_padding_is_zero(const wchar_t* path) {
+    HANDLE file = ::CreateFileW(path, GENERIC_READ, FILE_SHARE_READ,
+                                NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) return false;
+    BITMAPFILEHEADER fh{};
+    BITMAPINFOHEADER bh{};
+    DWORD read = 0;
+    bool valid = ::ReadFile(file, &fh, sizeof(fh), &read, NULL) &&
+                 read == sizeof(fh) && fh.bfType == 0x4D42 &&
+                 ::ReadFile(file, &bh, sizeof(bh), &read, NULL) &&
+                 read == sizeof(bh) &&
+                 bh.biWidth == 3 &&
+                 (bh.biHeight == 2 || bh.biHeight == -2) &&
+                 bh.biBitCount == 24 && bh.biCompression == BI_RGB;
+    if (valid) {
+        LARGE_INTEGER pos{};
+        pos.QuadPart = fh.bfOffBits;
+        BYTE pixels[24]{};
+        valid = ::SetFilePointerEx(file, pos, NULL, FILE_BEGIN) &&
+                ::ReadFile(file, pixels, sizeof(pixels), &read, NULL) &&
+                read == sizeof(pixels);
+        if (valid)
+            valid = pixels[9] == 0 && pixels[10] == 0 &&
+                    pixels[11] == 0 && pixels[21] == 0 &&
+                    pixels[22] == 0 && pixels[23] == 0;
+    }
+    (void)::CloseHandle(file);
+    return valid;
+}
+
 static int codec_roundtrip() {
     TempImages paths;
     if (!make_temp_paths(&paths))
@@ -250,8 +283,17 @@ static int codec_roundtrip() {
     if (!rgb.Create(3, 2, 24)) return fail(53, "bmp_source_dib");
     rgb.SetPixel(0, 0, RGB(12, 34, 56));
     rgb.SetPixel(2, 1, RGB(123, 111, 99));
+    // Poison only the *unowned* padding slots: Save must not preserve
+    // these bytes in the encoded output, even when the source is dirty.
+    BYTE* original = static_cast<BYTE*>(rgb.GetBits());
+    if (!original || rgb.GetPitch() != 12) return fail(94, "BMP_padding_layout");
+    for (int row = 0; row < 2; ++row)
+        for (int byte = 9; byte < 12; ++byte)
+            original[row * rgb.GetPitch() + byte] = 0xA7;
     hr = rgb.Save(paths.bmp);
     if (FAILED(hr)) return fail(54, "bmp_save_from_extension");
+    if (!bmp_row_padding_is_zero(paths.bmp))
+        return fail(95, "BMP_row_padding_must_be_zero");
     const BYTE bmpSignature[2]{'B', 'M'};
     if (!signature(paths.bmp, bmpSignature, 2))
         return fail(55, "bmp_file_signature");
