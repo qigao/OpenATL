@@ -49,6 +49,12 @@ public:
             (flags & ~static_cast<DWORD>(createAlphaChannel)) != 0 ||
             ((flags & createAlphaChannel) != 0 && bpp != 32))
             return FALSE;
+        // Bound all owned bitmap pixel allocations, including plain GDI
+        // Create. High dimensions must fail before CreateDIBSection.
+        const ULONGLONG pixels = static_cast<ULONGLONG>(width) *
+                                 static_cast<ULONGLONG>(height);
+        if (pixels > kMaximumDecodedBytes / static_cast<ULONGLONG>(bpp / 8))
+            return FALSE;
         const size_t bitmapBits = static_cast<size_t>(width) * static_cast<size_t>(bpp);
         if (bitmapBits > (std::numeric_limits<size_t>::max)() - 31)
             return FALSE;
@@ -299,6 +305,9 @@ public:
 
 
 private:
+    static constexpr ULONGLONG kMaximumDecodedBytes =
+        128ULL * 1024ULL * 1024ULL;
+
     // Consumes a fully constructed GDI+ image and commits only after a
     // successful copy. Both file and IStream decoding use this exact path.
     HRESULT DecodeBitmap(Gdiplus::Bitmap& decoded) noexcept {
@@ -320,6 +329,12 @@ private:
             width > static_cast<UINT>((std::numeric_limits<int>::max)()) ||
             height > static_cast<UINT>((std::numeric_limits<int>::max)()))
             return E_INVALIDARG;
+        // Limit decoded pixel memory independently from the 64 MiB
+        // compressed IStream limit. A tiny compressed image can otherwise
+        // request a much larger DIB and GDI+ LockBits allocation.
+        if (static_cast<ULONGLONG>(width) * static_cast<ULONGLONG>(height) >
+            kMaximumDecodedBytes / 4ULL)
+            return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
         const bool alpha =
             (static_cast<UINT>(decoded.GetPixelFormat()) &
              static_cast<UINT>(PixelFormatAlpha)) != 0;
@@ -487,6 +502,25 @@ private:
             return E_FAIL;
 
         constexpr ULONGLONG kMaximumEncodedBytes = 64ULL * 1024ULL * 1024ULL;
+        // If the source supports Stat + Seek(CUR, 0), reject a known
+        // oversized remaining range before allocating even one read chunk.
+        // Unseekable streams still work and are bounded by the byte counter.
+        STATSTG bounds{};
+        if (source->Stat(&bounds, STATFLAG_NONAME) == S_OK) {
+            LARGE_INTEGER zero{};
+            ULARGE_INTEGER position{};
+            if (source->Seek(zero, STREAM_SEEK_CUR, &position) == S_OK) {
+                if (position.QuadPart > bounds.cbSize.QuadPart) {
+                    staged->Release();
+                    return STG_E_READFAULT;
+                }
+                if (bounds.cbSize.QuadPart - position.QuadPart >
+                    kMaximumEncodedBytes) {
+                    staged->Release();
+                    return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
+                }
+            }
+        }
         ULONGLONG accumulated = 0;
         BYTE buffer[8192];
         for (;;) {
