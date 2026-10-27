@@ -520,6 +520,154 @@ static int stream_roundtrip() {
     return 0;
 }
 
+
+// An unregistered, stack-owned IStream test double. It has no CLSID,
+// factory, class-object registration or COM Server capability. Its sole
+// purpose is to force deterministic IStream::Write completion behaviors.
+class FaultWriteStream final : public IStream {
+public:
+    enum Policy { ShortPositive, ShortZero, FailImmediately, FailSecond };
+    explicit FaultWriteStream(Policy policy) noexcept : policy_(policy) {}
+    FaultWriteStream(const FaultWriteStream&) = delete;
+    FaultWriteStream& operator=(const FaultWriteStream&) = delete;
+
+    ULONG calls = 0;
+    ULONG otherCalls = 0;
+    ULONGLONG acceptedBytes = 0;
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** output) override {
+        if (output == nullptr) return E_POINTER;
+        *output = nullptr;
+        if (::IsEqualIID(iid, IID_IUnknown) ||
+            ::IsEqualIID(iid, IID_ISequentialStream) ||
+            ::IsEqualIID(iid, IID_IStream)) {
+            *output = static_cast<IStream*>(this);
+            AddRef();
+            return S_OK;
+        }
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++references_; }
+    ULONG STDMETHODCALLTYPE Release() override {
+        if (references_ > 0) --references_;
+        return references_;
+    }
+    HRESULT STDMETHODCALLTYPE Read(void*, ULONG, ULONG* got) override {
+        ++otherCalls;
+        if (got != nullptr) *got = 0;
+        return STG_E_ACCESSDENIED;
+    }
+    HRESULT STDMETHODCALLTYPE Write(const void* src, ULONG count,
+                                    ULONG* wrote) override {
+        ++calls;
+        if (wrote != nullptr) *wrote = 0;
+        if (src == nullptr || count == 0 || wrote == nullptr)
+            return E_INVALIDARG;
+        if (policy_ == FailImmediately ||
+            (policy_ == FailSecond && calls >= 2))
+            return STG_E_MEDIUMFULL;
+        if (policy_ == ShortZero)
+            return S_OK;
+        if (policy_ == ShortPositive) {
+            *wrote = count - 1;
+            acceptedBytes += *wrote;
+            return S_OK;
+        }
+        *wrote = count;
+        acceptedBytes += count;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE Seek(LARGE_INTEGER, DWORD, ULARGE_INTEGER*) override {
+        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    }
+    HRESULT STDMETHODCALLTYPE SetSize(ULARGE_INTEGER) override {
+        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    }
+    HRESULT STDMETHODCALLTYPE CopyTo(IStream*, ULARGE_INTEGER, ULARGE_INTEGER*,
+                                     ULARGE_INTEGER*) override {
+        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    }
+    HRESULT STDMETHODCALLTYPE Commit(DWORD) override {
+        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    }
+    HRESULT STDMETHODCALLTYPE Revert() override {
+        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    }
+    HRESULT STDMETHODCALLTYPE LockRegion(ULARGE_INTEGER, ULARGE_INTEGER,
+                                          DWORD) override {
+        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    }
+    HRESULT STDMETHODCALLTYPE UnlockRegion(ULARGE_INTEGER, ULARGE_INTEGER,
+                                            DWORD) override {
+        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    }
+    HRESULT STDMETHODCALLTYPE Stat(STATSTG*, DWORD) override {
+        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    }
+    HRESULT STDMETHODCALLTYPE Clone(IStream** clone) override {
+        ++otherCalls;
+        if (clone != nullptr) *clone = nullptr;
+        return STG_E_INVALIDFUNCTION;
+    }
+
+private:
+    Policy policy_;
+    ULONG references_ = 1;  // Test-stack lifetime; no external references.
+};
+
+static int encoder_failure_injection() {
+    ATL::CImage source;
+    if (!source.Create(128, 96, 24))
+        return fail(101, "write_failure_create_image");
+    // Deterministic incompressible image: encoding spans multiple 8-KiB
+    // transfer chunks, including a failure on the second IStream::Write.
+    std::uint32_t random = 0x5b1d940fu;
+    for (int y = 0; y < source.GetHeight(); ++y) {
+        BYTE* row = static_cast<BYTE*>(source.GetPixelAddress(0, y));
+        if (!row) return fail(102, "write_failure_pixel_row");
+        for (int x = 0; x < source.GetWidth() * 3; ++x) {
+            random = random * 1664525u + 1013904223u;
+            row[x] = static_cast<BYTE>(random >> 24);
+        }
+    }
+
+    FaultWriteStream shortWrite(FaultWriteStream::ShortPositive);
+    HRESULT hr = source.Save(&shortWrite, &Gdiplus::ImageFormatPNG);
+    if (hr != STG_E_WRITEFAULT || shortWrite.calls != 1 ||
+        shortWrite.acceptedBytes == 0 || shortWrite.otherCalls != 0)
+        return fail(103, "reject_S_OK_partial_write");
+
+    FaultWriteStream zeroWrite(FaultWriteStream::ShortZero);
+    hr = source.Save(&zeroWrite, &Gdiplus::ImageFormatPNG);
+    if (hr != STG_E_WRITEFAULT || zeroWrite.calls != 1 ||
+        zeroWrite.acceptedBytes != 0 || zeroWrite.otherCalls != 0)
+        return fail(104, "reject_S_OK_zero_write");
+
+    FaultWriteStream failed(FaultWriteStream::FailImmediately);
+    hr = source.Save(&failed, &Gdiplus::ImageFormatPNG);
+    if (hr != STG_E_MEDIUMFULL || failed.calls != 1 ||
+        failed.acceptedBytes != 0 || failed.otherCalls != 0)
+        return fail(105, "propagate_first_Write_HRESULT");
+
+    FaultWriteStream midflight(FaultWriteStream::FailSecond);
+    hr = source.Save(&midflight, &Gdiplus::ImageFormatPNG);
+    if (hr != STG_E_MEDIUMFULL || midflight.calls != 2 ||
+        midflight.acceptedBytes != 8192 || midflight.otherCalls != 0)
+        return fail(106, "propagate_second_Write_HRESULT");
+
+    // Even a failed sink must not change the caller's HBITMAP or leave a
+    // GDI+ stream reference behind; a later ordinary Save must succeed.
+    if (source.IsNull() || source.GetWidth() != 128)
+        return fail(107, "preserve_image_on_failed_write");
+    OwnedStream good;
+    if (!good.Create()) return fail(108, "good_stream_after_failure");
+    hr = source.Save(good.ptr, &Gdiplus::ImageFormatPNG);
+    const BYTE png[8] = {137,80,78,71,13,10,26,10};
+    if (FAILED(hr) || !good.Peek(png, sizeof(png)))
+        return fail(109, "recover_from_earlier_stream_failures");
+    return 0;
+}
+
 int main() {
     static_assert(sizeof(void*) == 8, "Only Windows x64 and ARM64 qualified");
     ULONG_PTR token = 0;
@@ -529,8 +677,9 @@ int main() {
     if (int result = bottom_up_attach()) return result;
     if (int result = codec_roundtrip()) return result;
     if (int result = stream_roundtrip()) return result;
+    if (int result = encoder_failure_injection()) return result;
     if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED)
         return fail(2, "COM_apartment_leaked");
-    std::puts("ATL_IMAGE_OK dib=1 attach=1 draw=1 orientation=1 codec=1 stream=1 alpha=1 cleanup=1 no_com=1");
+    std::puts("ATL_IMAGE_OK dib=1 attach=1 draw=1 orientation=1 codec=1 stream=1 shortwrite=1 alpha=1 cleanup=1 no_com=1");
     return 0;
 }
