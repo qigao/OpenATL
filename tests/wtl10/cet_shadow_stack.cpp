@@ -134,6 +134,95 @@ static bool spawn(const wchar_t* option, DWORD* exitCode) {
     return good != FALSE;
 }
 
+// Capture a Win32 fail-fast's *subcode* via a real debug event, not just
+// the ambiguous 0xC0000409 process exit. A generic stack cookie or CFG
+// failure must never count as a hardware CET return-address violation.
+struct CrashEvidence {
+    DWORD processExit = ~0u;
+    DWORD exception = 0;
+    ULONG_PTR fastFailCode = ~static_cast<ULONG_PTR>(0);
+    bool sawFastFail = false;
+};
+static bool spawn_debug_violation(CrashEvidence* evidence) {
+    if (!evidence)
+        return false;
+    wchar_t executable[MAX_PATH] = {};
+    const DWORD len = ::GetModuleFileNameW(nullptr, executable, MAX_PATH);
+    if (len == 0 || len >= MAX_PATH)
+        return false;
+    std::wstring command = L"\"";
+    command += executable;
+    command += L"\" --corrupt-return";
+    STARTUPINFOW start{};
+    start.cb = sizeof(start);
+    PROCESS_INFORMATION childProcess{};
+    if (!::CreateProcessW(executable, &command[0], nullptr, nullptr, FALSE,
+                          DEBUG_ONLY_THIS_PROCESS | CREATE_NO_WINDOW |
+                              CREATE_DEFAULT_ERROR_MODE,
+                          nullptr, nullptr, &start, &childProcess))
+        return false;
+    (void)::CloseHandle(childProcess.hThread);
+    const ULONGLONG deadline = ::GetTickCount64() + 7000;
+    bool completed = false;
+    bool error = false;
+    while (::GetTickCount64() < deadline) {
+        const DWORD remaining =
+            static_cast<DWORD>(deadline - ::GetTickCount64());
+        DEBUG_EVENT event{};
+        if (!::WaitForDebugEvent(&event, remaining)) {
+            error = true;
+            break;
+        }
+        DWORD decision = DBG_CONTINUE;
+        const bool done = event.dwDebugEventCode == EXIT_PROCESS_DEBUG_EVENT;
+        switch (event.dwDebugEventCode) {
+        case CREATE_PROCESS_DEBUG_EVENT:
+            if (event.u.CreateProcessInfo.hFile)
+                (void)::CloseHandle(event.u.CreateProcessInfo.hFile);
+            break;
+        case LOAD_DLL_DEBUG_EVENT:
+            if (event.u.LoadDll.hFile)
+                (void)::CloseHandle(event.u.LoadDll.hFile);
+            break;
+        case EXCEPTION_DEBUG_EVENT: {
+            const auto& record = event.u.Exception.ExceptionRecord;
+            if (record.ExceptionCode == 0xC0000409u &&
+                record.NumberParameters >= 1) {
+                evidence->exception = record.ExceptionCode;
+                evidence->fastFailCode = record.ExceptionInformation[0];
+                evidence->sawFastFail = true;
+            }
+            // The OS's initial debugger breakpoint must be handled.
+            // Real exception signals must continue unhandled so Windows
+            // terminates the isolated child by its own mitigation policy.
+            decision = record.ExceptionCode == EXCEPTION_BREAKPOINT ?
+                DBG_CONTINUE : DBG_EXCEPTION_NOT_HANDLED;
+            break;
+        }
+        case EXIT_PROCESS_DEBUG_EVENT:
+            evidence->processExit = event.u.ExitProcess.dwExitCode;
+            completed = true;
+            break;
+        default:
+            break;
+        }
+        if (!::ContinueDebugEvent(event.dwProcessId,
+                                  event.dwThreadId, decision)) {
+            error = true;
+            break;
+        }
+        if (done)
+            break;
+    }
+    if (!completed) {
+        // This is the *only* process that may be terminated by the test.
+        (void)::TerminateProcess(childProcess.hProcess, 99);
+        (void)::WaitForSingleObject(childProcess.hProcess, 1000);
+    }
+    (void)::CloseHandle(childProcess.hProcess);
+    return completed && !error;
+}
+
 static int qualify(bool required) {
     ShadowPolicy policy = shadow_policy();
     if (!policy.enabled() || policy.audit()) {
@@ -153,27 +242,34 @@ static int qualify(bool required) {
                      static_cast<unsigned long>(controlExit));
         return 90;
     }
-    DWORD violationExit = ~0u;
-    if (!spawn(L"--corrupt-return", &violationExit)) {
-        std::fprintf(stderr, "OPENATL_CET_FAIL stage=violation_probe\n");
+    CrashEvidence evidence;
+    if (!spawn_debug_violation(&evidence)) {
+        std::fprintf(stderr, "OPENATL_CET_FAIL stage=debug_violation_probe\n");
         return 91;
     }
-    // Windows may surface control-protection faults as 0xC0000602 or
-    // 0xC000060A. Other crashes (access violation, fast-fail, etc.) are
-    // insufficient to prove shadow-stack enforcement.
-    constexpr DWORD controlProtection = 0xC0000602u;
-    constexpr DWORD controlProtectionAlt = 0xC000060Au;
-    if (violationExit != controlProtection &&
-        violationExit != controlProtectionAlt) {
+    // FAST_FAIL_CONTROL_INVALID_RETURN_ADDRESS = 0x39. An unqualified
+    // process exit code is insufficient: 0xC0000409 can also indicate
+    // stack cookies and CFG errors. Require an OS debug exception record.
+    constexpr ULONG_PTR invalidReturnAddress = 0x39;
+    if (!evidence.sawFastFail ||
+        evidence.exception != 0xC0000409u ||
+        evidence.processExit != 0xC0000409u ||
+        evidence.fastFailCode != invalidReturnAddress) {
         std::fprintf(stderr,
-                     "OPENATL_CET_FAIL stage=wrong_exception exit=0x%08lx\n",
-                     static_cast<unsigned long>(violationExit));
+            "OPENATL_CET_FAIL stage=wrong_fastfail exit=0x%08lx "
+            "exception=0x%08lx subcode=0x%llx observed=%d\n",
+            static_cast<unsigned long>(evidence.processExit),
+            static_cast<unsigned long>(evidence.exception),
+            static_cast<unsigned long long>(evidence.fastFailCode),
+            evidence.sawFastFail ? 1 : 0);
         return 92;
     }
     std::printf("OPENATL_CET_ENFORCED_OK query=1 enabled=1 audit=0 "
-                "strict=%d control=0x00000000 exception=0x%08lx\n",
+                "strict=%d control=0x00000000 "
+                "exception=0x%08lx fastfail=0x%llx\n",
                 policy.strict() ? 1 : 0,
-                static_cast<unsigned long>(violationExit));
+                static_cast<unsigned long>(evidence.exception),
+                static_cast<unsigned long long>(evidence.fastFailCode));
     return 0;
 }
 
