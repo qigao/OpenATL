@@ -224,7 +224,7 @@ public:
             return E_INVALIDARG;
         const bool alpha =
             (static_cast<UINT>(decoded.GetPixelFormat()) &
-             static_cast<UINT>(Gdiplus::PixelFormatAlpha)) != 0;
+             static_cast<UINT>(PixelFormatAlpha)) != 0;
 
         CImage temporary;
         if (!temporary.Create(static_cast<int>(width), static_cast<int>(height),
@@ -235,7 +235,7 @@ public:
                                    static_cast<INT>(height));
         Gdiplus::BitmapData view{};
         status = decoded.LockBits(&bounds, Gdiplus::ImageLockModeRead,
-                                  Gdiplus::PixelFormat32bppARGB, &view);
+                                  PixelFormat32bppARGB, &view);
         if (status != Gdiplus::Ok)
             return CodecHRESULT(status);
 
@@ -343,9 +343,9 @@ public:
             return hr;
 
         const Gdiplus::PixelFormat format = bpp_ == 24 ?
-            Gdiplus::PixelFormat24bppRGB :
-            (has_alpha_ ? Gdiplus::PixelFormat32bppARGB :
-                          Gdiplus::PixelFormat32bppRGB);
+            PixelFormat24bppRGB :
+            (has_alpha_ ? PixelFormat32bppARGB :
+                          PixelFormat32bppRGB);
         Gdiplus::Bitmap image(width_, height_, pitch_, format, pixels.get());
         const Gdiplus::Status constructed = image.GetLastStatus();
         if (constructed != Gdiplus::Ok)
