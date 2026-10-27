@@ -123,9 +123,13 @@ public:
     "CAppModule lifecycle")
 _openatl_replace_between(
     "// CServerAppModule - module class for a COM server application"
-    "}  // namespace WTL"
+    "typedef ATL::CRegKey CRegKeyEx;"
     ""
-    "COM Server and retired CRegKeyEx")
+    "COM Server class and legacy registration block")
+_openatl_replace_once(
+    "typedef ATL::CRegKey CRegKeyEx;"
+    ""
+    "retired CRegKeyEx alias")
 if(NOT _wtl_ui_text MATCHES "HRESULT Init\\(HINSTANCE hInstance\\)" OR
    _wtl_ui_text MATCHES "class CAppModule : public ATL::CComModule" OR
    _wtl_ui_text MATCHES "class CServerAppModule" OR
