@@ -148,6 +148,65 @@ if(OPENATL_BUILD_QUALIFICATION)
 
   # Direct OS failure injection is compiled from the in-repo atlwin.h
   # and isolated behind OPENATL_WX_FAULT_TEST.
+  add_executable(openatl_mitigation_runtime tests/wtl10/mitigation_runtime.cpp)
+  target_link_libraries(openatl_mitigation_runtime PRIVATE OpenATL::ATL)
+  add_test(NAME openatl.mitigation_runtime COMMAND openatl_mitigation_runtime)
+  # Opt into real toolchain CFG/CET on this isolated native binary. Its
+  # PE and process policies are separately checked; these flags alone
+  # never count as mitigation evidence for downstream consumers.
+  if(MSVC)
+    target_compile_options(openatl_mitigation_runtime PRIVATE /guard:cf)
+    target_link_options(openatl_mitigation_runtime PRIVATE /GUARD:CF /DYNAMICBASE /NXCOMPAT)
+    if(VCPKG_TARGET_TRIPLET MATCHES "^x64-")
+      target_link_options(openatl_mitigation_runtime PRIVATE /CETCOMPAT)
+    endif()
+  else()
+    target_compile_options(openatl_mitigation_runtime PRIVATE -Xclang -cfguard)
+    target_link_options(openatl_mitigation_runtime PRIVATE -Wl,-Xlink,-guard:cf)
+    if(VCPKG_TARGET_TRIPLET MATCHES "^x64-")
+      target_link_options(openatl_mitigation_runtime PRIVATE -Wl,-Xlink,-cetcompat)
+    endif()
+  endif()
+
+  # x64 CETCOMPAT metadata and native user shadow-stack enforcement are
+  # distinct. By default inventory is nonblocking and reports UNQUALIFIED
+  # where the hosted Windows machine does not enforce HSP.
+  option(OPENATL_REQUIRE_CET_RUNTIME "Require actual x64 user shadow-stack violation" OFF)
+  if(VCPKG_TARGET_TRIPLET MATCHES "^x64-")
+    add_executable(openatl_cet_shadow_stack tests/wtl10/cet_shadow_stack.cpp)
+    target_link_libraries(openatl_cet_shadow_stack PRIVATE OpenATL::ATL)
+    if(MSVC)
+      target_compile_options(openatl_cet_shadow_stack PRIVATE /guard:cf /W3 /EHsc)
+      target_link_options(openatl_cet_shadow_stack PRIVATE
+        /GUARD:CF /CETCOMPAT /DYNAMICBASE /NXCOMPAT /INCREMENTAL:NO)
+    else()
+      target_compile_options(openatl_cet_shadow_stack PRIVATE
+        -Xclang -cfguard -fno-omit-frame-pointer -fno-optimize-sibling-calls)
+      target_link_options(openatl_cet_shadow_stack PRIVATE
+        -Wl,-Xlink,-guard:cf -Wl,-Xlink,-cetcompat -static)
+    endif()
+    add_test(NAME openatl.cet_inventory COMMAND openatl_cet_shadow_stack --inventory)
+    if(OPENATL_REQUIRE_CET_RUNTIME)
+      add_test(NAME openatl.cet_hardware_required
+        COMMAND openatl_cet_shadow_stack --require-hardware)
+      set_tests_properties(openatl.cet_hardware_required PROPERTIES TIMEOUT 20)
+    endif()
+  elseif(OPENATL_REQUIRE_CET_RUNTIME)
+    message(FATAL_ERROR "Real x64 CET user shadow-stack tests cannot run on ARM64")
+  endif()
+
+  # Real test DLL, not a substitute for production plugin lifetime rules.
+  # The host uses LoadLibrary/GetProcAddress, never a static import.
+  add_library(openatl_unload_fixture SHARED tests/wtl10/unload_fixture.cpp)
+  target_link_libraries(openatl_unload_fixture PRIVATE OpenATL::ATL user32)
+  set_target_properties(openatl_unload_fixture PROPERTIES
+    PREFIX "" OUTPUT_NAME "openatl_unload_fixture")
+  add_executable(openatl_unload_runner tests/wtl10/unload_runner.cpp)
+  target_link_libraries(openatl_unload_runner PRIVATE OpenATL::ATL ole32 user32)
+  add_dependencies(openatl_unload_runner openatl_unload_fixture)
+  add_test(NAME openatl.dll_unload_native COMMAND openatl_unload_runner)
+  set_tests_properties(openatl.dll_unload_native PROPERTIES TIMEOUT 35)
+
   add_executable(openatl_thunk_fault tests/wtl10/thunk_fault.cpp)
   target_compile_definitions(openatl_thunk_fault PRIVATE OPENATL_WX_FAULT_TEST=1)
   target_link_libraries(openatl_thunk_fault PRIVATE OpenATL::ATL)
@@ -163,7 +222,7 @@ if(OPENATL_BUILD_QUALIFICATION)
              COMMAND openatl_com_client "--${_client_mode}")
   endforeach()
 
-  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
+  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_mitigation_runtime openatl_unload_fixture openatl_unload_runner openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)
     if(MSVC)
       set_property(TARGET ${_qualified} PROPERTY
@@ -184,6 +243,25 @@ if(OPENATL_BUILD_QUALIFICATION)
     add_executable(openatl_wtl10_sdi WIN32
       "${OPENATL_WTL_DEMO_DIR}/main.cpp"
       "${OPENATL_WTL_DEMO_DIR}/wtltest.rc")
+    # The pinned SDI uses SysLink (comctl32 v6). MSVC already injects a
+    # default RT_MANIFEST: merge its dependencies, do not add a duplicate.
+    # MinGW/LLD does not generate that resource, so embed one there.
+    if(MSVC)
+      target_link_options(openatl_wtl10_sdi PRIVATE
+        "/MANIFEST:EMBED"
+        "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/tests/wtl10/sdi_comctl6.manifest")
+    else()
+      set(_sdi_manifest_rc "${CMAKE_CURRENT_BINARY_DIR}/openatl_sdi_comctl6.rc")
+      file(WRITE "${_sdi_manifest_rc}"
+        "1 24 \"${CMAKE_CURRENT_SOURCE_DIR}/tests/wtl10/sdi_comctl6.manifest\"\n")
+      target_sources(openatl_wtl10_sdi PRIVATE "${_sdi_manifest_rc}")
+    endif()
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME openatl.wtl10_sdi_native_ui
+      COMMAND "${Python3_EXECUTABLE}"
+              "${CMAKE_CURRENT_SOURCE_DIR}/tests/wtl10/sdi_interactive.py"
+              "$<TARGET_FILE:openatl_wtl10_sdi>")
+    set_tests_properties(openatl.wtl10_sdi_native_ui PROPERTIES TIMEOUT 35)
     target_include_directories(openatl_wtl10_sdi PRIVATE "${OPENATL_WTL_DEMO_DIR}" "${_wtl_headers}")
     target_link_libraries(openatl_wtl10_sdi PRIVATE OpenATL::ATL
       ole32 oleaut32 uuid comctl32 msimg32 uxtheme gdi32 comdlg32
