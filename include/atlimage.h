@@ -103,6 +103,14 @@ public:
             dib.dsBm.bmWidth <= 0 || dib.dsBm.bmHeight <= 0 ||
             dib.dsBm.bmWidthBytes <= 0)
             return;
+        // Attach is an ownership transfer: apply the same retained pixel
+        // budget as Create, including padded row bytes. On rejection the
+        // caller still owns the supplied HBITMAP and must release it.
+        const ULONGLONG retainedBytes =
+            static_cast<ULONGLONG>(dib.dsBm.bmWidthBytes) *
+            static_cast<ULONGLONG>(dib.dsBm.bmHeight);
+        if (retainedBytes > kMaximumDecodedBytes)
+            return;
         bitmap_ = bitmap;
         width_ = dib.dsBm.bmWidth;
         height_ = dib.dsBm.bmHeight;
