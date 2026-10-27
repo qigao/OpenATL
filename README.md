@@ -8,8 +8,9 @@ WTL 10, and optional COM *client* helpers.** Its only supported scope is:
 - In-tree ATL utilities: `CString`, `CAtlFile`, `CPath`, Win32
   synchronization, plus `atlmem.h` (`IAtlMemMgr`, `CWin32Heap`),
   `atltime.h` (`CFileTime`, `CFileTimeSpan`),
-  `atlcoll.h` (`CAtlArray`), and `atlfile.h` (`CAtlFileMappingBase`,
-  `CAtlFileMapping<T>`); no COM apartment needed.
+  `atlcoll.h` (`CAtlArray`), `atlfile.h` (`CAtlFileMappingBase`,
+  `CAtlFileMapping<T>`) and `atlimage.h` (Win32 `CImage` subset);
+  no COM apartment needed.
 - COM **client**: `CComPtr`, `CComBSTR`, `CComVariant`, and
   `CoCreateInstance` of existing Windows components after the *application*
   explicitly initializes a COM apartment.
@@ -87,6 +88,12 @@ is part of this repository (not a second ATL provider).
   independent handle/view duplication with `CopyFrom` and bounded mapping
   sizes. `MapFile` deliberately rejects extending the mapped file: callers
   explicitly size the underlying file through `CAtlFile` first.
+- `atlimage.h`: a bounded Win32 GDI `CImage` subset with owned
+  `HBITMAP`, Create/Attach/Detach/Destroy, top-down and bottom-up DIB
+  pixel access, GetDC/ReleaseDC and BitBlt/StretchBlt-based Draw. Only
+  24/32-bpp `Create` is supported, and GDI+ file codecs, Load/Save,
+  alpha compositing and the full Microsoft ATL CImage API are **not
+  implemented or qualified**.
 
 The public API is a subset of ATL; unsupported functions are not advertised
 as implemented. These utilities are CI-qualified through
