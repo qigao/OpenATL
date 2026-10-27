@@ -338,6 +338,35 @@ inline HRESULT AtlHresultFromLastError() noexcept
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////
+// Pure Win32 packed dialog-resource layouts
+
+// Plain extended-dialog layout required by WTL CMemDlgTemplate.
+// These are Win32 UI resource structures, not the former ActiveX
+// _DialogSplitHelper parser or any COM Server machinery.
+namespace _DialogSplitHelper {
+#pragma pack(push, 1)
+struct DLGTEMPLATEEX {
+    WORD dlgVer;
+    WORD signature;
+    DWORD helpID;
+    DWORD exStyle;
+    DWORD style;
+    WORD cDlgItems;
+    short x, y, cx, cy;
+};
+struct DLGITEMTEMPLATEEX {
+    DWORD helpID;
+    DWORD exStyle;
+    DWORD style;
+    short x, y, cx, cy;
+    DWORD id;
+};
+#pragma pack(pop)
+static_assert(sizeof(DLGTEMPLATEEX) == 26, "Win32 DLGTEMPLATEEX packed layout");
+static_assert(sizeof(DLGITEMTEMPLATEEX) == 24, "Win32 DLGITEMTEMPLATEEX packed layout");
+} // namespace _DialogSplitHelper
+
+///////////////////////////////////////////////////////////////////////////////
 // Forward declarations
 
 struct _AtlCreateWndData;

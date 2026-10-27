@@ -25,6 +25,16 @@
 #include <atlbase.h>
 #include <atlwin.h>
 #include <atlapp.h>
+
+// WTL's ordinary CMemDlgTemplate uses only these two on-disk structs;
+// ActiveX hosting remains forbidden in the UI build.
+#ifndef _ATL_NO_HOSTING
+#error "OpenATL WTL10 UI must disable ActiveX hosting"
+#endif
+static_assert(sizeof(ATL::_DialogSplitHelper::DLGTEMPLATEEX) == 26,
+              "Win32 extended dialog template size changed");
+static_assert(sizeof(ATL::_DialogSplitHelper::DLGITEMTEMPLATEEX) == 24,
+              "Win32 extended item template size changed");
 #include <atlctrls.h>
 #include "gui_runtime_resource.h"
 

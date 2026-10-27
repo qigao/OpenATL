@@ -52,6 +52,8 @@ EXPECTED = {
     "atlcore.h": "class CAtlBaseModule",
     "atlcomcli.h": "class CComPtr",
     "atlwin.h": "class ATL_NO_VTABLE CWindowImplBaseT",
+    "atldef.h": "#define _ATL_NO_HOSTING 1",
+    "atlbase.h": "struct DLGTEMPLATEEX",
 }
 
 
