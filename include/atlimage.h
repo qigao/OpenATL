@@ -51,9 +51,10 @@ public:
             return FALSE;
         // Bound all owned bitmap pixel allocations, including plain GDI
         // Create. High dimensions must fail before CreateDIBSection.
-        const ULONGLONG pixels = static_cast<ULONGLONG>(width) *
-                                 static_cast<ULONGLONG>(height);
-        if (pixels > kMaximumDecodedBytes / static_cast<ULONGLONG>(bpp / 8))
+        const ULONGLONG pixelCount = static_cast<ULONGLONG>(width) *
+                                     static_cast<ULONGLONG>(height);
+        if (pixelCount > kMaximumDecodedBytes /
+                         static_cast<ULONGLONG>(bpp / 8))
             return FALSE;
         const size_t bitmapBits = static_cast<size_t>(width) * static_cast<size_t>(bpp);
         if (bitmapBits > (std::numeric_limits<size_t>::max)() - 31)
@@ -365,8 +366,7 @@ private:
             return CodecHRESULT(status);
 
         HRESULT copyResult = S_OK;
-        if (view.Scan0 == NULL || view.Stride == 0 ||
-            width > (std::numeric_limits<size_t>::max)() / 4) {
+        if (view.Scan0 == NULL || view.Stride == 0) {
             copyResult = E_FAIL;
         } else {
             const size_t rowBytes = static_cast<size_t>(width) * 4;
