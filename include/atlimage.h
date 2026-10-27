@@ -216,18 +216,28 @@ public:
         return DecodeBitmap(decoded);
     }
 
-    // Borrow a caller-owned stream. Decoding completes and GDI+ releases
-    // all stream references before return; *this owns only its new HBITMAP.
-    // Caller positions the stream before calling; no COM apartment is opened.
+    // Borrow a caller-owned stream at its current read position. Snapshot
+    // the BMP/PNG bytes into an OS HGLOBAL stream before GDI+ touches them:
+    // COM short S_OK reads are rejected, failed HRESULTs are returned
+    // unchanged, and memory input is capped at 64 MiB. No COM apartment
+    // or application-owned COM Server is created. The caller still owns
+    // its stream, while this CImage owns only the resulting HBITMAP.
     HRESULT Load(IStream* stream) noexcept {
         if (stream == NULL)
             return E_POINTER;
         if (bitmap_ != NULL)
             return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+        struct InputOwner {
+            IStream* p = NULL;
+            ~InputOwner() { if (p != NULL) p->Release(); }
+        } staged;
+        HRESULT hr = SnapshotEncodedInput(stream, &staged.p);
+        if (FAILED(hr))
+            return hr;
         CodecSession session;
         if (!session.active())
             return CodecHRESULT(session.status);
-        Gdiplus::Bitmap decoded(stream, FALSE);
+        Gdiplus::Bitmap decoded(staged.p, FALSE);
         return DecodeBitmap(decoded);
     }
 
@@ -440,6 +450,69 @@ private:
         if (stream == NULL)
             return S_OK;
         return CopyEncodedStream(scratch.p, stream);
+    }
+
+    // IStream::Read returns S_FALSE at EOF. S_OK with fewer bytes than
+    // requested violates the COM stream contract; do not let GDI+ silently
+    // accept a short successful read. This helper never seeks, closes or
+    // retains the source stream; failed reads may advance the caller's
+    // current position, which is explicitly not transactional.
+    static HRESULT SnapshotEncodedInput(IStream* source,
+                                         IStream** output) noexcept {
+        if (source == NULL || output == NULL)
+            return E_POINTER;
+        *output = NULL;
+        IStream* staged = NULL;
+        HRESULT hr = ::CreateStreamOnHGlobal(NULL, TRUE, &staged);
+        if (FAILED(hr))
+            return hr;
+        if (staged == NULL)
+            return E_FAIL;
+
+        constexpr ULONGLONG kMaximumEncodedBytes = 64ULL * 1024ULL * 1024ULL;
+        ULONGLONG accumulated = 0;
+        BYTE buffer[8192];
+        for (;;) {
+            ULONG read = 0;
+            hr = source->Read(buffer, static_cast<ULONG>(sizeof(buffer)), &read);
+            if (FAILED(hr)) {
+                staged->Release();
+                return hr;
+            }
+            if ((hr != S_OK && hr != S_FALSE) ||
+                read > sizeof(buffer) ||
+                (hr == S_OK && read != sizeof(buffer))) {
+                staged->Release();
+                return STG_E_READFAULT;
+            }
+            if (read > kMaximumEncodedBytes - accumulated) {
+                staged->Release();
+                return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
+            }
+            if (read != 0) {
+                ULONG written = 0;
+                const HRESULT copy = staged->Write(buffer, read, &written);
+                if (FAILED(copy) || written != read) {
+                    staged->Release();
+                    return FAILED(copy) ? copy : STG_E_WRITEFAULT;
+                }
+                accumulated += read;
+            }
+            if (hr == S_FALSE)
+                break;
+        }
+        if (accumulated == 0) {
+            staged->Release();
+            return STG_E_READFAULT;
+        }
+        LARGE_INTEGER zero{};
+        hr = staged->Seek(zero, STREAM_SEEK_SET, NULL);
+        if (FAILED(hr)) {
+            staged->Release();
+            return hr;
+        }
+        *output = staged;
+        return S_OK;
     }
 
     // This is a client-side transfer of an already encoded image, not a COM
