@@ -7,6 +7,9 @@ until a quiescent admission check has passed.
 
 Acceptance conditions:
 - A read/write gate rejects new message submissions before STOP admission.
+- A held DLL WndProc callback is provably active while the host starts a
+  separate STOP thread: the admission state closes, the unload gate remains
+  BUSY, and STOP cannot finish until the host releases the held callback.
 - All successful PostMessage work is dispatched before the owner thread's
   STOP message; a single thread creates and destroys its HWND.
 - Nested WM_NCDESTROY and OnFinalMessage complete exactly once, and no
