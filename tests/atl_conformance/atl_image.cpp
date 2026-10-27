@@ -32,6 +32,8 @@ static int dib_and_draw() {
     ATL::CImage oversized;
     if (oversized.Create(8193, 4096, 32) ||
         oversized.Create(16384, 4096, 24) ||
+        oversized.Create(1, 40000000, 24) ||
+        oversized.Create(2, 20000000, 24) ||
         oversized.Create(65536, 65536, 32) ||
         !oversized.IsNull() || oversized.GetWidth() != 0 ||
         oversized.GetBits() != nullptr)
@@ -282,6 +284,23 @@ static int codec_roundtrip() {
     }
     if (loaded.Load(paths.png) != HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS))
         return fail(51, "reject_load_over_existing_image");
+
+    // The new file loader must have released its input file handle and
+    // GDI+ stream before returning. Exclusive file access succeeds while
+    // the decoded HBITMAP remains usable after the original is truncated.
+    HANDLE exclusive = ::CreateFileW(paths.png, GENERIC_READ | GENERIC_WRITE,
+                                     0, NULL, OPEN_EXISTING,
+                                     FILE_ATTRIBUTE_NORMAL, NULL);
+    if (exclusive == INVALID_HANDLE_VALUE)
+        return fail(132, "loaded_PNG_file_handle_leaked");
+    LARGE_INTEGER rewind{};
+    const BOOL truncated = ::SetFilePointerEx(exclusive, rewind, NULL,
+                                               FILE_BEGIN) &&
+                           ::SetEndOfFile(exclusive);
+    (void)::CloseHandle(exclusive);
+    if (!truncated || loaded.GetWidth() != 2 ||
+        static_cast<const BYTE*>(loaded.GetPixelAddress(1, 1))[3] != 200)
+        return fail(133, "decoded_PNG_must_outlive_file");
     if (source.GetWidth() != 2 || !source.HasAlphaChannel() ||
         loaded.GetPixelAddress(1, 1) == nullptr)
         return fail(52, "preserve_on_failure");
@@ -373,6 +392,11 @@ static int codec_roundtrip() {
     if (hr != HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE) ||
         !rejected.IsNull() || rejected.GetBits() != nullptr)
         return fail(131, "encoded_file_limit_preflight");
+    HANDLE afterRejected = ::CreateFileW(paths.corrupt, GENERIC_READ,
+                        0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (afterRejected == INVALID_HANDLE_VALUE)
+        return fail(134, "oversized_file_handle_leaked");
+    (void)::CloseHandle(afterRejected);
 
 
     // GDI+ itself can decode GIF, but this bounded OpenATL API must
