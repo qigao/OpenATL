@@ -96,8 +96,13 @@ is part of this repository (not a second ATL provider).
   is scoped to each call and always shut down before returning. Consumers
   invoking `CImage::Load/Save` must link Windows `gdiplus` explicitly;
   basic GDI and WTL UI targets do **not** link `gdiplus` transitively.
-  GIF/JPEG/TIFF encoders, IStream codecs, alpha compositing, GDI+ metadata,
-  and the full Microsoft ATL CImage API are **not implemented or qualified**.
+  A caller-owned `IStream*` can also be used for BMP/PNG `Load` and
+  `Save` using an explicit `ImageFormatBMP` or `ImageFormatPNG` GUID.
+  OpenATL borrows (never closes or retains) the stream; callers position and
+  release their streams themselves. File and stream paths share the same
+  validated decoder, pixel copy, encoder selection and cleanup.
+  GIF/JPEG/TIFF codecs, alpha compositing, GDI+ metadata, and the full
+  Microsoft ATL CImage API are **not implemented or qualified**.
 
 The public API is a subset of ATL; unsupported functions are not advertised
 as implemented. These utilities are CI-qualified through
