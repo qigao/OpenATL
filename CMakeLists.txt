@@ -23,6 +23,10 @@ if(NOT EXISTS "${_openatl_atl_include}/atlbase.h" OR
    NOT EXISTS "${_openatl_atl_include}/atlimage.h")
   message(FATAL_ERROR "Missing repository-owned OpenATL headers")
 endif()
+# Server-side ATL and registration are deliberately absent, not stubbed.
+if(EXISTS "${_openatl_atl_include}/atlcom.h")
+  message(FATAL_ERROR "COM Server atlcom.h is outside OpenATL UI/COM Client scope")
+endif()
 if(DEFINED OPENATL_WTL_INCLUDE_DIR)
   message(FATAL_ERROR "Manual WTL header roots are forbidden; install WTL with vcpkg.json")
 endif()

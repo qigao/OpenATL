@@ -18,11 +18,15 @@ WTL 10, and optional COM *client* helpers.** Its only supported scope is:
   VARIANT copy/Detach ownership and COM identity-query failure handling
   have native Windows tests; no registration or COM Server is added.
 
-**Not supported:** COM server creation, `IClassFactory` implementations,
-`OBJECT_ENTRY_AUTO`, `DllRegisterServer/UnregisterServer`, RGS,
-registry-based COM server installation, ActiveX hosting or a production
-class-object map. Do not infer these capabilities from unmodified upstream
-ATL header declarations. No RATL source, fallback or compatibility layer.
+**Not supported or present:** COM server creation, `IClassFactory`
+implementations, `OBJECT_ENTRY_AUTO`, `DllRegisterServer/UnregisterServer`,
+RGS, COM registration and registry writer APIs, ActiveX hosting and COM
+class-object maps. The former server-only `atlcom.h`, `CComModule`,
+`CAtlModuleT`, `CAtlComModule`, `CRegKey`, object maps and no-op
+`RegisterServer`/`AtlAxWinInit` stubs have been **deleted**, not replaced
+with compatibility shims. The real `_AtlBaseModule` and `_AtlWinModule`
+remain for Windows UI; `atlcomcli.h` remains only for the COM **client**.
+No RATL provider, fallback or alternate ATL implementation.
 
 ## CMake consumer targets
 

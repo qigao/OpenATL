@@ -22,6 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 tests/source_tree_policy.py
+      - run: python3 tests/atl_surface_policy.py
       - run: python3 tests/wtl_vcpkg_policy.py
 
   windows-llvm:

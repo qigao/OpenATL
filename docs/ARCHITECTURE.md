@@ -26,6 +26,14 @@ without COM initialization or registry writes. CPath, CAtlFile,
 CString and native Win32 synchronization are support utilities that
 live in `include/` and do not link COM Client libraries.
 
+The production header surface contains the real Win32 base and window
+modules (`_AtlBaseModule`, `_AtlWinModule`) and optional `atlcomcli.h`
+helpers. Server-side `atlcom.h`, `CComModule`/object maps, registry
+writers, class factories, registration success stubs and fake ActiveX
+initialization were removed. A separate source policy rejects their
+reintroduction; compilation with the pinned official WTL10 headers
+and the native UI/COM-client tests is the actual acceptance gate.
+
 **Excluded features:** implementing `IClassFactory` servers, registering
 COM class objects, RGS, HKCR/HKLM registry writes, self-registering DLLs,
 server-side Object Maps, in-proc/out-of-proc servers and ActiveX/OLE
