@@ -7,8 +7,9 @@ WTL 10, and optional COM *client* helpers.** Its only supported scope is:
   resources and WTL10 frames, without `CoInitializeEx()`.
 - In-tree ATL utilities: `CString`, `CAtlFile`, `CPath`, Win32
   synchronization, plus `atlmem.h` (`IAtlMemMgr`, `CWin32Heap`),
-  `atltime.h` (`CFileTime`, `CFileTimeSpan`) and
-  `atlcoll.h` (`CAtlArray`); no COM apartment needed.
+  `atltime.h` (`CFileTime`, `CFileTimeSpan`),
+  `atlcoll.h` (`CAtlArray`), and `atlfile.h` (`CAtlFileMappingBase`,
+  `CAtlFileMapping<T>`); no COM apartment needed.
 - COM **client**: `CComPtr`, `CComBSTR`, `CComVariant`, and
   `CoCreateInstance` of existing Windows components after the *application*
   explicitly initializes a COM apartment.
@@ -81,6 +82,11 @@ is part of this repository (not a second ATL provider).
   arithmetic and optional overflow-checked addition.
 - `atlcoll.h`: typed `CAtlArray` with safe object lifetime, capacity
   growth, removal and allocation failure reporting.
+- `atlfile.h`: file-backed and named shared-memory mapping, including
+  unaligned Win32 view offsets, explicit close/unmap, move ownership,
+  independent handle/view duplication with `CopyFrom` and bounded mapping
+  sizes. `MapFile` deliberately rejects extending the mapped file: callers
+  explicitly size the underlying file through `CAtlFile` first.
 
 The public API is a subset of ATL; unsupported functions are not advertised
 as implemented. These utilities are CI-qualified through
