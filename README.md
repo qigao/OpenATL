@@ -177,10 +177,11 @@ vcpkg does not install OpenATL.
 
 ## CI structure
 
-The pinned WTL UI overlay retains MRU menu helpers and CFindFile. It currently
-removes MRU persistence operations together with the
-Internet Explorer registry hyperlink colors and COM-based extended print
-callbacks. No COM Server API or registration shim is reintroduced. Win32 CRegKey
+The pinned WTL UI overlay retains MRU menu helpers, CFindFile and ordinary
+HKCU registry MRU persistence through source-owned CRegKey, with native menu,
+capacity, dedup, reorder and persistence tests. It still removes the separate
+CRegProperty serializer, Internet Explorer registry hyperlink colors and
+COM-based extended print callbacks. No COM Server API or registration shim is reintroduced. Win32 CRegKey
 is confined to include/atlreg.h; its native HKCU tests cover ownership,
 values, errors and access masks without COM initialization.
 

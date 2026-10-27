@@ -172,15 +172,11 @@ if(_wtl_ui_text MATCHES "#include <atlcom.h>" OR
 endif()
 file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
 
-# Keep MRU menu operations and file search, remove only registry I/O.
+# Preserve MRU menu operations and per-user registry persistence.
+# These are ordinary app settings via OpenATL::CRegKey, not COM registration.
 set(_wtl_ui_header "${SOURCE_PATH}/Include/atlmisc.h")
 file(READ "${_wtl_ui_header}" _wtl_ui_text)
 string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
-_openatl_replace_between(
-    "\tBOOL ReadFromRegistry(LPCTSTR lpstrRegKey)"
-    "// Implementation"
-    ""
-    "MRU registry persistence")
 # This SourceForge release has a separate CRegProperty registry-backed
 # serializer, independent of the real MRU and CFindFile UI helpers.
 _openatl_replace_between(
@@ -188,21 +184,13 @@ _openatl_replace_between(
     "// Global functions for stock GDI objects"
     ""
     "registry-only CRegProperty module")
-string(FIND "${_wtl_ui_text}" "ATL::CRegKey" _wtl_reg_position)
-if(NOT _wtl_reg_position EQUAL -1)
-    # Show only the relevant source neighborhood, so exact SourceForge
-    # ownership can be corrected without dropping unrelated UI utilities.
-    math(EXPR _wtl_reg_begin "${_wtl_reg_position} - 160")
-    if(_wtl_reg_begin LESS 0)
-        set(_wtl_reg_begin 0)
-    endif()
-    string(SUBSTRING "${_wtl_ui_text}" ${_wtl_reg_begin} 340 _wtl_reg_context)
-    message(FATAL_ERROR "WTL UI-only: registry symbol at ${_wtl_reg_position}: ${_wtl_reg_context}")
-endif()
-if(_wtl_ui_text MATCHES "ReadFromRegistry\\(" OR
-   _wtl_ui_text MATCHES "WriteToRegistry\\(" OR
+# Fail closed if upstream changes the MRU API or resurrects the
+# unrelated CRegProperty serializer. Registry access remains owned by CRegKey.
+if(NOT _wtl_ui_text MATCHES "ReadFromRegistry\\(" OR
+   NOT _wtl_ui_text MATCHES "WriteToRegistry\\(" OR
+   NOT _wtl_ui_text MATCHES "ATL::CRegKey" OR
    _wtl_ui_text MATCHES "class CRegProperty")
-    message(FATAL_ERROR "WTL UI-only: atlmisc.h still exposes MRU registry methods")
+    message(FATAL_ERROR "WTL UI-only: MRU persistence missing or registry serializer returned")
 endif()
 if(NOT _wtl_ui_text MATCHES "CRecentDocumentListBase")
     message(FATAL_ERROR "WTL UI-only: CRecentDocumentListBase menu helper missing")

@@ -53,12 +53,14 @@ def check() -> int:
             "COM callback-based PrintDlgEx" not in recipe or
             "CPageSetupDialogImpl - Page Setup dialog" not in recipe):
         errors.append("WTL overlay must remove registry hyperlink and COM print callbacks")
-    if ("MRU registry persistence" not in recipe or
+    if ("Preserve MRU menu operations and per-user registry persistence" not in recipe or
+            "ReadFromRegistry" not in recipe or
+            "WriteToRegistry" not in recipe or
             "CRecentDocumentListBase" not in recipe or
             "CFindFile" not in recipe or
             "registry-only CRegProperty module" not in recipe or
             "AtlGetStockPen" not in recipe):
-        errors.append("WTL MRU persistence deletion must preserve normal menu/file utilities")
+        errors.append("WTL MRU registry persistence and normal menu/file utilities must be retained")
     sample_patch = ROOT / "tests/wtl10/wtltest-ui-only.patch"
     if not sample_patch.exists() or (
             "-    hRes = _Module.Init(NULL, hInstance);" not in

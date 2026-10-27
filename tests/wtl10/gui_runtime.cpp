@@ -36,6 +36,7 @@ static_assert(sizeof(ATL::_DialogSplitHelper::DLGTEMPLATEEX) == 26,
 static_assert(sizeof(ATL::_DialogSplitHelper::DLGITEMTEMPLATEEX) == 24,
               "Win32 extended item template size changed");
 #include <atlctrls.h>
+#include <atlmisc.h>
 #include "gui_runtime_resource.h"
 
 #if !defined(OPENATL_REPOSITORY_HEADERS) || OPENATL_REPOSITORY_HEADERS != 0x4F41544CUL
@@ -259,6 +260,111 @@ static bool check_dialog()
     return true;
 }
 
+
+struct OwnedPopupMenu {
+    HMENU menu;
+    OwnedPopupMenu() : menu(::CreatePopupMenu()) {}
+    ~OwnedPopupMenu() { if (menu != NULL) ::DestroyMenu(menu); }
+    OwnedPopupMenu(const OwnedPopupMenu&) = delete;
+    OwnedPopupMenu& operator=(const OwnedPopupMenu&) = delete;
+};
+
+struct MRURegistryFixture {
+    wchar_t path[160] = {};
+    MRURegistryFixture() {
+        swprintf_s(path, _countof(path), L"Software\\OpenATL_MRU_%lu_%lu",
+                   static_cast<unsigned long>(::GetCurrentProcessId()),
+                   static_cast<unsigned long>(::GetTickCount()));
+    }
+    ~MRURegistryFixture() {
+        if (path[0] != 0)
+            (void)::RegDeleteTreeW(HKEY_CURRENT_USER, path);
+    }
+};
+
+static bool mru_fail(const char* stage) {
+    fprintf(stderr, "WTL10_MRU_FAIL stage=%s winerr=%lu\n",
+            stage, static_cast<unsigned long>(::GetLastError()));
+    return false;
+}
+
+static bool mru_equals(WTL::CRecentDocumentList& recent,
+                       int menuId, const wchar_t* expected) {
+    wchar_t value[MAX_PATH] = {};
+    return recent.GetFromList(menuId, value, _countof(value)) &&
+           ::lstrcmpW(value, expected) == 0;
+}
+
+static bool check_mru_registry_and_menu() {
+    OwnedPopupMenu original;
+    if (original.menu == NULL ||
+        !::AppendMenuW(original.menu, MF_STRING | MF_GRAYED,
+                       ID_FILE_MRU_FIRST, L"(empty)"))
+        return mru_fail("popup_menu");
+
+    WTL::CRecentDocumentList recent;
+    recent.SetMenuHandle(original.menu);
+    recent.SetMaxEntries(3);
+    if (!recent.AddToList(L"C:\\Alpha.txt") ||
+        !recent.AddToList(L"C:\\Beta.txt") ||
+        !recent.AddToList(L"C:\\\u6771\u4eac.txt") ||
+        !recent.AddToList(L"C:\\Delta.txt"))
+        return mru_fail("add_capacity");
+
+    // Fourth insertion evicts Alpha; newest-first menu IDs map D, Tokyo, B.
+    if (recent.m_arrDocs.GetSize() != 3 ||
+        !mru_equals(recent, ID_FILE_MRU_FIRST, L"C:\\Delta.txt") ||
+        !mru_equals(recent, ID_FILE_MRU_FIRST + 1, L"C:\\\u6771\u4eac.txt") ||
+        !mru_equals(recent, ID_FILE_MRU_FIRST + 2, L"C:\\Beta.txt"))
+        return mru_fail("eviction_order");
+
+    if (!recent.MoveToTop(ID_FILE_MRU_FIRST + 1) ||
+        !mru_equals(recent, ID_FILE_MRU_FIRST, L"C:\\\u6771\u4eac.txt") ||
+        !recent.RemoveFromList(ID_FILE_MRU_FIRST + 2) ||
+        recent.m_arrDocs.GetSize() != 2)
+        return mru_fail("reorder_remove");
+
+    // Case-insensitive duplicate must move existing entry, not add another.
+    if (!recent.AddToList(L"c:\\\u6771\u4eac.txt") ||
+        recent.m_arrDocs.GetSize() != 2 ||
+        !mru_equals(recent, ID_FILE_MRU_FIRST, L"c:\\\u6771\u4eac.txt") ||
+        !mru_equals(recent, ID_FILE_MRU_FIRST + 1, L"C:\\Delta.txt"))
+        return mru_fail("dedup");
+
+    wchar_t menuLabel[MAX_PATH + 16] = {};
+    if (::GetMenuStringW(original.menu, ID_FILE_MRU_FIRST,
+                         menuLabel, _countof(menuLabel), MF_BYCOMMAND) == 0 ||
+        ::lstrcmpW(menuLabel, L"&1 c:\\\u6771\u4eac.txt") != 0)
+        return mru_fail("menu_text");
+
+    wchar_t tooShort[2] = {};
+    if (recent.GetFromList(ID_FILE_MRU_FIRST, tooShort,
+                           _countof(tooShort)) ||
+        recent.GetFromList(ID_FILE_MRU_FIRST + 2, menuLabel,
+                           _countof(menuLabel)))
+        return mru_fail("item_bounds");
+
+    MRURegistryFixture scope;
+    if (scope.path[0] == 0 || !recent.WriteToRegistry(scope.path))
+        return mru_fail("registry_write");
+    OwnedPopupMenu restoredMenu;
+    if (restoredMenu.menu == NULL ||
+        !::AppendMenuW(restoredMenu.menu, MF_STRING | MF_GRAYED,
+                       ID_FILE_MRU_FIRST, L"(empty)"))
+        return mru_fail("restored_menu");
+    WTL::CRecentDocumentList restored;
+    restored.SetMenuHandle(restoredMenu.menu);
+    if (!restored.ReadFromRegistry(scope.path) ||
+        restored.GetMaxEntries() != 3 ||
+        restored.m_arrDocs.GetSize() != 2 ||
+        !mru_equals(restored, ID_FILE_MRU_FIRST, L"c:\\\u6771\u4eac.txt") ||
+        !mru_equals(restored, ID_FILE_MRU_FIRST + 1, L"C:\\Delta.txt"))
+        return mru_fail("registry_roundtrip");
+
+    ULONG_PTR context = 0;
+    return ::CoGetContextToken(&context) == CO_E_NOTINITIALIZED;
+}
+
 int main(void)
 {
     // UI-only contract: no COM apartment is initialized by this process.
@@ -278,16 +384,17 @@ int main(void)
     const bool thunk_ok = check_thunk();
     const bool window_ok = thunk_ok && check_window();
     const bool dialog_ok = window_ok && check_dialog();
+    const bool mru_ok = dialog_ok && check_mru_registry_and_menu();
 
     _Module.Term();
     const bool no_com = (::CoGetContextToken(&context_token) == CO_E_NOTINITIALIZED);
 
-    if (!thunk_ok || !window_ok || !dialog_ok || !no_com) {
-        fprintf(stderr, "WTL10 GUI runtime FAILURE thunk=%d window=%d dialog=%d no_com=%d err=%lu\n",
-                (int)thunk_ok, (int)window_ok, (int)dialog_ok, (int)no_com,
-                (unsigned long)::GetLastError());
-        return !thunk_ok ? 20 : (!window_ok ? 21 : (!dialog_ok ? 22 : 23));
+    if (!thunk_ok || !window_ok || !dialog_ok || !mru_ok || !no_com) {
+        fprintf(stderr, "WTL10 GUI runtime FAILURE thunk=%d window=%d dialog=%d mru=%d no_com=%d err=%lu\n",
+                (int)thunk_ok, (int)window_ok, (int)dialog_ok, (int)mru_ok,
+                (int)no_com, (unsigned long)::GetLastError());
+        return !thunk_ok ? 20 : (!window_ok ? 21 : (!dialog_ok ? 22 : (!mru_ok ? 24 : 23)));
     }
-    puts("WTL10 GUI runtime PASS: no COM apartment, W^X thunk x64/ARM64, message maps, resource dialog, NCDESTROY, OnFinalMessage");
+    puts("WTL10 GUI runtime PASS: no COM apartment, W^X thunk x64/ARM64, message maps, resource dialog, NCDESTROY, OnFinalMessage, MRU");
     return 0;
 }

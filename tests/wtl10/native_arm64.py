@@ -27,7 +27,7 @@ TARGETS = (
 )
 
 CASES = (
-    ("openatl_gui_runtime", (), "WTL10 GUI runtime PASS: no COM apartment, W^X thunk x64/ARM64, message maps, resource dialog, NCDESTROY, OnFinalMessage"),
+    ("openatl_gui_runtime", (), "WTL10 GUI runtime PASS: no COM apartment, W^X thunk x64/ARM64, message maps, resource dialog, NCDESTROY, OnFinalMessage, MRU"),
     ("openatl_atl_core", (), "ATL_CORE_OK file=1 string=1 sync=1 registry=1 no_com=1"),
     ("openatl_atl_path", (), "ATL_PATH_OK unicode=1 file=1 relative=1 root=1"),
     ("openatl_atl_extensions", (), "ATL_EXTENSIONS_OK heap=1 filetime=1 array=1 list=1 no_com=1"),

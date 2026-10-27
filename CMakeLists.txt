@@ -85,14 +85,14 @@ if(OPENATL_BUILD_QUALIFICATION)
     message(FATAL_ERROR "The pinned vcpkg WTL10 source must be UI-only with Init(HINSTANCE)")
   endif()
   file(READ "${_wtl_headers}/atlmisc.h" _wtl_mru_scope)
-  if(_wtl_mru_scope MATCHES "ATL::CRegKey" OR
-     _wtl_mru_scope MATCHES "ReadFromRegistry\\(" OR
-     _wtl_mru_scope MATCHES "WriteToRegistry\\(" OR
+  if(NOT _wtl_mru_scope MATCHES "ATL::CRegKey" OR
+     NOT _wtl_mru_scope MATCHES "ReadFromRegistry\\(" OR
+     NOT _wtl_mru_scope MATCHES "WriteToRegistry\\(" OR
      _wtl_mru_scope MATCHES "class CRegProperty" OR
      NOT _wtl_mru_scope MATCHES "CRecentDocumentListBase" OR
      NOT _wtl_mru_scope MATCHES "class CFindFile" OR
      NOT _wtl_mru_scope MATCHES "AtlGetStockPen")
-    message(FATAL_ERROR "WTL UI-only: registry MRU or missing menu/file utilities")
+    message(FATAL_ERROR "WTL UI-only: missing MRU persistence/menu/file utilities or registry serializer returned")
   endif()
   file(READ "${_wtl_headers}/atlctrlx.h" _wtl_hyperlink_scope)
   file(READ "${_wtl_headers}/atldlgs.h" _wtl_dialog_scope)
@@ -113,7 +113,7 @@ if(OPENATL_BUILD_QUALIFICATION)
   target_link_libraries(openatl_gui_runtime PRIVATE OpenATL::ATL
     # ole32 is used by the test ONLY to prove COM stays uninitialized.
     ole32 comctl32 gdi32 user32 shell32 shlwapi
-    comdlg32 uxtheme msimg32 oleaut32 uuid)
+    comdlg32 uxtheme msimg32 oleaut32 uuid advapi32)
   add_test(NAME openatl.ui_no_com COMMAND openatl_gui_runtime)
 
   # Repository-owned ATL utilities (file/string/sync), independent of COM.
@@ -187,7 +187,7 @@ if(OPENATL_BUILD_QUALIFICATION)
     target_include_directories(openatl_wtl10_sdi PRIVATE "${OPENATL_WTL_DEMO_DIR}" "${_wtl_headers}")
     target_link_libraries(openatl_wtl10_sdi PRIVATE OpenATL::ATL
       ole32 oleaut32 uuid comctl32 msimg32 uxtheme gdi32 comdlg32
-      shell32 shlwapi dwmapi user32)
+      shell32 shlwapi dwmapi user32 advapi32)
     if(MSVC)
       set_property(TARGET openatl_wtl10_sdi PROPERTY
         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
