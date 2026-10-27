@@ -148,6 +148,26 @@ if(OPENATL_BUILD_QUALIFICATION)
 
   # Direct OS failure injection is compiled from the in-repo atlwin.h
   # and isolated behind OPENATL_WX_FAULT_TEST.
+  add_executable(openatl_mitigation_runtime tests/wtl10/mitigation_runtime.cpp)
+  target_link_libraries(openatl_mitigation_runtime PRIVATE OpenATL::ATL)
+  add_test(NAME openatl.mitigation_runtime COMMAND openatl_mitigation_runtime)
+  # Opt into real toolchain CFG/CET on this isolated native binary. Its
+  # PE and process policies are separately checked; these flags alone
+  # never count as mitigation evidence for downstream consumers.
+  if(MSVC)
+    target_compile_options(openatl_mitigation_runtime PRIVATE /guard:cf)
+    target_link_options(openatl_mitigation_runtime PRIVATE /GUARD:CF /DYNAMICBASE /NXCOMPAT)
+    if(VCPKG_TARGET_TRIPLET MATCHES "^x64-")
+      target_link_options(openatl_mitigation_runtime PRIVATE /CETCOMPAT)
+    endif()
+  else()
+    target_compile_options(openatl_mitigation_runtime PRIVATE -Xclang -cfguard)
+    target_link_options(openatl_mitigation_runtime PRIVATE -Wl,-Xlink,-guard:cf)
+    if(VCPKG_TARGET_TRIPLET MATCHES "^x64-")
+      target_link_options(openatl_mitigation_runtime PRIVATE -Wl,-Xlink,-cetcompat)
+    endif()
+  endif()
+
   add_executable(openatl_thunk_fault tests/wtl10/thunk_fault.cpp)
   target_compile_definitions(openatl_thunk_fault PRIVATE OPENATL_WX_FAULT_TEST=1)
   target_link_libraries(openatl_thunk_fault PRIVATE OpenATL::ATL)
@@ -163,7 +183,7 @@ if(OPENATL_BUILD_QUALIFICATION)
              COMMAND openatl_com_client "--${_client_mode}")
   endforeach()
 
-  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
+  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_mitigation_runtime openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)
     if(MSVC)
       set_property(TARGET ${_qualified} PROPERTY
