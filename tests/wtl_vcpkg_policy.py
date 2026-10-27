@@ -37,8 +37,8 @@ def check() -> int:
     if ("vcpkg_from_sourceforge(" not in recipe or
             "086a6cf6a49a4318a8c519136ba6019" not in recipe):
         errors.append("WTL vcpkg overlay must retain pinned upstream recipe")
-    if port.get("port-version") != 8:
-        errors.append("WTL UI-only overlay must use exact #8")
+    if port.get("port-version") != 9:
+        errors.append("WTL UI-only overlay must use exact #9")
     if "atlapp.h-openatl-ui-only.patch" in recipe or (
             ROOT / "ports/wtl/atlapp.h-openatl-ui-only.patch").exists():
         errors.append("Mismatched mirror-based WTL UI patch is forbidden")
@@ -49,6 +49,10 @@ def check() -> int:
     if ("CServerAppModule - module class for a COM server application" not in recipe
             or "ATL::_pAtlModule->m_csStaticDataInitAndTypeInfo" not in recipe):
         errors.append("Missing Win32 lock or Server deletion anchors")
+    if ("legacy hyperlink registry color access" not in recipe or
+            "COM callback-based PrintDlgEx" not in recipe or
+            "CPageSetupDialogImpl - Page Setup dialog" not in recipe):
+        errors.append("WTL overlay must remove registry hyperlink and COM print callbacks")
     sample_patch = ROOT / "tests/wtl10/wtltest-ui-only.patch"
     if not sample_patch.exists() or (
             "-    hRes = _Module.Init(NULL, hInstance);" not in

@@ -1,4 +1,4 @@
-# WTL 10.0.10320 overlay #8: SHA512-pinned SourceForge source is
+# WTL 10.0.10320 overlay #9: SHA512-pinned SourceForge source is
 # transformed using unique structural anchors; no mirror patch or
 # registry/COM Server compatibility fallback.
 # Difference: our overlay removes the stock WTL -> atl dependency;
@@ -136,6 +136,38 @@ if(NOT _wtl_ui_text MATCHES "HRESULT Init\\(HINSTANCE hInstance\\)" OR
    _wtl_ui_text MATCHES "typedef ATL::CRegKey CRegKeyEx" OR
    _wtl_ui_text MATCHES "ATL::_pAtlModule")
     message(FATAL_ERROR "WTL UI-only source still exposes COM Server")
+endif()
+file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+
+# Legacy IE-registry color lookup adds no required UI capability.
+set(_wtl_ui_header "${SOURCE_PATH}/Include/atlctrlx.h")
+file(READ "${_wtl_ui_header}" _wtl_ui_text)
+string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
+_openatl_replace_between(
+    "\t\t// set link colors"
+    "\tbool CalcLabelRect()"
+    "\t}\n\n\t"
+    "legacy hyperlink registry color access")
+if(_wtl_ui_text MATCHES "ATL::CRegKey" OR
+   _wtl_ui_text MATCHES "_ParseColorString")
+    message(FATAL_ERROR "WTL UI-only: registry hyperlink code still present")
+endif()
+file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+
+# Preserve standard common printing, page setup and property sheets;
+# only the COM callback-based PrintDlgEx implementation requires atlcom.h.
+set(_wtl_ui_header "${SOURCE_PATH}/Include/atldlgs.h")
+file(READ "${_wtl_ui_header}" _wtl_ui_text)
+string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
+_openatl_replace_between(
+    "#include <atlcom.h>"
+    "// CPageSetupDialogImpl - Page Setup dialog"
+    "namespace WTL\n{\n\n"
+    "COM callback-based PrintDlgEx")
+if(_wtl_ui_text MATCHES "#include <atlcom.h>" OR
+   _wtl_ui_text MATCHES "CPrintDialogExImpl" OR
+   NOT _wtl_ui_text MATCHES "class CPageSetupDialog")
+    message(FATAL_ERROR "WTL UI-only: common-dialog/COM separation invalid")
 endif()
 file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
 unset(_wtl_ui_header)

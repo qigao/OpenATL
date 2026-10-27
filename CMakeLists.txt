@@ -84,6 +84,15 @@ if(OPENATL_BUILD_QUALIFICATION)
      _wtl_scope MATCHES "class CAppModule : public ATL::CComModule")
     message(FATAL_ERROR "The pinned vcpkg WTL10 source must be UI-only with Init(HINSTANCE)")
   endif()
+  file(READ "${_wtl_headers}/atlctrlx.h" _wtl_hyperlink_scope)
+  file(READ "${_wtl_headers}/atldlgs.h" _wtl_dialog_scope)
+  if(_wtl_hyperlink_scope MATCHES "ATL::CRegKey" OR
+     _wtl_hyperlink_scope MATCHES "_ParseColorString" OR
+     _wtl_dialog_scope MATCHES "#include <atlcom.h>" OR
+     _wtl_dialog_scope MATCHES "CPrintDialogExImpl" OR
+     NOT _wtl_dialog_scope MATCHES "class CPageSetupDialog")
+    message(FATAL_ERROR "WTL UI-only: registry or COM printing callbacks still exposed")
+  endif()
   enable_language(RC)
   enable_testing()
 
