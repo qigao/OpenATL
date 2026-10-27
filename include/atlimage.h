@@ -209,29 +209,26 @@ public:
     }
 
 
-    // Decode a BMP/PNG file without transferring an HBITMAP through GDI+.
-    // Copies full BGRA scanlines into an owned top-down Win32 DIB, including
-    // per-pixel alpha. On failure *this remains empty. Does not open a COM
-    // apartment, register codecs, or retain process-wide GDI+ state.
+    // Decode only a bounded BMP/PNG byte snapshot, never reopen a
+    // second path after inspecting its size. The caller owns the path;
+    // OpenATL closes its Win32 handle and temporary HGLOBAL stream before
+    // returning. No COM apartment, registry or server is created.
     HRESULT Load(LPCTSTR filename) noexcept {
         if (filename == NULL || *filename == 0)
             return E_INVALIDARG;
         if (bitmap_ != NULL)
             return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
-        // Reject a known oversized encoded file before initializing GDI+.
-        // The same 64 MiB policy applies to file paths and borrowed streams.
-        WIN32_FILE_ATTRIBUTE_DATA fileInfo{};
-        if (::GetFileAttributesExW(filename, GetFileExInfoStandard, &fileInfo)) {
-            const ULONGLONG length =
-                (static_cast<ULONGLONG>(fileInfo.nFileSizeHigh) << 32) |
-                static_cast<ULONGLONG>(fileInfo.nFileSizeLow);
-            if (length > kMaximumEncodedBytes)
-                return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
-        }
+        struct InputOwner {
+            IStream* p = NULL;
+            ~InputOwner() { if (p != NULL) p->Release(); }
+        } staged;
+        HRESULT hr = SnapshotEncodedFile(filename, &staged.p);
+        if (FAILED(hr))
+            return hr;
         CodecSession session;
         if (!session.active())
             return CodecHRESULT(session.status);
-        Gdiplus::Bitmap decoded(filename, FALSE);
+        Gdiplus::Bitmap decoded(staged.p, FALSE);
         return DecodeBitmap(decoded);
     }
 
@@ -479,6 +476,80 @@ private:
         if (stream == NULL)
             return S_OK;
         return CopyEncodedStream(scratch.p, stream);
+    }
+
+    // Open the image file once, take a bounded byte snapshot, and then
+    // let GDI+ decode only that immutable HGLOBAL stream. A metadata check
+    // followed by GDI+ reopening the original path would be a size TOCTOU
+    // gap. Neither file position nor file handle escapes this helper.
+    static HRESULT SnapshotEncodedFile(LPCTSTR filename,
+                                        IStream** output) noexcept {
+        if (filename == NULL || output == NULL)
+            return E_POINTER;
+        *output = NULL;
+        struct FileOwner {
+            HANDLE handle = INVALID_HANDLE_VALUE;
+            ~FileOwner() {
+                if (handle != INVALID_HANDLE_VALUE)
+                    (void)::CloseHandle(handle);
+            }
+        } file;
+        file.handle = ::CreateFileW(filename, GENERIC_READ, FILE_SHARE_READ,
+                NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (file.handle == INVALID_HANDLE_VALUE)
+            return HRESULT_FROM_WIN32(::GetLastError());
+        LARGE_INTEGER length{};
+        if (!::GetFileSizeEx(file.handle, &length))
+            return HRESULT_FROM_WIN32(::GetLastError());
+        if (length.QuadPart <= 0)
+            return STG_E_READFAULT;
+        if (static_cast<ULONGLONG>(length.QuadPart) > kMaximumEncodedBytes)
+            return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
+
+        struct StreamOwner {
+            IStream* stream = NULL;
+            ~StreamOwner() {
+                if (stream != NULL) stream->Release();
+            }
+        } staged;
+        HRESULT hr = ::CreateStreamOnHGlobal(NULL, TRUE, &staged.stream);
+        if (FAILED(hr))
+            return hr;
+        if (staged.stream == NULL)
+            return E_FAIL;
+        ULONGLONG remaining = static_cast<ULONGLONG>(length.QuadPart);
+        BYTE buffer[8192];
+        while (remaining != 0) {
+            const DWORD amount = remaining > sizeof(buffer) ?
+                static_cast<DWORD>(sizeof(buffer)) :
+                static_cast<DWORD>(remaining);
+            DWORD received = 0;
+            if (!::ReadFile(file.handle, buffer, amount, &received, NULL))
+                return HRESULT_FROM_WIN32(::GetLastError());
+            if (received != amount)
+                return STG_E_READFAULT;
+            ULONG written = 0;
+            hr = staged.stream->Write(buffer, received, &written);
+            if (FAILED(hr))
+                return hr;
+            if (hr != S_OK || written != received)
+                return STG_E_WRITEFAULT;
+            remaining -= received;
+        }
+        // An existing writer might have had the file open before us;
+        // do not accept a changed length between metadata and snapshot.
+        LARGE_INTEGER after{};
+        if (!::GetFileSizeEx(file.handle, &after))
+            return HRESULT_FROM_WIN32(::GetLastError());
+        if (after.QuadPart != length.QuadPart)
+            return STG_E_READFAULT;
+        LARGE_INTEGER zero{};
+        hr = staged.stream->Seek(zero, STREAM_SEEK_SET, NULL);
+        if (FAILED(hr))
+            return hr;
+        *output = staged.stream;
+        staged.stream = NULL;
+        return S_OK;
     }
 
     // Some OS IStreams (notably CreateStreamOnHGlobal) return S_OK
