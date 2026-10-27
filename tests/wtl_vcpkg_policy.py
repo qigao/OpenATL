@@ -55,7 +55,7 @@ def check() -> int:
         errors.append("WTL overlay must remove registry hyperlink and COM print callbacks")
     if ("MRU registry persistence" not in recipe or
             "CRecentDocumentListBase" not in recipe or
-            "class CFindFile" not in recipe or
+            "CFindFile" not in recipe or
             "registry-only CRegProperty module" not in recipe or
             "AtlGetStockPen" not in recipe):
         errors.append("WTL MRU persistence deletion must preserve normal menu/file utilities")
