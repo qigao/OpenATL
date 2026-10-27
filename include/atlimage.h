@@ -452,11 +452,28 @@ private:
         return CopyEncodedStream(scratch.p, stream);
     }
 
-    // IStream::Read returns S_FALSE at EOF. S_OK with fewer bytes than
-    // requested violates the COM stream contract; do not let GDI+ silently
-    // accept a short successful read. This helper never seeks, closes or
-    // retains the source stream; failed reads may advance the caller's
-    // current position, which is explicitly not transactional.
+    // Some OS IStreams (notably CreateStreamOnHGlobal) return S_OK
+    // with a short read at EOF. Accept this only if Stat and a
+    // position-preserving Seek(CUR, 0) prove the read pointer is at the
+    // stream's logical end. Custom short-S_OK streams lacking that
+    // evidence fail closed, instead of silently truncating encoded data.
+    static bool ConfirmSourceEOF(IStream* source) noexcept {
+        if (source == NULL)
+            return false;
+        STATSTG info{};
+        if (FAILED(source->Stat(&info, STATFLAG_NONAME)))
+            return false;
+        LARGE_INTEGER zero{};
+        ULARGE_INTEGER position{};
+        if (FAILED(source->Seek(zero, STREAM_SEEK_CUR, &position)))
+            return false;
+        return position.QuadPart == info.cbSize.QuadPart;
+    }
+
+    // Snapshot caller-owned bytes before decoding. Source can advance,
+    // including on failure; this is not a transactional read. The only
+    // Seek used on source is a zero-offset position query for short
+    // successful EOF, which never intentionally changes its position.
     static HRESULT SnapshotEncodedInput(IStream* source,
                                          IStream** output) noexcept {
         if (source == NULL || output == NULL)
@@ -480,10 +497,17 @@ private:
                 return hr;
             }
             if ((hr != S_OK && hr != S_FALSE) ||
-                read > sizeof(buffer) ||
-                (hr == S_OK && read != sizeof(buffer))) {
+                read > sizeof(buffer)) {
                 staged->Release();
                 return STG_E_READFAULT;
+            }
+            if (hr == S_OK && read != sizeof(buffer)) {
+                if (!ConfirmSourceEOF(source)) {
+                    staged->Release();
+                    return STG_E_READFAULT;
+                }
+                // Normalize the proven EOF to the standard S_FALSE path.
+                hr = S_FALSE;
             }
             if (read > kMaximumEncodedBytes - accumulated) {
                 staged->Release();
