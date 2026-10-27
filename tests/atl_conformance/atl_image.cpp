@@ -803,12 +803,13 @@ static int decoder_failure_injection() {
         FaultReadStream::Policy mode;
         HRESULT expected;
         ULONG calls;
+        ULONG otherCalls; // A short S_OK probes Stat once to verify EOF.
     };
     const Scenario cases[] = {
-        {FaultReadStream::ShortPositive, STG_E_READFAULT, 1},
-        {FaultReadStream::ShortZero, STG_E_READFAULT, 1},
-        {FaultReadStream::FailImmediately, STG_E_MEDIUMFULL, 1},
-        {FaultReadStream::FailSecond, STG_E_MEDIUMFULL, 2}
+        {FaultReadStream::ShortPositive, STG_E_READFAULT, 1, 1},
+        {FaultReadStream::ShortZero, STG_E_READFAULT, 1, 1},
+        {FaultReadStream::FailImmediately, STG_E_MEDIUMFULL, 1, 0},
+        {FaultReadStream::FailSecond, STG_E_MEDIUMFULL, 2, 0}
     };
     for (const auto& test : cases) {
         if (!full.Rewind())
@@ -817,7 +818,7 @@ static int decoder_failure_injection() {
         ATL::CImage rejected;
         hr = rejected.Load(&stream);
         if (hr != test.expected || stream.calls != test.calls ||
-            stream.otherCalls != 0 || stream.refs != 1 ||
+            stream.otherCalls != test.otherCalls || stream.refs != 1 ||
             !rejected.IsNull() || rejected.GetWidth() != 0)
             return fail(117, "read_failure_hardened_HRESULT_and_owner");
     }
