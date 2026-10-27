@@ -4,7 +4,7 @@
 This is an acceptance test, not a build/bootstrap script. It checks a
 SHA256 provenance manifest, genuine Windows ARM64 execution, resources,
 and each existing GUI/no-COM, ATL utility, W^X, and COM-client mode.
-The externally sourced WTL10 SDI sample is link/PE qualified only.
+The SHA-pinned WTL10 SDI sample is PE-verified and exercised through real native menus, dialogs, buttons and edit-change events.
 """
 import hashlib
 import json
@@ -79,7 +79,7 @@ def main() -> int:
                              errors="replace", timeout=45, check=False)
         if (sdi.returncode != 0 or sdi.stderr.strip() or
                 sdi.stdout.strip() !=
-                "OPENATL_SDI_UI_OK menu=1 controls=1 click=1 about=1 options=1 exit=1"):
+                "OPENATL_SDI_UI_OK menu=1 controls=1 click=1 edit=1 about=1 options=1 exit=1"):
             raise SystemExit(
                 f"Native ARM64 real SDI UI repeat {attempt} "
                 f"exit={sdi.returncode} stdout={sdi.stdout!r} "

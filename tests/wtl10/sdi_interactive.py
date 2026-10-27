@@ -37,7 +37,6 @@ def main() -> int:
     if executable.suffix.lower() != ".exe":
         raise SystemExit("Refuse non-executable SDI target")
     u = ctypes.WinDLL("user32", use_last_error=True)
-    k = ctypes.WinDLL("kernel32", use_last_error=True)
 
     callback = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     u.EnumWindows.argtypes = [callback, wintypes.LPARAM]
@@ -50,6 +49,8 @@ def main() -> int:
     u.IsWindow.restype = wintypes.BOOL
     u.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
     u.GetWindowTextW.restype = ctypes.c_int
+    u.SetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPCWSTR]
+    u.SetWindowTextW.restype = wintypes.BOOL
     u.GetMenu.argtypes = [wintypes.HWND]
     u.GetMenu.restype = wintypes.HMENU
     u.GetMenuItemCount.argtypes = [wintypes.HMENU]
@@ -145,9 +146,6 @@ def main() -> int:
 
         post(frame, ID_VIEW_CONTROLS)
         def controls_window():
-            title = caption(frame)
-            if title.startswith("OPENATL_SDI_CONTROLS_FAILED_"):
-                raise RuntimeError("WTL10 DoModal failed: " + title)
             return next((h for h, name in windows(process.pid)
                          if "All WTL Controls Showcase" in name), None)
         controls = until("native All Controls dialog", controls_window)
@@ -162,6 +160,20 @@ def main() -> int:
             raise RuntimeError(f"native BM_CLICK timed out: {ctypes.get_last_error()}")
         until("native click handler changed button label",
               lambda: caption(button) == "Push (1)")
+
+        # Exercise actual cross-process WM_SETTEXT + EN_CHANGE forwarding
+        # through the original WTL10 edit control and dialog message map.
+        # Unlike posting a command ID, this proves both text marshaling and
+        # the visible mutation produced by the real input event.
+        edit = u.GetDlgItem(controls, IDC_EDIT1)
+        new_text = "OpenATL-東京"
+        if not edit or not u.SetWindowTextW(edit, new_text):
+            raise RuntimeError(
+                f"native edit WM_SETTEXT failed: {ctypes.get_last_error()}")
+        until("edit change propagated to real dialog title",
+              lambda: caption(edit) == new_text and
+                      caption(controls) ==
+                      'All WTL Controls Showcase - "OpenATL-東京"')
         post(controls, IDCANCEL)
         until("controls dialog closed", lambda: not u.IsWindow(controls))
 
@@ -181,7 +193,7 @@ def main() -> int:
             raise RuntimeError(f"SDI exited with {exit_code}, expected WTL frame quit code 1")
         if any(h == frame for h, _ in windows(process.pid)):
             raise RuntimeError("SDI HWND survived process exit")
-        print("OPENATL_SDI_UI_OK menu=1 controls=1 click=1 about=1 options=1 exit=1")
+        print("OPENATL_SDI_UI_OK menu=1 controls=1 click=1 edit=1 about=1 options=1 exit=1")
         return 0
     except Exception as exc:
         print(f"OPENATL_SDI_UI_FAIL stage={stage} detail={exc}", file=sys.stderr)
