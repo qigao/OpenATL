@@ -900,7 +900,7 @@ static int decoder_failure_injection() {
     ATL::CImage truncated;
     hr = truncated.Load(&early);
     if (SUCCEEDED(hr) || early.calls != 1 ||
-        early.otherCalls != 0 || early.refs != 1 ||
+        early.otherCalls != 1 || early.refs != 1 ||
         !truncated.IsNull() || truncated.GetBits() != nullptr)
         return fail(119, "read_failure_truncated_input");
 
@@ -937,6 +937,6 @@ int main() {
     if (int result = decoder_failure_injection()) return result;
     if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED)
         return fail(2, "COM_apartment_leaked");
-    std::puts("ATL_IMAGE_OK dib=1 attach=1 draw=1 orientation=1 codec=1 stream=1 shortwrite=1 shortread=1 alpha=1 cleanup=1 no_com=1");
+    std::puts("ATL_IMAGE_OK dib=1 attach=1 draw=1 orientation=1 codec=1 stream=1 shortwrite=1 shortread=1 budget=1 alpha=1 cleanup=1 no_com=1");
     return 0;
 }
