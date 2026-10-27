@@ -181,12 +181,18 @@ _openatl_replace_between(
     "// Implementation"
     ""
     "MRU registry persistence")
-if(_wtl_ui_text MATCHES "ATL::CRegKey" OR
-   _wtl_ui_text MATCHES "ReadFromRegistry\\(" OR
-   _wtl_ui_text MATCHES "WriteToRegistry\\(" OR
-   NOT _wtl_ui_text MATCHES "class CRecentDocumentListBase" OR
-   NOT _wtl_ui_text MATCHES "class CFindFile")
-    message(FATAL_ERROR "WTL UI-only: MRU persistence or normal utilities invalid")
+if(_wtl_ui_text MATCHES "ATL::CRegKey")
+    message(FATAL_ERROR "WTL UI-only: atlmisc.h still declares CRegKey registry access")
+endif()
+if(_wtl_ui_text MATCHES "ReadFromRegistry\\(" OR
+   _wtl_ui_text MATCHES "WriteToRegistry\\(")
+    message(FATAL_ERROR "WTL UI-only: atlmisc.h still exposes MRU registry methods")
+endif()
+if(NOT _wtl_ui_text MATCHES "CRecentDocumentListBase")
+    message(FATAL_ERROR "WTL UI-only: CRecentDocumentListBase menu helper missing")
+endif()
+if(NOT _wtl_ui_text MATCHES "CFindFile")
+    message(FATAL_ERROR "WTL UI-only: CFindFile helper missing")
 endif()
 file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
 

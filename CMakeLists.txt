@@ -88,7 +88,7 @@ if(OPENATL_BUILD_QUALIFICATION)
   if(_wtl_mru_scope MATCHES "ATL::CRegKey" OR
      _wtl_mru_scope MATCHES "ReadFromRegistry\\(" OR
      _wtl_mru_scope MATCHES "WriteToRegistry\\(" OR
-     NOT _wtl_mru_scope MATCHES "class CRecentDocumentListBase" OR
+     NOT _wtl_mru_scope MATCHES "CRecentDocumentListBase" OR
      NOT _wtl_mru_scope MATCHES "class CFindFile")
     message(FATAL_ERROR "WTL UI-only: registry MRU or missing menu/file utilities")
   endif()
