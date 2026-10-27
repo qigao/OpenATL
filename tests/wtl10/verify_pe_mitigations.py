@@ -21,7 +21,7 @@ def main(path, machine, cfg, cet):
     number = read("<H", nt + 6)[0]
     opt_len = read("<H", nt + 20)[0]
     opt = nt + 24
-    if (read("<H", nt + 4)[0] != {"x86_64": 0x8664, "aarch64": 0xaa64}[machine]:
+    if read("<H", nt + 4)[0] != {"x86_64": 0x8664, "aarch64": 0xaa64}[machine]:
         raise ValueError("wrong PE machine")
     if opt_len < 240 or read("<H", opt)[0] != 0x20b:
         raise ValueError("expected PE32+ and 16 directories")
