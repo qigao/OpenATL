@@ -7,6 +7,7 @@
 
 #include "atldef.h"
 #include <windows.h>
+#include <objidl.h>
 #include <gdiplus.h>
 #include <cstddef>
 #include <cwchar>
@@ -211,8 +212,86 @@ public:
         CodecSession session;
         if (!session.active())
             return CodecHRESULT(session.status);
-
         Gdiplus::Bitmap decoded(filename, FALSE);
+        return DecodeBitmap(decoded);
+    }
+
+    // Borrow a caller-owned stream. Decoding completes and GDI+ releases
+    // all stream references before return; *this owns only its new HBITMAP.
+    // Caller positions the stream before calling; no COM apartment is opened.
+    HRESULT Load(IStream* stream) noexcept {
+        if (stream == NULL)
+            return E_POINTER;
+        if (bitmap_ != NULL)
+            return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+        CodecSession session;
+        if (!session.active())
+            return CodecHRESULT(session.status);
+        Gdiplus::Bitmap decoded(stream, FALSE);
+        return DecodeBitmap(decoded);
+    }
+
+    HRESULT Load(std::nullptr_t) noexcept { return E_INVALIDARG; }
+
+    // Lossless BMP and PNG file encoding. An explicit GDI+ ImageFormat
+    // GUID may be supplied in place of the extension. No JPEG/GIF/TIFF
+    // codec is advertised yet. Requires a DIB with accessible pixel bits.
+    // A scratch BGRA/RGB buffer avoids GDI+'s HBITMAP conversion, which
+    // otherwise discards alpha. Unsupported/invalid inputs do not mutate
+    // the owned CImage state or create an output file.
+    HRESULT Save(LPCTSTR filename, REFGUID fileType = GUID_NULL) const noexcept {
+        if (filename == NULL || *filename == 0)
+            return E_INVALIDARG;
+        if (bitmap_ == NULL)
+            return E_HANDLE;
+        if (bits_ == NULL || (bpp_ != 24 && bpp_ != 32) ||
+            width_ <= 0 || height_ <= 0 || pitch_ <= 0)
+            return E_NOTIMPL;
+
+        const wchar_t* mime = NULL;
+        if (::IsEqualGUID(fileType, GUID_NULL)) {
+            const wchar_t* extension = std::wcsrchr(filename, L'.');
+            if (extension != NULL && ::_wcsicmp(extension, L".png") == 0)
+                mime = L"image/png";
+            else if (extension != NULL && ::_wcsicmp(extension, L".bmp") == 0)
+                mime = L"image/bmp";
+        } else if (::IsEqualGUID(fileType, Gdiplus::ImageFormatPNG)) {
+            mime = L"image/png";
+        } else if (::IsEqualGUID(fileType, Gdiplus::ImageFormatBMP)) {
+            mime = L"image/bmp";
+        }
+        if (mime == NULL)
+            return E_INVALIDARG;
+
+        return EncodeBitmap(filename, NULL, mime);
+    }
+
+    // The stream must already exist and remains caller-owned. The encoder
+    // writes to its current position; no stream is closed or retained.
+    // Explicit file-type pointer is mandatory (BMP/PNG only).
+    HRESULT Save(IStream* stream, const GUID* fileType) const noexcept {
+        if (stream == NULL || fileType == NULL)
+            return E_POINTER;
+        if (bitmap_ == NULL)
+            return E_HANDLE;
+        if (bits_ == NULL || (bpp_ != 24 && bpp_ != 32) ||
+            width_ <= 0 || height_ <= 0 || pitch_ <= 0)
+            return E_NOTIMPL;
+        const wchar_t* mime = NULL;
+        if (::IsEqualGUID(*fileType, Gdiplus::ImageFormatPNG))
+            mime = L"image/png";
+        else if (::IsEqualGUID(*fileType, Gdiplus::ImageFormatBMP))
+            mime = L"image/bmp";
+        if (mime == NULL)
+            return E_INVALIDARG;
+        return EncodeBitmap(NULL, stream, mime);
+    }
+
+
+private:
+    // Consumes a fully constructed GDI+ image and commits only after a
+    // successful copy. Both file and IStream decoding use this exact path.
+    HRESULT DecodeBitmap(Gdiplus::Bitmap& decoded) noexcept {
         Gdiplus::Status status = decoded.GetLastStatus();
         if (status != Gdiplus::Ok)
             return CodecHRESULT(status);
@@ -290,36 +369,10 @@ public:
         return S_OK;
     }
 
-    // Lossless BMP and PNG file encoding. An explicit GDI+ ImageFormat
-    // GUID may be supplied in place of the extension. No JPEG/GIF/TIFF
-    // codec is advertised yet. Requires a DIB with accessible pixel bits.
-    // A scratch BGRA/RGB buffer avoids GDI+'s HBITMAP conversion, which
-    // otherwise discards alpha. Unsupported/invalid inputs do not mutate
-    // the owned CImage state or create an output file.
-    HRESULT Save(LPCTSTR filename, REFGUID fileType = GUID_NULL) const noexcept {
-        if (filename == NULL || *filename == 0)
-            return E_INVALIDARG;
-        if (bitmap_ == NULL)
-            return E_HANDLE;
-        if (bits_ == NULL || (bpp_ != 24 && bpp_ != 32) ||
-            width_ <= 0 || height_ <= 0 || pitch_ <= 0)
-            return E_NOTIMPL;
-
-        const wchar_t* mime = NULL;
-        if (::IsEqualGUID(fileType, GUID_NULL)) {
-            const wchar_t* extension = std::wcsrchr(filename, L'.');
-            if (extension != NULL && ::_wcsicmp(extension, L".png") == 0)
-                mime = L"image/png";
-            else if (extension != NULL && ::_wcsicmp(extension, L".bmp") == 0)
-                mime = L"image/bmp";
-        } else if (::IsEqualGUID(fileType, Gdiplus::ImageFormatPNG)) {
-            mime = L"image/png";
-        } else if (::IsEqualGUID(fileType, Gdiplus::ImageFormatBMP)) {
-            mime = L"image/bmp";
-        }
-        if (mime == NULL)
-            return E_INVALIDARG;
-
+    // Files and caller-owned IStreams share the same pixel snapshot,
+    // encoder selection, startup/shutdown and failure cleanup.
+    HRESULT EncodeBitmap(const wchar_t* filename, IStream* stream,
+                         const wchar_t* mime) const noexcept {
         const size_t height = static_cast<size_t>(height_);
         const size_t pitch = static_cast<size_t>(pitch_);
         if (height > (std::numeric_limits<size_t>::max)() / pitch)
@@ -359,11 +412,10 @@ public:
         const Gdiplus::Status constructed = image.GetLastStatus();
         if (constructed != Gdiplus::Ok)
             return CodecHRESULT(constructed);
-        const Gdiplus::Status written = image.Save(filename, &encoder, NULL);
+        const Gdiplus::Status written = stream != NULL ? image.Save(stream, &encoder, NULL) : image.Save(filename, &encoder, NULL);
         return CodecHRESULT(written);
     }
 
-private:
     struct CodecSession {
         ULONG_PTR token = 0;
         Gdiplus::Status status = Gdiplus::GenericError;
