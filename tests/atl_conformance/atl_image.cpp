@@ -330,6 +330,154 @@ static int codec_roundtrip() {
     return 0;
 }
 
+
+// CreateStreamOnHGlobal supplies a real system-owned COM utility object.
+// It can be used without initializing a COM apartment; OpenATL creates no
+// application COM object/factory/server and never owns caller stream handles.
+struct OwnedStream {
+    IStream* ptr = nullptr;
+    ~OwnedStream() { if (ptr != nullptr) ptr->Release(); }
+    OwnedStream(const OwnedStream&) = delete;
+    OwnedStream& operator=(const OwnedStream&) = delete;
+    OwnedStream() = default;
+
+    bool Create() { return SUCCEEDED(::CreateStreamOnHGlobal(NULL, TRUE, &ptr)) && ptr != nullptr; }
+    bool Rewind() {
+        if (ptr == nullptr) return false;
+        LARGE_INTEGER offset{};
+        return SUCCEEDED(ptr->Seek(offset, STREAM_SEEK_SET, nullptr));
+    }
+    bool Put(const BYTE* bytes, ULONG len) {
+        if (ptr == nullptr || bytes == nullptr) return false;
+        ULONG written = 0;
+        return SUCCEEDED(ptr->Write(bytes, len, &written)) && written == len;
+    }
+    bool Peek(const BYTE* signature, ULONG len) {
+        if (!Rewind()) return false;
+        BYTE readBytes[8]{};
+        if (len > sizeof(readBytes)) return false;
+        ULONG got = 0;
+        if (FAILED(ptr->Read(readBytes, len, &got)) || got != len)
+            return false;
+        for (ULONG i = 0; i < len; ++i)
+            if (readBytes[i] != signature[i]) return false;
+        return Rewind();
+    }
+};
+
+static int stream_roundtrip() {
+    ATL::CImage image;
+    if (!image.Create(2, 2, 32, ATL::CImage::createAlphaChannel))
+        return fail(70, "Create_image_for_IStream");
+
+    const BYTE colors[4][4] = {
+        {56, 34, 12, 255}, {30, 20, 10, 128},
+        {90, 100, 110, 255}, {40, 50, 60, 200}
+    };
+    for (int y = 0; y < 2; ++y)
+        for (int x = 0; x < 2; ++x) {
+            BYTE* pixel = static_cast<BYTE*>(image.GetPixelAddress(x, y));
+            if (!pixel) return fail(71, "IStream_source_DIB");
+            for (int channel = 0; channel < 4; ++channel)
+                pixel[channel] = colors[2 * y + x][channel];
+        }
+
+    OwnedStream encoded;
+    if (!encoded.Create()) return fail(72, "CreateStreamOnHGlobal");
+    const GUID invalidType = {0x96547593,0x1599,0x4bac,{0x86,0x35,0x0b,0xce,0xac,0x7a,0xa6,0x62}};
+    if (image.Save(static_cast<IStream*>(nullptr), &Gdiplus::ImageFormatPNG) != E_POINTER ||
+        image.Save(encoded.ptr, nullptr) != E_POINTER ||
+        image.Save(encoded.ptr, &invalidType) != E_INVALIDARG)
+        return fail(73, "Reject_invalid_IStream_save");
+    STATSTG emptyStat{};
+    if (FAILED(encoded.ptr->Stat(&emptyStat, STATFLAG_NONAME)) ||
+        emptyStat.cbSize.QuadPart != 0)
+        return fail(74, "Failed_save_did_not_write_to_stream");
+
+    HRESULT hr = image.Save(encoded.ptr, &Gdiplus::ImageFormatPNG);
+    if (FAILED(hr)) return fail(75, "IStream_Save_PNG");
+    const BYTE pngSignature[8] = {137,80,78,71,13,10,26,10};
+    if (!encoded.Peek(pngSignature, sizeof(pngSignature)))
+        return fail(76, "IStream_PNG_signature");
+
+    ATL::CImage restored;
+    hr = restored.Load(encoded.ptr);
+    if (FAILED(hr) || !restored.HasAlphaChannel() ||
+        restored.GetWidth() != 2 || restored.GetHeight() != 2 ||
+        restored.GetBPP() != 32)
+        return fail(77, "IStream_Load_PNG");
+    for (int y = 0; y < 2; ++y)
+        for (int x = 0; x < 2; ++x) {
+            const BYTE* actual = static_cast<const BYTE*>(
+                restored.GetPixelAddress(x, y));
+            if (!actual) return fail(78, "IStream_pixel_pointer");
+            for (int channel = 0; channel < 4; ++channel)
+                if (actual[channel] != colors[2 * y + x][channel])
+                    return fail(79, "IStream_alpha_roundtrip");
+        }
+    if (restored.Load(encoded.ptr) != HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS))
+        return fail(80, "IStream_refuse_replacement");
+
+    // Releasing the caller-owned stream cannot invalidate the materialized
+    // bitmap. GDI+ holds no outstanding reference on return.
+    encoded.ptr->Release();
+    encoded.ptr = nullptr;
+    if (restored.GetPixelAddress(1, 1) == nullptr ||
+        static_cast<const BYTE*>(restored.GetPixelAddress(1, 1))[3] != 200)
+        return fail(81, "IStream_borrowed_lifetime");
+
+    ATL::CImage rgb;
+    if (!rgb.Create(3, 2, 24)) return fail(82, "IStream_BMP_source");
+    rgb.SetPixel(0, 0, RGB(12, 34, 56));
+    rgb.SetPixel(2, 1, RGB(123, 111, 99));
+    OwnedStream bmp;
+    if (!bmp.Create()) return fail(83, "IStream_BMP_create");
+    hr = rgb.Save(bmp.ptr, &Gdiplus::ImageFormatBMP);
+    if (FAILED(hr)) return fail(84, "IStream_Save_BMP");
+    const BYTE bmpSignature[2] = {'B','M'};
+    if (!bmp.Peek(bmpSignature, sizeof(bmpSignature)))
+        return fail(85, "IStream_BMP_signature");
+    ATL::CImage decoded;
+    hr = decoded.Load(bmp.ptr);
+    if (FAILED(hr) || decoded.GetWidth() != 3 || decoded.GetHeight() != 2 ||
+        decoded.GetPixel(0, 0) != RGB(12,34,56) ||
+        decoded.GetPixel(2, 1) != RGB(123,111,99))
+        return fail(86, "IStream_BMP_roundtrip");
+
+    // Malformed encoded bytes and unknown formats fail without partial
+    // ownership transfer into CImage.
+    OwnedStream corrupt;
+    if (!corrupt.Create()) return fail(87, "IStream_corrupt_create");
+    const BYTE badBytes[8] = {0,1,2,3,4,5,6,7};
+    if (!corrupt.Put(badBytes, sizeof(badBytes)) || !corrupt.Rewind())
+        return fail(88, "IStream_corrupt_write");
+    ATL::CImage failed;
+    hr = failed.Load(corrupt.ptr);
+    if (SUCCEEDED(hr) || !failed.IsNull() || failed.GetBits() != nullptr)
+        return fail(89, "IStream_corrupt_cleanup");
+    if (failed.Load(static_cast<IStream*>(nullptr)) != E_POINTER ||
+        !failed.IsNull())
+        return fail(90, "IStream_null_rejection");
+
+    // GDI+ can decode GIF, but this API explicitly admits only BMP/PNG.
+    OwnedStream gif;
+    if (!gif.Create()) return fail(91, "IStream_GIF_create");
+    const BYTE sampleGif[] = {
+        0x47,0x49,0x46,0x38,0x39,0x61,0x01,0x00,0x01,0x00,
+        0x80,0x00,0x00,0x00,0x00,0x00,0xff,0xff,0xff,
+        0x21,0xf9,0x04,0x01,0x00,0x00,0x00,0x00,
+        0x2c,0x00,0x00,0x00,0x00,0x01,0x00,0x01,0x00,0x00,
+        0x02,0x02,0x44,0x01,0x00,0x3b
+    };
+    if (!gif.Put(sampleGif, sizeof(sampleGif)) || !gif.Rewind())
+        return fail(92, "IStream_GIF_write");
+    hr = failed.Load(gif.ptr);
+    if (hr != E_NOTIMPL || !failed.IsNull())
+        return fail(93, "IStream_reject_GIF");
+
+    return 0;
+}
+
 int main() {
     static_assert(sizeof(void*) == 8, "Only Windows x64 and ARM64 qualified");
     ULONG_PTR token = 0;
@@ -338,8 +486,9 @@ int main() {
     if (int result = dib_and_draw()) return result;
     if (int result = bottom_up_attach()) return result;
     if (int result = codec_roundtrip()) return result;
+    if (int result = stream_roundtrip()) return result;
     if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED)
         return fail(2, "COM_apartment_leaked");
-    std::puts("ATL_IMAGE_OK dib=1 attach=1 draw=1 orientation=1 codec=1 alpha=1 cleanup=1 no_com=1");
+    std::puts("ATL_IMAGE_OK dib=1 attach=1 draw=1 orientation=1 codec=1 stream=1 alpha=1 cleanup=1 no_com=1");
     return 0;
 }
