@@ -101,6 +101,12 @@ if(OPENATL_BUILD_QUALIFICATION)
   target_link_libraries(openatl_atl_extensions PRIVATE OpenATL::ATL ole32)
   add_test(NAME openatl.atl_extensions_no_com COMMAND openatl_atl_extensions)
 
+  # Actual Win32 file/shared-memory mappings, offsets and handle lifetime.
+  # No COM initialization: ole32 is only linked by the no-apartment test.
+  add_executable(openatl_atl_mapping tests/atl_conformance/atl_mapping.cpp)
+  target_link_libraries(openatl_atl_mapping PRIVATE OpenATL::ATL ole32)
+  add_test(NAME openatl.atl_mapping_no_com COMMAND openatl_atl_mapping)
+
   # Direct OS failure injection is compiled from the in-repo atlwin.h
   # and isolated behind OPENATL_WX_FAULT_TEST.
   add_executable(openatl_thunk_fault tests/wtl10/thunk_fault.cpp)
@@ -118,7 +124,7 @@ if(OPENATL_BUILD_QUALIFICATION)
              COMMAND openatl_com_client "--${_client_mode}")
   endforeach()
 
-  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_atl_core openatl_atl_path openatl_atl_extensions)
+  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)
     if(MSVC)
       set_property(TARGET ${_qualified} PROPERTY
