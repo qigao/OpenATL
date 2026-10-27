@@ -5,8 +5,10 @@ WTL 10, and optional COM *client* helpers.** Its only supported scope is:
 
 - Win32 GUI: `CWindowImpl`, `CDialogImpl`, message maps, common controls,
   resources and WTL10 frames, without `CoInitializeEx()`.
-- In-tree ATL utilities: `CString`, `CAtlFile`, `CPath`, and Win32
-  synchronization wrappers; no COM apartment needed.
+- In-tree ATL utilities: `CString`, `CAtlFile`, `CPath`, Win32
+  synchronization, plus `atlmem.h` (`IAtlMemMgr`, `CWin32Heap`),
+  `atltime.h` (`CFileTime`, `CFileTimeSpan`) and
+  `atlcoll.h` (`CAtlArray`); no COM apartment needed.
 - COM **client**: `CComPtr`, `CComBSTR`, `CComVariant`, and
   `CoCreateInstance` of existing Windows components after the *application*
   explicitly initializes a COM apartment.
@@ -65,6 +67,30 @@ their own GUI target; there is deliberately no `OpenATL::WTL`.
 Consumers needing COM additionally link `OpenATL::COMClient` and manage
 their own `CoInitializeEx` / `CoUninitialize` lifecycle.
 A basic WTL window must not need to initialize COM.
+
+## Expanded ATL API surface
+
+The new headers implement **ATL-compatible interfaces directly in OpenATL**.
+Their method names and public conventions are informed by ATL and
+[katahiromz/RATL](https://github.com/katahiromz/RATL), but each implementation
+is part of this repository (not a second ATL provider).
+
+- `atlmem.h`: Win32 heap allocation, reallocation, free and size lookup,
+  with explicit non-owning heap lifetime.
+- `atltime.h`: 100-nanosecond `FILETIME` values, signed spans, comparisons,
+  arithmetic and optional overflow-checked addition.
+- `atlcoll.h`: typed `CAtlArray` with safe object lifetime, capacity
+  growth, removal and allocation failure reporting.
+
+The public API is a subset of ATL; unsupported functions are not advertised
+as implemented. These utilities are CI-qualified through
+`tests/atl_conformance/atl_extensions.cpp` on Windows x64, genuine
+Windows ARM64 and Linux/macOS Windows PE cross-builds.
+
+API declarations and naming compatibility do not require copying Microsoft
+ATL or RATL implementation code. The existing OpenATL file notices and
+third-party source provenance remain unchanged. No COM server, registry
+registration, Installed SDK or `scripts/` directory is added.
 
 ## Dependencies and licensing
 
