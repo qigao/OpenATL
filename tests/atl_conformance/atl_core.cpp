@@ -246,7 +246,7 @@ static int registry() {
         _T("NonTerminated"), nullptr, &malformedSize);
     if (sizeStatus != ERROR_SUCCESS ||
         malformedSize < _countof(unterminated) + 1 ||
-        malformedSize > _countof(unterminated) + 2) {
+        malformedSize > 32) {
         std::fprintf(stderr, "NonTerminated size: status=%ld chars=%lu\n",
                      static_cast<long>(sizeStatus),
                      static_cast<unsigned long>(malformedSize));
@@ -255,18 +255,32 @@ static int registry() {
 
     TCHAR noTermBuffer[3] = {_T('!'), _T('!'), _T('!')};
     ULONG exactCapacity = _countof(noTermBuffer);
-    if (key.QueryStringValue(_T("NonTerminated"), noTermBuffer,
-                             &exactCapacity) != ERROR_MORE_DATA ||
-        exactCapacity != _countof(unterminated) + 1 ||
-        noTermBuffer[0] != 0)
+    const LSTATUS shortStatus = key.QueryStringValue(
+        _T("NonTerminated"), noTermBuffer, &exactCapacity);
+    if (shortStatus != ERROR_MORE_DATA ||
+        exactCapacity < _countof(unterminated) + 1 ||
+        exactCapacity > 32 || noTermBuffer[0] != 0) {
+        std::fprintf(stderr, "NonTerminated short: status=%ld chars=%lu first=%u\n",
+                     static_cast<long>(shortStatus),
+                     static_cast<unsigned long>(exactCapacity),
+                     static_cast<unsigned>(noTermBuffer[0]));
         return failure(69, "registry_nonterminated_no_partial");
-    TCHAR terminated[4] = {};
-    ULONG termCapacity = _countof(terminated);
-    if (key.QueryStringValue(_T("NonTerminated"), terminated,
-                             &termCapacity) != ERROR_SUCCESS ||
-        termCapacity != _countof(terminated) ||
-        _tcscmp(terminated, _T("raw")) != 0)
+    }
+    TCHAR terminated[32] = {};
+    // Read with precisely the capacity returned from the size probe.
+    ULONG termCapacity = malformedSize;
+    const LSTATUS finalStatus = key.QueryStringValue(
+        _T("NonTerminated"), terminated, &termCapacity);
+    if (finalStatus != ERROR_SUCCESS ||
+        termCapacity < _countof(unterminated) + 1 ||
+        termCapacity > malformedSize ||
+        terminated[_countof(unterminated)] != 0 ||
+        _tcscmp(terminated, _T("raw")) != 0) {
+        std::fprintf(stderr, "NonTerminated final: status=%ld chars=%lu\n",
+                     static_cast<long>(finalStatus),
+                     static_cast<unsigned long>(termCapacity));
         return failure(70, "registry_nonterminated_repaired");
+    }
 
     // The expand-string API must not silently expand environment variables.
     const TCHAR* expanded = _T("%SystemRoot%\\suffix");

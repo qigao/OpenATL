@@ -152,17 +152,10 @@ public:
         if (status == ERROR_SUCCESS || status == ERROR_MORE_DATA) {
             if (size % sizeof(TCHAR) != 0)
                 return ERROR_INVALID_DATA;
-            const ULONG needed = size / sizeof(TCHAR);
-            // A size-only RegGetValue query may report the stored byte
-            // count before synthesizing the absent NUL. Reserve one extra
-            // character so callers can always allocate a sufficient buffer.
-            if (out == nullptr && status == ERROR_SUCCESS) {
-                if (needed >= MAXDWORD / sizeof(TCHAR))
-                    return ERROR_ARITHMETIC_OVERFLOW;
-                *characters = needed + 1;
-            } else {
-                *characters = needed;
-            }
+            // RegGetValue provides the required byte count, including
+            // sufficient terminator space. The exact count may exceed the
+            // logical string length; pass it through rather than guessing.
+            *characters = size / sizeof(TCHAR);
         }
         return status;
     }
