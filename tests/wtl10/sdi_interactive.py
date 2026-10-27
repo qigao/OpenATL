@@ -16,6 +16,7 @@ import time
 
 WM_COMMAND = 0x0111
 BM_CLICK = 0x00F5
+WM_SETTEXT = 0x000C
 ID_FILE_NEW = 0xE100
 ID_APP_EXIT = 0xE141
 ID_APP_ABOUT = 0xE140
@@ -49,8 +50,6 @@ def main() -> int:
     u.IsWindow.restype = wintypes.BOOL
     u.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
     u.GetWindowTextW.restype = ctypes.c_int
-    u.SetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPCWSTR]
-    u.SetWindowTextW.restype = wintypes.BOOL
     u.GetMenu.argtypes = [wintypes.HWND]
     u.GetMenu.restype = wintypes.HMENU
     u.GetMenuItemCount.argtypes = [wintypes.HMENU]
@@ -167,7 +166,17 @@ def main() -> int:
         # the visible mutation produced by the real input event.
         edit = u.GetDlgItem(controls, IDC_EDIT1)
         new_text = "OpenATL-東京"
-        if not edit or not u.SetWindowTextW(edit, new_text):
+        # SetWindowTextW itself cannot change a control in another process.
+        # WM_SETTEXT is a system message whose string is marshaled by
+        # Windows, including across process boundaries. Keep the payload
+        # alive until the synchronous SendMessageTimeoutW completes.
+        edit_text = ctypes.create_unicode_buffer(new_text)
+        edit_result = ctypes.c_size_t()
+        if not edit or not u.SendMessageTimeoutW(
+                edit, WM_SETTEXT, 0,
+                ctypes.cast(edit_text, ctypes.c_void_p).value,
+                0x0002, 2500, ctypes.byref(edit_result)
+        ) or edit_result.value == 0:
             raise RuntimeError(
                 f"native edit WM_SETTEXT failed: {ctypes.get_last_error()}")
         # GetWindowTextW cannot read a remote process's edit control.
