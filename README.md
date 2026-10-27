@@ -116,11 +116,12 @@ is part of this repository (not a second ATL provider).
   guarantees the source file handle is closed before returning. If `Stat` and a nonmoving `Seek(CUR, 0)` are supported, a known
   remaining IStream range above 64 MiB is rejected before the first read;
   otherwise the running byte counter enforces the same cap.
-  All OpenATL-owned `CImage` pixel buffers are bounded to 128 MiB
-  (including 4-byte-aligned DIB row padding for 24bpp `Create`);
-  decoder dimensions are rejected before allocating the destination
-  bitmap or locking GDI+ pixels. This is not a limit on GDI+'s internal
-  parsing allocations. Callers must account for the
+  All retained `CImage` bitmaps are subject to the 128 MiB
+  aligned row-byte budget: `Create`, decoded DIBs, and external
+  `HBITMAP` handles supplied to `Attach` (which remain caller-owned
+  if the attachment is rejected). Decoder dimensions are checked before
+  allocating the destination bitmap or locking GDI+ pixels. This is
+  not a limit on GDI+'s internal parsing allocations. Callers must account for the
   source stream's advanced position on failure.
   The image and stream ownership remain unchanged. Image stream codec
   callers link both `gdiplus` and `ole32` explicitly; neither is a
