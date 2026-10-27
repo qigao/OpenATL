@@ -130,5 +130,194 @@ public:
     }
 };
 
+
+// FILETIME mapping is not COM or a native persistence provider: this class
+// simply owns one Win32 section handle and one mapped view. Inspired by the
+// ATL/RATL public API, implemented independently with strict failure cleanup.
+class CAtlFileMappingBase {
+public:
+    CAtlFileMappingBase() noexcept = default;
+    ~CAtlFileMappingBase() noexcept { (void)Unmap(); }
+
+    CAtlFileMappingBase(const CAtlFileMappingBase&) = delete;
+    CAtlFileMappingBase& operator=(const CAtlFileMappingBase&) = delete;
+    CAtlFileMappingBase(CAtlFileMappingBase&& other) noexcept {
+        MoveFrom(other);
+    }
+    CAtlFileMappingBase& operator=(CAtlFileMappingBase&&) = delete;
+
+    // Explicitly copy the mapping, not its view pointer or owned HANDLE.
+    // The destination must be empty; failure never changes its ownership.
+    HRESULT CopyFrom(const CAtlFileMappingBase& other) noexcept {
+        if (&other == this) return S_OK;
+        if (m_mapping != NULL) return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+        if (other.m_mapping == NULL || other.m_base == NULL) return E_HANDLE;
+        HANDLE duplicate = NULL;
+        if (!::DuplicateHandle(::GetCurrentProcess(), other.m_mapping,
+                               ::GetCurrentProcess(), &duplicate, 0, FALSE,
+                               DUPLICATE_SAME_ACCESS))
+            return HRESULT_FROM_WIN32(::GetLastError());
+        return MapOwned(duplicate, other.m_length, other.m_offset, other.m_access);
+    }
+
+    // Maps a nonempty region within an existing regular file. A zero size
+    // means offset-to-EOF. Neither writes beyond EOF nor resizes the file.
+    // Unaligned offsets are handled by mapping from the previous Win32
+    // allocation-granularity boundary and exposing the requested subrange.
+    HRESULT MapFile(HANDLE file, SIZE_T length = 0, ULONGLONG offset = 0,
+                    DWORD protection = PAGE_READONLY,
+                    DWORD access = FILE_MAP_READ) noexcept {
+        if (m_mapping != NULL) return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+        if (file == NULL || file == INVALID_HANDLE_VALUE) return E_HANDLE;
+        LARGE_INTEGER size{};
+        if (!::GetFileSizeEx(file, &size))
+            return HRESULT_FROM_WIN32(::GetLastError());
+        if (size.QuadPart <= 0 || offset >= static_cast<ULONGLONG>(size.QuadPart))
+            return E_INVALIDARG;
+        const ULONGLONG remaining = static_cast<ULONGLONG>(size.QuadPart) - offset;
+        if (length == 0) {
+            if (remaining > static_cast<ULONGLONG>((std::numeric_limits<SIZE_T>::max)()))
+                return E_INVALIDARG;
+            length = static_cast<SIZE_T>(remaining);
+        } else if (static_cast<ULONGLONG>(length) > remaining) {
+            return E_INVALIDARG;
+        }
+        HANDLE mapping = ::CreateFileMapping(file, NULL, protection, 0, 0, NULL);
+        if (mapping == NULL) return HRESULT_FROM_WIN32(::GetLastError());
+        return MapOwned(mapping, length, offset, access);
+    }
+
+    // Named shared memory with explicit size and optional "already exists"
+    // report. Never performs registry writes or COM server registration.
+    HRESULT MapSharedMem(SIZE_T length, LPCTSTR name,
+                         BOOL* alreadyExisted = NULL,
+                         LPSECURITY_ATTRIBUTES security = NULL,
+                         DWORD protection = PAGE_READWRITE,
+                         DWORD access = FILE_MAP_ALL_ACCESS) noexcept {
+        if (alreadyExisted != NULL) *alreadyExisted = FALSE;
+        if (m_mapping != NULL) return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+        if (name == NULL || *name == 0 || length == 0)
+            return E_INVALIDARG;
+        const ULONGLONG bytes = static_cast<ULONGLONG>(length);
+        HANDLE mapping = ::CreateFileMapping(INVALID_HANDLE_VALUE, security,
+            protection, static_cast<DWORD>(bytes >> 32),
+            static_cast<DWORD>(bytes), name);
+        if (mapping == NULL) return HRESULT_FROM_WIN32(::GetLastError());
+        const BOOL exists = (::GetLastError() == ERROR_ALREADY_EXISTS);
+        const HRESULT hr = MapOwned(mapping, length, 0, access);
+        if (SUCCEEDED(hr) && alreadyExisted != NULL) *alreadyExisted = exists;
+        return hr;
+    }
+
+    HRESULT OpenMapping(LPCTSTR name, SIZE_T length, ULONGLONG offset = 0,
+                        DWORD access = FILE_MAP_ALL_ACCESS) noexcept {
+        if (m_mapping != NULL) return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+        if (name == NULL || *name == 0 || length == 0)
+            return E_INVALIDARG;
+        HANDLE mapping = ::OpenFileMapping(access, FALSE, name);
+        if (mapping == NULL) return HRESULT_FROM_WIN32(::GetLastError());
+        return MapOwned(mapping, length, offset, access);
+    }
+
+    // Preserve owned handles on a failed Win32 cleanup so callers can retry.
+    HRESULT Unmap() noexcept {
+        if (m_base != NULL) {
+            if (!::UnmapViewOfFile(m_base))
+                return HRESULT_FROM_WIN32(::GetLastError());
+            m_base = NULL;
+            m_data = NULL;
+            m_length = 0;
+            m_offset = 0;
+            m_access = 0;
+        }
+        if (m_mapping != NULL) {
+            if (!::CloseHandle(m_mapping))
+                return HRESULT_FROM_WIN32(::GetLastError());
+            m_mapping = NULL;
+        }
+        return S_OK;
+    }
+
+    HRESULT Flush() noexcept {
+        if (m_base == NULL) return E_HANDLE;
+        return ::FlushViewOfFile(m_base, 0) ? S_OK :
+            HRESULT_FROM_WIN32(::GetLastError());
+    }
+
+    void* GetData() const noexcept { return m_data; }
+    HANDLE GetHandle() const noexcept { return m_mapping; }
+    SIZE_T GetMappingSize() const noexcept { return m_length; }
+
+private:
+    // Takes ownership of the supplied mapping HANDLE even on failure.
+    HRESULT MapOwned(HANDLE owned, SIZE_T length, ULONGLONG offset,
+                     DWORD access) noexcept {
+        if (owned == NULL) return E_HANDLE;
+        if (length == 0 || offset > (std::numeric_limits<ULONGLONG>::max)() -
+                                     static_cast<ULONGLONG>(length)) {
+            ::CloseHandle(owned);
+            return E_INVALIDARG;
+        }
+        SYSTEM_INFO systemInfo{};
+        ::GetSystemInfo(&systemInfo);
+        const DWORD granularity = systemInfo.dwAllocationGranularity;
+        if (granularity == 0) {
+            ::CloseHandle(owned);
+            return E_FAIL;
+        }
+        const ULONGLONG aligned = offset - offset % granularity;
+        const ULONGLONG delta = offset - aligned;
+        if (delta > (std::numeric_limits<SIZE_T>::max)() - length) {
+            ::CloseHandle(owned);
+            return E_INVALIDARG;
+        }
+        const SIZE_T span = length + static_cast<SIZE_T>(delta);
+        void* base = ::MapViewOfFile(owned, access,
+            static_cast<DWORD>(aligned >> 32), static_cast<DWORD>(aligned), span);
+        if (base == NULL) {
+            const DWORD error = ::GetLastError();
+            ::CloseHandle(owned);
+            return HRESULT_FROM_WIN32(error);
+        }
+        m_mapping = owned;
+        m_base = base;
+        m_data = static_cast<BYTE*>(base) + static_cast<SIZE_T>(delta);
+        m_length = length;
+        m_offset = offset;
+        m_access = access;
+        return S_OK;
+    }
+
+    void MoveFrom(CAtlFileMappingBase& other) noexcept {
+        m_mapping = other.m_mapping;
+        m_base = other.m_base;
+        m_data = other.m_data;
+        m_length = other.m_length;
+        m_offset = other.m_offset;
+        m_access = other.m_access;
+        other.m_mapping = NULL;
+        other.m_base = NULL;
+        other.m_data = NULL;
+        other.m_length = 0;
+        other.m_offset = 0;
+        other.m_access = 0;
+    }
+
+    HANDLE m_mapping = NULL;
+    void* m_base = NULL;
+    BYTE* m_data = NULL;
+    SIZE_T m_length = 0;
+    ULONGLONG m_offset = 0;
+    DWORD m_access = 0;
+};
+
+template <typename T = char>
+class CAtlFileMapping : public CAtlFileMappingBase {
+public:
+    operator T*() const noexcept {
+        return static_cast<T*>(GetData());
+    }
+};
+
 } // namespace ATL
 #endif // OPENATL_ATLFILE_H
