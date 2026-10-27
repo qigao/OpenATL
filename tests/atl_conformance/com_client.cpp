@@ -13,6 +13,8 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdint>
+#include <cwchar>
+#include <limits>
 #include <atlbase.h>
 #include <atlcomcli.h>
 
@@ -33,6 +35,121 @@ static int failure(int code, const char* step, HRESULT hr) {
 static bool no_apartment() {
     ULONG_PTR context=0;
     return ::CoGetContextToken(&context)==CO_E_NOTINITIALIZED;
+}
+
+
+// In-process test double only: never registered, activated or published.
+// It rejects QueryInterface to check failed COM identity claims.
+struct BrokenIdentity final : IUnknown {
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID, void** out) override {
+        if (out == nullptr) return E_POINTER;
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return 1; }
+    ULONG STDMETHODCALLTYPE Release() override { return 1; }
+};
+
+static int com_client_ownership_regressions(IGlobalInterfaceTable* real) {
+    ATL::CComPtr<IGlobalInterfaceTable> empty;
+    IUnknown* stale = reinterpret_cast<IUnknown*>(static_cast<uintptr_t>(1));
+    if (empty.QueryInterface(&stale) != E_POINTER || stale != nullptr ||
+        empty.QueryInterface<IUnknown>(nullptr) != E_POINTER)
+        return failure(50, "null_QueryInterface", E_FAIL);
+
+    ATL::CComPtr<IGlobalInterfaceTable> git(real);
+    IUnknown* id = nullptr;
+    HRESULT hr = git.QueryInterface(&id);
+    if (FAILED(hr) || id == nullptr)
+        return failure(51, "valid_QueryInterface", hr);
+    ATL::CComPtr<IUnknown> identity;
+    identity.Attach(id);
+    if (!git.IsEqualObject(id))
+        return failure(52, "same_COM_identity", E_FAIL);
+    git.Attach(git.p);
+    if (!git.p || !git.IsEqualObject(id))
+        return failure(53, "self_Attach_refcount", E_FAIL);
+
+    BrokenIdentity b1, b2;
+    ATL::CComPtr<IUnknown> broken(&b1);
+    if (broken.IsEqualObject(&b2))
+        return failure(54, "two_failed_QIs_are_not_equal", E_FAIL);
+
+    ATL::CComPtr<IGlobalInterfaceTable> created;
+    hr = created.CoCreateInstance(CLSID_StdGlobalInterfaceTable,
+                                  nullptr, CLSCTX_INPROC_SERVER);
+    if (FAILED(hr) || created.p == nullptr)
+        return failure(55, "CComPtr_CoCreateInstance", hr);
+    IGlobalInterfaceTable* original = created.p;
+    hr = created.CoCreateInstance(CLSID_StdGlobalInterfaceTable,
+                                  nullptr, CLSCTX_INPROC_SERVER);
+    if (hr != HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS) ||
+        created.p != original)
+        return failure(56, "CComPtr_no_overwrite", hr);
+
+    ATL::CComBSTR text(L"alpha");
+    LPCOLESTR alias = text.m_str;
+    text = alias;
+    if (text.Length() != 5 || !text.m_str ||
+        std::wcscmp(text.m_str,L"alpha") != 0)
+        return failure(57, "BSTR_self_assignment", E_FAIL);
+    if (text.Append(text.m_str, static_cast<int>(text.Length())) != S_OK ||
+        text.Length() != 10 || std::wcscmp(text.m_str,L"alphaalpha") != 0)
+        return failure(58, "BSTR_self_append", E_FAIL);
+    if (text.Append(L"x", -1) != E_INVALIDARG ||
+        text.Append(nullptr, 3) != E_POINTER ||
+        text.Append(L"x", (std::numeric_limits<int>::max)()) != E_INVALIDARG ||
+        text.Length() != 10)
+        return failure(59, "BSTR_invalid_length", E_FAIL);
+
+    const OLECHAR embeddedA[3] = {L'A',0,L'B'};
+    const OLECHAR embeddedB[3] = {L'A',0,L'C'};
+    ATL::CComBSTR a(3,embeddedA), same(3,embeddedA), b(3,embeddedB);
+    if (!a.m_str || !same.m_str || !b.m_str ||
+        a.Length() != 3 || !(a == same) || a == b || !(a < b))
+        return failure(60, "binary_BSTR_comparison", E_FAIL);
+    ATL::CComBSTR negative(-1,L"hello");
+    if (negative.m_str != nullptr)
+        return failure(61, "BSTR_negative_constructor", E_FAIL);
+
+    ATL::CComVariant va;
+    va.vt = VT_BSTR;
+    va.bstrVal = ::SysAllocStringLen(embeddedA,3);
+    ATL::CComVariant vb;
+    vb.vt = VT_BSTR;
+    vb.bstrVal = ::SysAllocStringLen(embeddedB,3);
+    if (!va.bstrVal || !vb.bstrVal ||
+        va == static_cast<const VARIANT&>(vb))
+        return failure(62, "binary_VARIANT_BSTR_equality", E_FAIL);
+    ATL::CComVariant copied(va);
+    if (!(copied == static_cast<const VARIANT&>(va)) ||
+        copied.Copy(static_cast<const VARIANT*>(&copied)) != S_OK ||
+        copied.Copy(nullptr) != E_POINTER)
+        return failure(63, "VARIANT_copy_and_alias", E_FAIL);
+    copied = static_cast<const VARIANT&>(copied);
+    if (!(copied == static_cast<const VARIANT&>(va)))
+        return failure(64, "VARIANT_self_assignment", E_FAIL);
+    if (copied.Detach(nullptr) != E_POINTER ||
+        copied.Detach(static_cast<VARIANT*>(&copied)) != E_INVALIDARG ||
+        copied.vt != VT_BSTR)
+        return failure(65, "VARIANT_reject_self_Detach", E_FAIL);
+    VARIANT transferred;
+    ::VariantInit(&transferred);
+    hr = copied.Detach(&transferred);
+    if (FAILED(hr) || copied.vt != VT_EMPTY || transferred.vt != VT_BSTR ||
+        ::SysStringLen(transferred.bstrVal) != 3) {
+        (void)::VariantClear(&transferred);
+        return failure(66, "VARIANT_transfer_ownership", hr);
+    }
+    (void)::VariantClear(&transferred);
+
+    ATL::CComVariant live(L"another");
+    LPCOLESTR source = live.bstrVal;
+    live = source;
+    if (live.vt != VT_BSTR || !live.bstrVal ||
+        std::wcscmp(live.bstrVal,L"another") != 0)
+        return failure(67, "VARIANT_BSTR_self_alias", E_FAIL);
+    return 0;
 }
 
 // IGlobalInterfaceTable is an OS-provided COM *client* target, not our own
@@ -69,6 +186,8 @@ static int system_component_client() {
         if(name.Length()!=6 || name.m_str==nullptr ||
            number.vt!=VT_I4 || number.lVal!=42)
             return failure(16,"BSTR_and_VARIANT",E_FAIL);
+        if (int result = com_client_ownership_regressions(git.p))
+            return result;
     }
     return 0;
 }
