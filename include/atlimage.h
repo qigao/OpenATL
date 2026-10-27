@@ -411,12 +411,77 @@ private:
             PixelFormat24bppRGB :
             (has_alpha_ ? PixelFormat32bppARGB :
                           PixelFormat32bppRGB);
+        // Stage the entire encoding in an OS-owned memory stream before
+        // invoking any caller-supplied IStream::Write. GDI+ does not
+        // reliably expose a short S_OK write as an HRESULT. Copying the
+        // completed encoding ourselves lets us fail closed on short
+        // writes, zero-byte writes and failed HRESULTs.
+        struct ScratchStream {
+            IStream* p = NULL;
+            ~ScratchStream() { if (p != NULL) p->Release(); }
+        } scratch;
+        if (stream != NULL) {
+            hr = ::CreateStreamOnHGlobal(NULL, TRUE, &scratch.p);
+            if (FAILED(hr))
+                return hr;
+            if (scratch.p == NULL)
+                return E_FAIL;
+        }
+
         Gdiplus::Bitmap image(width_, height_, pitch_, format, pixels.get());
         const Gdiplus::Status constructed = image.GetLastStatus();
         if (constructed != Gdiplus::Ok)
             return CodecHRESULT(constructed);
-        const Gdiplus::Status written = stream != NULL ? image.Save(stream, &encoder, NULL) : image.Save(filename, &encoder, NULL);
-        return CodecHRESULT(written);
+        const Gdiplus::Status written = stream != NULL ?
+            image.Save(scratch.p, &encoder, NULL) :
+            image.Save(filename, &encoder, NULL);
+        if (written != Gdiplus::Ok)
+            return CodecHRESULT(written);
+        if (stream == NULL)
+            return S_OK;
+        return CopyEncodedStream(scratch.p, stream);
+    }
+
+    // This is a client-side transfer of an already encoded image, not a COM
+    // object/server implementation. The destination is borrowed, never
+    // released or sought, and remains at the first unwritten byte if its
+    // Write fails. Arbitrary streams cannot guarantee atomic rollback.
+    static HRESULT CopyEncodedStream(IStream* encoded,
+                                     IStream* destination) noexcept {
+        if (encoded == NULL || destination == NULL)
+            return E_POINTER;
+        STATSTG stat{};
+        HRESULT hr = encoded->Stat(&stat, STATFLAG_NONAME);
+        if (FAILED(hr))
+            return hr;
+        ULONGLONG remaining = stat.cbSize.QuadPart;
+        if (remaining == 0)
+            return STG_E_READFAULT;
+        LARGE_INTEGER start{};
+        hr = encoded->Seek(start, STREAM_SEEK_SET, NULL);
+        if (FAILED(hr))
+            return hr;
+        BYTE buffer[8192];
+        while (remaining != 0) {
+            const ULONG amount = remaining > sizeof(buffer) ?
+                static_cast<ULONG>(sizeof(buffer)) :
+                static_cast<ULONG>(remaining);
+            ULONG read = 0;
+            hr = encoded->Read(buffer, amount, &read);
+            if (FAILED(hr))
+                return hr;
+            if (hr != S_OK || read != amount)
+                return STG_E_READFAULT;
+
+            ULONG written = 0;
+            hr = destination->Write(buffer, amount, &written);
+            if (FAILED(hr))
+                return hr;
+            if (hr != S_OK || written != amount)
+                return STG_E_WRITEFAULT;
+            remaining -= amount;
+        }
+        return S_OK;
     }
 
     struct CodecSession {
