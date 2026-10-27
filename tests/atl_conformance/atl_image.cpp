@@ -27,6 +27,15 @@ static int dib_and_draw() {
         invalid.Create(2, 2, 24, ATL::CImage::createAlphaChannel) ||
         !invalid.IsNull())
         return fail(11, "Reject_unsupported_DIB");
+
+    // Create must enforce the owned DIB pixel budget without allocating.
+    ATL::CImage oversized;
+    if (oversized.Create(8193, 4096, 32) ||
+        oversized.Create(16384, 4096, 24) ||
+        oversized.Create(65536, 65536, 32) ||
+        !oversized.IsNull() || oversized.GetWidth() != 0 ||
+        oversized.GetBits() != nullptr)
+        return fail(126, "Reject_decode_pixel_budget");
     ATL::CImage src;
     if (!src.Create(2, 2, 32, ATL::CImage::createAlphaChannel) ||
         src.IsNull() || src.GetWidth() != 2 || src.GetHeight() != 2 ||
@@ -675,7 +684,8 @@ static int encoder_failure_injection() {
 // the decoder snapshots only Read bytes from its borrowed source.
 class FaultReadStream final : public IStream {
 public:
-    enum Policy { ShortPositive, ShortZero, FailImmediately, FailSecond, EarlyEof, VerifiedEOF };
+    enum Policy { ShortPositive, ShortZero, FailImmediately, FailSecond,
+                  EarlyEof, VerifiedEOF, OversizedKnown, ExactlyAtLimit };
     FaultReadStream(IStream* backing, Policy policy) noexcept
         : backing_(backing), policy_(policy) {}
     FaultReadStream(const FaultReadStream&) = delete;
@@ -714,6 +724,7 @@ public:
             got == nullptr)
             return E_INVALIDARG;
         if (policy_ == FailImmediately ||
+            policy_ == OversizedKnown || policy_ == ExactlyAtLimit ||
             (policy_ == FailSecond && calls >= 2))
             return STG_E_MEDIUMFULL;
         if (policy_ == ShortZero)
@@ -751,6 +762,12 @@ public:
         ++otherCalls;
         if (policy_ == VerifiedEOF)
             return backing_->Seek(delta, origin, position);
+        if (policy_ == OversizedKnown || policy_ == ExactlyAtLimit) {
+            if (origin != STREAM_SEEK_CUR || delta.QuadPart != 0)
+                return STG_E_INVALIDFUNCTION;
+            if (position != nullptr) position->QuadPart = 0;
+            return S_OK;
+        }
         return STG_E_INVALIDFUNCTION;
     }
     HRESULT STDMETHODCALLTYPE SetSize(ULARGE_INTEGER) override {
@@ -778,6 +795,14 @@ public:
         ++otherCalls;
         if (policy_ == VerifiedEOF)
             return backing_->Stat(out, flags);
+        if (policy_ == OversizedKnown || policy_ == ExactlyAtLimit) {
+            if (out == nullptr) return E_POINTER;
+            *out = STATSTG{};
+            out->type = STGTY_STREAM;
+            out->cbSize.QuadPart = 64ULL * 1024ULL * 1024ULL +
+                (policy_ == OversizedKnown ? 1ULL : 0ULL);
+            return S_OK;
+        }
         return STG_E_INVALIDFUNCTION;
     }
     HRESULT STDMETHODCALLTYPE Clone(IStream** clone) override {
@@ -819,10 +844,10 @@ static int decoder_failure_injection() {
         ULONG otherCalls; // A short S_OK probes Stat once to verify EOF.
     };
     const Scenario cases[] = {
-        {FaultReadStream::ShortPositive, STG_E_READFAULT, 1, 1},
-        {FaultReadStream::ShortZero, STG_E_READFAULT, 1, 1},
-        {FaultReadStream::FailImmediately, STG_E_MEDIUMFULL, 1, 0},
-        {FaultReadStream::FailSecond, STG_E_MEDIUMFULL, 2, 0}
+        {FaultReadStream::ShortPositive, STG_E_READFAULT, 1, 2},
+        {FaultReadStream::ShortZero, STG_E_READFAULT, 1, 2},
+        {FaultReadStream::FailImmediately, STG_E_MEDIUMFULL, 1, 1},
+        {FaultReadStream::FailSecond, STG_E_MEDIUMFULL, 2, 1}
     };
     for (const auto& test : cases) {
         if (!full.Rewind())
@@ -846,9 +871,28 @@ static int decoder_failure_injection() {
     hr = confirmedImage.Load(&confirmed);
     if (FAILED(hr) || confirmedImage.GetWidth() != 128 ||
         confirmedImage.GetHeight() != 96 ||
-        confirmed.otherCalls != 2 || confirmed.refs != 1 ||
+        confirmed.otherCalls != 4 || confirmed.refs != 1 ||
         confirmed.calls < 2)
         return fail(125, "read_failure_proven_short_S_OK_EOF");
+
+    // A stat-able range greater than 64 MiB must be rejected without
+    // making even one Read call or allocating a huge temporary stream.
+    FaultReadStream tooLarge(full.ptr, FaultReadStream::OversizedKnown);
+    ATL::CImage oversizedImage;
+    hr = oversizedImage.Load(&tooLarge);
+    if (hr != HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE) ||
+        tooLarge.calls != 0 || tooLarge.otherCalls != 2 ||
+        tooLarge.refs != 1 || !oversizedImage.IsNull())
+        return fail(127, "preflight_64MiB_encoded_limit");
+
+    // Exactly the maximum reported size is not itself invalid; actual
+    // I/O failure must propagate and must not masquerade as too large.
+    FaultReadStream atLimit(full.ptr, FaultReadStream::ExactlyAtLimit);
+    ATL::CImage atLimitImage;
+    hr = atLimitImage.Load(&atLimit);
+    if (hr != STG_E_MEDIUMFULL || atLimit.calls != 1 ||
+        atLimit.otherCalls != 2 || !atLimitImage.IsNull())
+        return fail(128, "encoded_limit_boundary");
 
     if (!full.Rewind())
         return fail(118, "read_failure_early_eof_rewind");
