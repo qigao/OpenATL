@@ -31,6 +31,14 @@ The explicit mandatory enforcement gate is:
 
     openatl_cet_shadow_stack.exe --require-hardware
 
+**Since exact-head CI #40552921431 observed actual fast-fail subcode 0x39
+on BOTH native MSVC and llvm-mingw Windows x64 runners, this gate is now
+REQUIRED in the ordinary pull-request workflow (not a workflow_dispatch
+opt-in).** The native Windows x64 CMake invocations set
+OPENATL_REQUIRE_CET_RUNTIME=ON, causing the CTest to run five times. Linux
+and macOS cross-compilers only verify the PE image; ARM64 never claims
+x64 CET hardware enforcement.
+
 When HSP is unavailable or only in audit mode this command fails with
 exit 77 (rather than skipping or passing). With enforcement active, a
 normal child call must return normally; the tampered-return child must
@@ -45,9 +53,9 @@ Build through normal manifest-installed WTL/OpenATL source-tree CMake with:
     -DOPENATL_BUILD_QUALIFICATION=ON -DOPENATL_REQUIRE_CET_RUNTIME=ON
 
 That option adds a required native CTest only for x64 and fails CMake on
-ARM64. The existing workflow_dispatch "require_cet_runtime" input activates
-it on native Windows x64 MSVC and llvm-mingw. A runner without Windows user
-HSP enabled will be RED, as required. Dedicated hardware-backed Windows
+ARM64. The ordinary PR workflow and workflow_dispatch both require this on
+native Windows x64 MSVC and llvm-mingw; no opt-out mode exists in CI. A
+runner without Windows user HSP enabled will be RED, as required. Dedicated hardware-backed Windows
 execution remains an acceptance dependency, not a simulated provider.
 
 Only a spawned child process intentionally corrupts its return address.

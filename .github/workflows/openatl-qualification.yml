@@ -3,12 +3,6 @@ name: OpenATL source-tree native and cross-platform qualification
 on:
   pull_request:
   workflow_dispatch:
-    inputs:
-      require_cet_runtime:
-        description: "Require genuine Windows x64 hardware Shadow Stack violation enforcement (red when unavailable)"
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -83,8 +77,6 @@ jobs:
           Run git @('-C','tools/wtl10-test','apply',$uiPatch)
       - name: CMake native x64 and cross ARM64, PE/resources, CTest x5
         shell: pwsh
-        env:
-          OPENATL_REQUIRE_CET_RUNTIME: ${{ inputs.require_cet_runtime && 'ON' || 'OFF' }}
         run: |
           $ErrorActionPreference='Stop'
           function Run([string]$tool,[string[]]$argv) {
@@ -97,7 +89,10 @@ jobs:
           foreach($arch in @('x86_64','aarch64')) {
             $triplet=if($arch -eq 'x86_64'){'x64-openatl-mingw'}else{'arm64-openatl-mingw'}
             $build="build-llvm-$arch"
-            $requireCET=if($arch -eq 'x86_64'){$env:OPENATL_REQUIRE_CET_RUNTIME}else{'OFF'}
+            # Hardware-backed CET enforcement has been proven on this native
+            # Windows x64 CI host. It is now mandatory; a missing host
+            # mitigation must fail rather than silently inventory as green.
+            $requireCET=if($arch -eq 'x86_64'){'ON'}else{'OFF'}
             Run cmake @('-S','.','-B',$build,'-G','Ninja',"-DCMAKE_TOOLCHAIN_FILE=$toolchain",
               "-DOPENATL_LLVM_MINGW_BIN=$env:OPENATL_LLVM_BIN","-DOPENATL_TARGET_ARCH=$arch",
               "-DVCPKG_TARGET_TRIPLET=$triplet","-DOPENATL_WTL_DEMO_DIR=$sample",
@@ -182,8 +177,6 @@ jobs:
           Run git @('-C','tools/wtl10-test','apply',$uiPatch)
       - name: MSVC source-tree CMake, PE/resources and native CTest x5
         shell: pwsh
-        env:
-          OPENATL_REQUIRE_CET_RUNTIME: ${{ inputs.require_cet_runtime && 'ON' || 'OFF' }}
         run: |
           $ErrorActionPreference='Stop'
           function Run([string]$tool,[string[]]$argv) {
@@ -194,7 +187,9 @@ jobs:
           $machine=if($arch -eq 'x64'){'x86_64'}else{'aarch64'}
           $triplet="$arch-windows-static"
           $build="build-msvc-$arch"
-          $requireCET=if($arch -eq 'x64'){$env:OPENATL_REQUIRE_CET_RUNTIME}else{'OFF'}
+          # x64 CET Shadow Stack death test is mandatory on native Windows;
+          # ARM64 does not have the corresponding CET architecture.
+          $requireCET=if($arch -eq 'x64'){'ON'}else{'OFF'}
           $sample=(Resolve-Path tools/wtl10-test).Path
           Run cmake @('-S','.','-B',$build,'-G','Ninja','-DCMAKE_BUILD_TYPE=Release',
             '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',"-DVCPKG_TARGET_TRIPLET=$triplet",
