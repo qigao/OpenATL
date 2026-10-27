@@ -16,7 +16,10 @@ if(NOT EXISTS "${_openatl_atl_include}/atlbase.h" OR
    NOT EXISTS "${_openatl_atl_include}/atlwin.h" OR
    NOT EXISTS "${_openatl_atl_include}/atlfile.h" OR
    NOT EXISTS "${_openatl_atl_include}/atlpath.h" OR
-   NOT EXISTS "${_openatl_atl_include}/atlsync.h")
+   NOT EXISTS "${_openatl_atl_include}/atlsync.h" OR
+   NOT EXISTS "${_openatl_atl_include}/atlmem.h" OR
+   NOT EXISTS "${_openatl_atl_include}/atltime.h" OR
+   NOT EXISTS "${_openatl_atl_include}/atlcoll.h")
   message(FATAL_ERROR "Missing repository-owned OpenATL headers")
 endif()
 if(DEFINED OPENATL_WTL_INCLUDE_DIR)
@@ -92,6 +95,12 @@ if(OPENATL_BUILD_QUALIFICATION)
   target_link_libraries(openatl_atl_path PRIVATE OpenATL::ATL)
   add_test(NAME openatl.atl_path COMMAND openatl_atl_path)
 
+  # Additional source-owned ATL-style heap, time and typed array utilities.
+  # ole32 is used only by the native test to detect accidental COM init.
+  add_executable(openatl_atl_extensions tests/atl_conformance/atl_extensions.cpp)
+  target_link_libraries(openatl_atl_extensions PRIVATE OpenATL::ATL ole32)
+  add_test(NAME openatl.atl_extensions_no_com COMMAND openatl_atl_extensions)
+
   # Direct OS failure injection is compiled from the in-repo atlwin.h
   # and isolated behind OPENATL_WX_FAULT_TEST.
   add_executable(openatl_thunk_fault tests/wtl10/thunk_fault.cpp)
@@ -109,7 +118,7 @@ if(OPENATL_BUILD_QUALIFICATION)
              COMMAND openatl_com_client "--${_client_mode}")
   endforeach()
 
-  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_atl_core openatl_atl_path)
+  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_atl_core openatl_atl_path openatl_atl_extensions)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)
     if(MSVC)
       set_property(TARGET ${_qualified} PROPERTY
