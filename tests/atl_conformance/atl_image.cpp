@@ -675,7 +675,7 @@ static int encoder_failure_injection() {
 // the decoder snapshots only Read bytes from its borrowed source.
 class FaultReadStream final : public IStream {
 public:
-    enum Policy { ShortPositive, ShortZero, FailImmediately, FailSecond, EarlyEof };
+    enum Policy { ShortPositive, ShortZero, FailImmediately, FailSecond, EarlyEof, VerifiedEOF };
     FaultReadStream(IStream* backing, Policy policy) noexcept
         : backing_(backing), policy_(policy) {}
     FaultReadStream(const FaultReadStream&) = delete;
@@ -718,6 +718,12 @@ public:
             return STG_E_MEDIUMFULL;
         if (policy_ == ShortZero)
             return S_OK;
+        if (policy_ == VerifiedEOF) {
+            const HRESULT inner = backing_->Read(out, amount, got);
+            suppliedBytes += *got;
+            // Emulate the Windows HGLOBAL behavior at logical EOF.
+            return inner == S_FALSE ? S_OK : inner;
+        }
         if (policy_ == ShortPositive) {
             const ULONG count = amount > 1 ? amount - 1 : 0;
             const HRESULT inner = backing_->Read(out, count, got);
@@ -740,8 +746,12 @@ public:
         if (wrote) *wrote = 0;
         return STG_E_ACCESSDENIED;
     }
-    HRESULT STDMETHODCALLTYPE Seek(LARGE_INTEGER, DWORD, ULARGE_INTEGER*) override {
-        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    HRESULT STDMETHODCALLTYPE Seek(LARGE_INTEGER delta, DWORD origin,
+                                   ULARGE_INTEGER* position) override {
+        ++otherCalls;
+        if (policy_ == VerifiedEOF)
+            return backing_->Seek(delta, origin, position);
+        return STG_E_INVALIDFUNCTION;
     }
     HRESULT STDMETHODCALLTYPE SetSize(ULARGE_INTEGER) override {
         ++otherCalls; return STG_E_INVALIDFUNCTION;
@@ -764,8 +774,11 @@ public:
                                             DWORD) override {
         ++otherCalls; return STG_E_INVALIDFUNCTION;
     }
-    HRESULT STDMETHODCALLTYPE Stat(STATSTG*, DWORD) override {
-        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    HRESULT STDMETHODCALLTYPE Stat(STATSTG* out, DWORD flags) override {
+        ++otherCalls;
+        if (policy_ == VerifiedEOF)
+            return backing_->Stat(out, flags);
+        return STG_E_INVALIDFUNCTION;
     }
     HRESULT STDMETHODCALLTYPE Clone(IStream** clone) override {
         ++otherCalls;
@@ -822,6 +835,20 @@ static int decoder_failure_injection() {
             !rejected.IsNull() || rejected.GetWidth() != 0)
             return fail(117, "read_failure_hardened_HRESULT_and_owner");
     }
+
+    // A source that explicitly reports S_OK for its final short read is
+    // valid only if Stat + a nonmoving Seek(CUR, 0) confirm the stream end.
+    // Verify this branch without relying on an OS-version-specific stream.
+    if (!full.Rewind())
+        return fail(124, "read_failure_verified_eof_rewind");
+    FaultReadStream confirmed(full.ptr, FaultReadStream::VerifiedEOF);
+    ATL::CImage confirmedImage;
+    hr = confirmedImage.Load(&confirmed);
+    if (FAILED(hr) || confirmedImage.GetWidth() != 128 ||
+        confirmedImage.GetHeight() != 96 ||
+        confirmed.otherCalls != 2 || confirmed.refs != 1 ||
+        confirmed.calls < 2)
+        return fail(125, "read_failure_proven_short_S_OK_EOF");
 
     if (!full.Rewind())
         return fail(118, "read_failure_early_eof_rewind");
