@@ -7,6 +7,13 @@ on:
 permissions:
   contents: read
 
+# Keep the exact PR HEAD qualified while avoiding obsolete pending
+# attempts for earlier commits on that same pull request. Separate PRs
+# and manual dispatch refs retain independent job groups.
+concurrency:
+  group: openatl-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   source-tree-only:
     name: Source-only and vcpkg WTL policy
