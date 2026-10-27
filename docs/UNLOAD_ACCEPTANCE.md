@@ -17,6 +17,10 @@ Acceptance conditions:
 - The thunk's VirtualAlloc page is released (VirtualQuery -> MEM_FREE).
 - The previously DLL-associated window class is explicitly unregistered
   BEFORE the DLL is unmapped; reload must never reuse an old WndProc.
+- The DLL-internal STOP/owner quiescence is necessary but NOT sufficient:
+  CanUnload remains BUSY after owner join until the external host has joined
+  ALL callers and invokes RetireCallers as an explicit ownership handoff.
+  This handoff is a test-fixture contract, not a general thread enumerator.
 - All sender threads have exited the DLL export before FreeLibrary.
 - GetModuleHandle confirms the DLL was unloaded and the next cycle can
   independently load and repeat all checks without a COM apartment.

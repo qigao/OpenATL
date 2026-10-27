@@ -23,7 +23,7 @@ HANDLE held_event=nullptr, release_event=nullptr;
 HWND live_window=nullptr;
 volatile LONG phase=idle, accepted=0, processed=0, callbacks=0;
 volatile LONG finalized=0, destroyed=0, released=0, unregistered=0;
-volatile LONG held_timed_out=0;
+volatile LONG held_timed_out=0, callers_retired=0;
 
 LONG read(volatile LONG* value) noexcept {
     return ::InterlockedCompareExchange(value,0,0);
@@ -138,6 +138,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI OpenATLUnloadStart() {
     ::InterlockedExchange(&released,0);
     ::InterlockedExchange(&unregistered,0);
     ::InterlockedExchange(&held_timed_out,0);
+    ::InterlockedExchange(&callers_retired,0);
     ::InterlockedExchange(&phase,starting);
     ready_event=::CreateEventW(nullptr,TRUE,FALSE,nullptr);
     if(!ready_event) {
@@ -243,9 +244,27 @@ extern "C" __declspec(dllexport) DWORD WINAPI OpenATLUnloadStop() {
     ::ReleaseSRWLockExclusive(&gate);
     return clean?ERROR_SUCCESS:ERROR_INVALID_DATA;
 }
+// The external host owns its producer threads; Windows provides no general
+// safe way for this DLL to discover all callers about to enter an export.
+// The host calls this function ONLY after it has joined every producer.
+extern "C" __declspec(dllexport) DWORD WINAPI OpenATLUnloadRetireCallers() {
+    ::AcquireSRWLockExclusive(&gate);
+    const bool ownerDone=read(&phase)==quiesced &&
+                         thread_handle==nullptr && ready_event==nullptr &&
+                         held_event==nullptr && release_event==nullptr &&
+                         live_window==nullptr && read(&callbacks)==0 &&
+                         read(&accepted)==read(&processed) &&
+                         read(&destroyed)==1 && read(&finalized)==1 &&
+                         read(&released)==1 && read(&unregistered)==1 &&
+                         read(&held_timed_out)==0;
+    if(ownerDone) ::InterlockedExchange(&callers_retired,1);
+    ::ReleaseSRWLockExclusive(&gate);
+    return ownerDone?ERROR_SUCCESS:ERROR_BUSY;
+}
+
 extern "C" __declspec(dllexport) DWORD WINAPI OpenATLUnloadCanUnload() {
     ::AcquireSRWLockShared(&gate);
-    bool ready=read(&phase)==quiesced &&
+    bool ready=read(&phase)==quiesced && read(&callers_retired)==1 &&
                thread_handle==nullptr && ready_event==nullptr &&
                held_event==nullptr && release_event==nullptr &&
                live_window==nullptr && read(&callbacks)==0 &&

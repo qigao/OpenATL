@@ -87,12 +87,13 @@ int main() {
         Operation stop=fn("OpenATLUnloadStop");
         Operation canUnload=fn("OpenATLUnloadCanUnload");
         Operation processed=fn("OpenATLUnloadCount");
+        Operation retireCallers=fn("OpenATLUnloadRetireCallers");
         Operation hold=fn("OpenATLUnloadHold");
         Operation waitHeld=fn("OpenATLUnloadWaitHeld");
         Operation releaseHeld=fn("OpenATLUnloadReleaseHeld");
         Operation isClosing=fn("OpenATLUnloadIsClosing");
         if(!start || !submit || !stop || !canUnload || !processed ||
-           !hold || !waitHeld || !releaseHeld || !isClosing)
+           !retireCallers || !hold || !waitHeld || !releaseHeld || !isClosing)
             return fail(round,"exports",ERROR_PROC_NOT_FOUND);
         if(start()!=ERROR_SUCCESS)
             return fail(round,"create_owner_thread",ERROR_GEN_FAILURE);
@@ -141,8 +142,10 @@ int main() {
         ::CloseHandle(stopperThread);
         if(!stopped)
             return fail(round,"owner_drain_and_join",stopper.status);
-        if(canUnload()!=ERROR_SUCCESS || submit()!=ERROR_BUSY)
-            return fail(round,"unload_gate",ERROR_INVALID_DATA);
+        // STOP drained the DLL owner but the host still has producer threads
+        // that may have entered an export; unload MUST remain inadmissible.
+        if(canUnload()!=ERROR_BUSY || submit()!=ERROR_BUSY)
+            return fail(round,"owner_done_but_callers_live",ERROR_INVALID_DATA);
         DWORD accepted=33; // 32 ordinary posts + one held callback
         for(int i=0;i<nProducers;++i) {
             DWORD result=::WaitForSingleObject(threads[i],5000);
@@ -158,6 +161,11 @@ int main() {
         }
         if(processed()!=accepted)
             return fail(round,"accepted_messages_lost",ERROR_INVALID_DATA);
+        // Only the host can prove every thread that could invoke the DLL
+        // exports has exited. Publish that proof after joining them all.
+        if(retireCallers()!=ERROR_SUCCESS || canUnload()!=ERROR_SUCCESS)
+            return fail(round,"retire_callers_before_FreeLibrary",
+                        ERROR_INVALID_DATA);
         if(!::FreeLibrary(dllModule))
             return fail(round,"FreeLibrary",::GetLastError());
         if(::GetModuleHandleW(filename))
@@ -166,6 +174,6 @@ int main() {
             return fail(round,"COM_initialized_after_unload",
                         ERROR_INVALID_STATE);
     }
-    std::puts("OPENATL_UNLOAD_OK rounds=12 events=1 lease=1 held=1 blocked=1 thunk_freed=1 class_unregistered=1 dll_unmapped=1 no_com=1");
+    std::puts("OPENATL_UNLOAD_OK rounds=12 events=1 lease=1 held=1 blocked=1 callers_joined=1 thunk_freed=1 class_unregistered=1 dll_unmapped=1 no_com=1");
     return 0;
 }
