@@ -12,7 +12,7 @@ these paths separately on the exact branch HEAD.
 | In-tree Unicode `CPath` + Win32 file test | 5× native | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
 | Source-owned ATL heap, FILETIME and typed array utilities | 5× native, **no COM apartment** | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
 | Win32 `CAtlFileMapping`: unaligned offsets, file/writeback, duplicate section ownership, named shared memory | 5× native, **no COM apartment** | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
-| Win32 `CImage`: 24/32-bpp DIB, HBITMAP/DC lifecycle, BMP/PNG file and caller-owned IStream Save/Load, BGRA alpha, unsupported GIF, failed decoding/encoding cleanup | 5× native, **no COM apartment** | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
+| Win32 `CImage`: 24/32-bpp DIB, HBITMAP/DC lifecycle, BMP/PNG file and caller-owned IStream Save/Load, BGRA alpha, unsupported GIF, fail-closed short/zero/successful writes and failed writes on first/second transfer chunk | 5× native, **no COM apartment** | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
 | Full official WTL10 SDI + .rc | PE + `.rsrc` link | PE machine/link | PE + `.rsrc` link | PE machine/link | llvm-mingw PE/link |
 | COM Server, RGS, `OBJECT_ENTRY_AUTO`, registry writer | **Out of scope** | Out of scope | Out of scope | Out of scope | Out of scope |
 | CFG/CET, DSO unload, interactive full SDI | Not qualified | Not qualified | Not qualified | Not qualified | N/A |
