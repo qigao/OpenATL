@@ -135,9 +135,13 @@ def main() -> int:
             raise RuntimeError("SDI disappeared on File/New")
 
         post(frame, ID_VIEW_CONTROLS)
-        controls = until("native All Controls dialog",
-                         lambda: next((h for h, title in windows(process.pid)
-                                       if "All WTL Controls Showcase" in title), None))
+        def controls_window():
+            title = caption(frame)
+            if title.startswith("OPENATL_SDI_CONTROLS_FAILED_"):
+                raise RuntimeError("WTL10 DoModal failed: " + title)
+            return next((h for h, name in windows(process.pid)
+                         if "All WTL Controls Showcase" in name), None)
+        controls = until("native All Controls dialog", controls_window)
         if not all(u.GetDlgItem(controls, control) for control in
                    (IDC_BUTTON1, IDC_EDIT1, IDC_TREEVIEW, IDC_LISTVIEW)):
             raise RuntimeError("Actual WTL controls were not created")

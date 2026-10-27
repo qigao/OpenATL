@@ -8,7 +8,24 @@
  #include <atlstr.h>
  
  // WTL headers
-@@ -1585,7 +1584,7 @@
+@@ -1537,6 +1536,14 @@
+     LRESULT OnViewControls(WORD, WORD, HWND, BOOL&)
+     {
++        ::SetWindowTextW(m_hWnd, L"OPENATL_SDI_CONTROLS_ENTERED");
+         CAllControlsDlg dlg;
+-        dlg.DoModal();
++        const INT_PTR result = dlg.DoModal();
++        if (result == -1) {
++            const DWORD error = ::GetLastError();
++            wchar_t diagnostic[96] = {};
++            swprintf_s(diagnostic, _countof(diagnostic),
++                       L"OPENATL_SDI_CONTROLS_FAILED_%lu",
++                       static_cast<unsigned long>(error));
++            ::SetWindowTextW(m_hWnd, diagnostic);
++        }
+         return 0;
+     }
+@@ -1585,7 +1592,7 @@
      (void)hRichEdit;
  
      // Initialize application module
