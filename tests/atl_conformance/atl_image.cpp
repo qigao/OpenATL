@@ -247,8 +247,8 @@ static int codec_roundtrip() {
     if (!rgb.Create(3, 2, 24)) return fail(53, "bmp_source_dib");
     rgb.SetPixel(0, 0, RGB(12, 34, 56));
     rgb.SetPixel(2, 1, RGB(123, 111, 99));
-    hr = rgb.Save(paths.bmp, Gdiplus::ImageFormatBMP);
-    if (FAILED(hr)) return fail(54, "bmp_save_explicit_guid");
+    hr = rgb.Save(paths.bmp);
+    if (FAILED(hr)) return fail(54, "bmp_save_from_extension");
     const BYTE bmpSignature[2]{'B', 'M'};
     if (!signature(paths.bmp, bmpSignature, 2))
         return fail(55, "bmp_file_signature");
@@ -259,6 +259,16 @@ static int codec_roundtrip() {
         decodedBMP.GetPixel(0, 0) != RGB(12, 34, 56) ||
         decodedBMP.GetPixel(2, 1) != RGB(123, 111, 99))
         return fail(56, "bmp_roundtrip");
+
+    // The caller can override an unsupported extension with an explicit
+    // encoder format GUID; decoding must inspect the actual image bytes.
+    hr = rgb.Save(paths.unknown, Gdiplus::ImageFormatBMP);
+    if (FAILED(hr) || !signature(paths.unknown, bmpSignature, 2))
+        return fail(63, "explicit_guid_overrides_extension");
+    ATL::CImage transcoded;
+    hr = transcoded.Load(paths.unknown);
+    if (FAILED(hr) || transcoded.GetPixel(2, 1) != RGB(123, 111, 99))
+        return fail(64, "decode_disguised_bmp");
 
     // Unsupported GUID or nonexistent destination must fail without
     // destroying the caller-owned image.
