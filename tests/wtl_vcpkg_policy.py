@@ -37,22 +37,23 @@ def check() -> int:
     if ("vcpkg_from_sourceforge(" not in recipe or
             "086a6cf6a49a4318a8c519136ba6019" not in recipe):
         errors.append("WTL vcpkg overlay must retain pinned upstream recipe")
-    if port.get("port-version") != 7:
-        errors.append("WTL UI-only overlay must use exact #7")
-    ui_patch = ROOT / "ports/wtl/atlapp.h-openatl-ui-only.patch"
+    if port.get("port-version") != 8:
+        errors.append("WTL UI-only overlay must use exact #8")
+    if "atlapp.h-openatl-ui-only.patch" in recipe or (
+            ROOT / "ports/wtl/atlapp.h-openatl-ui-only.patch").exists():
+        errors.append("Mismatched mirror-based WTL UI patch is forbidden")
+    if ("function(_openatl_replace_between" not in recipe or
+            "class CAppModule : public ATL::CComModule" not in recipe or
+            "HRESULT Init(HINSTANCE hInstance)" not in recipe):
+        errors.append("WTL must transform the checked SourceForge UI module")
+    if ("CServerAppModule - module class for a COM server application" not in recipe
+            or "ATL::_pAtlModule->m_csStaticDataInitAndTypeInfo" not in recipe):
+        errors.append("Missing Win32 lock or Server deletion anchors")
     sample_patch = ROOT / "tests/wtl10/wtltest-ui-only.patch"
-    if ("atlapp.h-openatl-ui-only.patch" not in recipe or not ui_patch.exists()):
-        errors.append("WTL10 source must use the UI-only CAppModule patch")
-    else:
-        diff = ui_patch.read_text(encoding="utf-8")
-        if ("+\tHRESULT Init(HINSTANCE hInstance)" not in diff or
-                "-class CServerAppModule" not in diff or
-                "-typedef ATL::CRegKey CRegKeyEx;" not in diff):
-            errors.append("WTL UI patch missing Win32 Init/server/registry deletion")
     if not sample_patch.exists() or (
             "-    hRes = _Module.Init(NULL, hInstance);" not in
-            sample_patch.read_text(encoding="utf-8")):
-        errors.append("WTL test sample must pin source change to Init(hInstance)")
+            sample_patch.read_text("utf-8")):
+        errors.append("Pinned SDI must call Init(hInstance)")
     if re.search(r"(?i)OpenATL::WTL|add_library\s*\(\s*openatl_wtl\b", cmake):
         errors.append("OpenATL must not synthesize a WTL target")
     if ("VCPKG_TARGET_TRIPLET" not in cmake or

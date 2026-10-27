@@ -1,7 +1,7 @@
 {
   "name": "wtl",
   "version": "10.0.10320",
-  "port-version": 7,
+  "port-version": 8,
   "description": "Pinned official WTL10 source patched to Win32-only CAppModule, without Microsoft ATL or COM Server.",
   "homepage": "https://sourceforge.net/projects/wtl/",
   "license": "MS-PL",
