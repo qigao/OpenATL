@@ -180,7 +180,8 @@ if(OPENATL_BUILD_QUALIFICATION)
       target_link_options(openatl_cet_shadow_stack PRIVATE
         /GUARD:CF /CETCOMPAT /DYNAMICBASE /NXCOMPAT /INCREMENTAL:NO)
     else()
-      target_compile_options(openatl_cet_shadow_stack PRIVATE -Xclang -cfguard)
+      target_compile_options(openatl_cet_shadow_stack PRIVATE
+        -Xclang -cfguard -fno-omit-frame-pointer -fno-optimize-sibling-calls)
       target_link_options(openatl_cet_shadow_stack PRIVATE
         -Wl,-Xlink,-guard:cf -Wl,-Xlink,-cetcompat -static)
     endif()
