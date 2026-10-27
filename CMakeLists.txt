@@ -184,12 +184,19 @@ if(OPENATL_BUILD_QUALIFICATION)
     add_executable(openatl_wtl10_sdi WIN32
       "${OPENATL_WTL_DEMO_DIR}/main.cpp"
       "${OPENATL_WTL_DEMO_DIR}/wtltest.rc")
-    # The pinned SDI sample uses SysLink, which requires comctl32 v6.
-    # Embed a genuine application manifest, not a fake/removed control.
-    set(_sdi_manifest_rc "${CMAKE_CURRENT_BINARY_DIR}/openatl_sdi_comctl6.rc")
-    file(WRITE "${_sdi_manifest_rc}"
-      "1 24 \"${CMAKE_CURRENT_SOURCE_DIR}/tests/wtl10/sdi_comctl6.manifest\"\n")
-    target_sources(openatl_wtl10_sdi PRIVATE "${_sdi_manifest_rc}")
+    # The pinned SDI uses SysLink (comctl32 v6). MSVC already injects a
+    # default RT_MANIFEST: merge its dependencies, do not add a duplicate.
+    # MinGW/LLD does not generate that resource, so embed one there.
+    if(MSVC)
+      target_link_options(openatl_wtl10_sdi PRIVATE
+        "/MANIFEST:EMBED"
+        "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/tests/wtl10/sdi_comctl6.manifest")
+    else()
+      set(_sdi_manifest_rc "${CMAKE_CURRENT_BINARY_DIR}/openatl_sdi_comctl6.rc")
+      file(WRITE "${_sdi_manifest_rc}"
+        "1 24 \"${CMAKE_CURRENT_SOURCE_DIR}/tests/wtl10/sdi_comctl6.manifest\"\n")
+      target_sources(openatl_wtl10_sdi PRIVATE "${_sdi_manifest_rc}")
+    endif()
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME openatl.wtl10_sdi_native_ui
       COMMAND "${Python3_EXECUTABLE}"

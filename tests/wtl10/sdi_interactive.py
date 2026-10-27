@@ -174,8 +174,11 @@ def main() -> int:
         stage = "SDI process exit"
         remaining = max(0.1, deadline - time.monotonic())
         exit_code = process.wait(timeout=remaining)
-        if exit_code != 0:
-            raise RuntimeError(f"SDI exited with {exit_code} after File/Exit")
+        # Official WTL10 CFrameWindowImplBase::OnDestroy explicitly calls
+        # PostQuitMessage(1) for the main non-child frame. The message loop
+        # returns WM_QUIT.wParam, so 1 is the pinned sample's normal exit.
+        if exit_code != 1:
+            raise RuntimeError(f"SDI exited with {exit_code}, expected WTL frame quit code 1")
         if any(h == frame for h, _ in windows(process.pid)):
             raise RuntimeError("SDI HWND survived process exit")
         print("OPENATL_SDI_UI_OK menu=1 controls=1 click=1 about=1 options=1 exit=1")
