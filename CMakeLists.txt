@@ -148,6 +148,18 @@ if(OPENATL_BUILD_QUALIFICATION)
 
   # Direct OS failure injection is compiled from the in-repo atlwin.h
   # and isolated behind OPENATL_WX_FAULT_TEST.
+  # Real test DLL, not a substitute for production plugin lifetime rules.
+  # The host uses LoadLibrary/GetProcAddress, never a static import.
+  add_library(openatl_unload_fixture SHARED tests/wtl10/unload_fixture.cpp)
+  target_link_libraries(openatl_unload_fixture PRIVATE OpenATL::ATL user32)
+  set_target_properties(openatl_unload_fixture PROPERTIES
+    PREFIX "" OUTPUT_NAME "openatl_unload_fixture")
+  add_executable(openatl_unload_runner tests/wtl10/unload_runner.cpp)
+  target_link_libraries(openatl_unload_runner PRIVATE OpenATL::ATL ole32 user32)
+  add_dependencies(openatl_unload_runner openatl_unload_fixture)
+  add_test(NAME openatl.dll_unload_native COMMAND openatl_unload_runner)
+  set_tests_properties(openatl.dll_unload_native PROPERTIES TIMEOUT 35)
+
   add_executable(openatl_thunk_fault tests/wtl10/thunk_fault.cpp)
   target_compile_definitions(openatl_thunk_fault PRIVATE OPENATL_WX_FAULT_TEST=1)
   target_link_libraries(openatl_thunk_fault PRIVATE OpenATL::ATL)
@@ -163,7 +175,7 @@ if(OPENATL_BUILD_QUALIFICATION)
              COMMAND openatl_com_client "--${_client_mode}")
   endforeach()
 
-  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
+  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_unload_fixture openatl_unload_runner openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)
     if(MSVC)
       set_property(TARGET ${_qualified} PROPERTY

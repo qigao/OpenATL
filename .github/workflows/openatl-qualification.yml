@@ -85,7 +85,7 @@ jobs:
           }
           $toolchain=(Resolve-Path cmake/toolchains/llvm-mingw.cmake).Path
           $sample=(Resolve-Path tools/wtl10-test).Path
-          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_com_client','openatl_wtl10_sdi')
+          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_unload_runner','openatl_com_client','openatl_wtl10_sdi')
           foreach($arch in @('x86_64','aarch64')) {
             $triplet=if($arch -eq 'x86_64'){'x64-openatl-mingw'}else{'arm64-openatl-mingw'}
             $build="build-llvm-$arch"
@@ -102,6 +102,9 @@ jobs:
               Run python $args_
               $manifest["$target.exe"]=(Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
             }
+            $dll="$build/openatl_unload_fixture.dll"
+            Run python @('tests/wtl10/verify_pe_machine.py',$dll,$arch)
+            $manifest['openatl_unload_fixture.dll']=(Get-FileHash $dll -Algorithm SHA256).Hash.ToLowerInvariant()
             if($arch -eq 'x86_64') {
               Run ctest @('--test-dir',$build,'--output-on-failure','--repeat','until-fail:5')
             } else {
@@ -113,6 +116,7 @@ jobs:
           name: openatl-llvm-arm64
           path: |
             build-llvm-aarch64/*.exe
+            build-llvm-aarch64/*.dll
             build-llvm-aarch64/manifest.json
           if-no-files-found: error
           retention-days: 7
@@ -183,7 +187,7 @@ jobs:
           if(!$identity -or !(Select-String -Path $identity.FullName -Pattern 'CMAKE_CXX_COMPILER_ID "MSVC"' -Quiet)) {
             throw 'MSVC cl.exe was not the actual compiler'
           }
-          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_com_client','openatl_wtl10_sdi')
+          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_unload_runner','openatl_com_client','openatl_wtl10_sdi')
           $manifest=@{}
           foreach($target in $targets) {
             $file="$build/$target.exe"
@@ -192,6 +196,9 @@ jobs:
             Run python $args_
             $manifest["$target.exe"]=(Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
           }
+          $dll="$build/openatl_unload_fixture.dll"
+          Run python @('tests/wtl10/verify_pe_machine.py',$dll,$machine)
+          $manifest['openatl_unload_fixture.dll']=(Get-FileHash $dll -Algorithm SHA256).Hash.ToLowerInvariant()
           if($arch -eq 'x64') {
             Run ctest @('--test-dir',$build,'--output-on-failure','--repeat','until-fail:5')
           } else {
@@ -203,6 +210,7 @@ jobs:
           name: openatl-msvc-arm64
           path: |
             build-msvc-arm64/*.exe
+            build-msvc-arm64/*.dll
             build-msvc-arm64/manifest.json
           if-no-files-found: error
           retention-days: 7
@@ -311,11 +319,12 @@ jobs:
               "-DOPENATL_WTL_DEMO_DIR=$PWD/tools/wtl10-test" \
               -DCMAKE_BUILD_TYPE=Release -DOPENATL_BUILD_QUALIFICATION=ON
             cmake --build "$build" --parallel 2
-            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image openatl_thunk_fault openatl_com_client openatl_wtl10_sdi; do
+            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image openatl_thunk_fault openatl_unload_runner openatl_com_client openatl_wtl10_sdi; do
               if [ "$target" = openatl_gui_runtime ] || [ "$target" = openatl_wtl10_sdi ]; then
                 python3 tests/wtl10/verify_pe_machine.py "$build/$target.exe" "$arch" --require-resources
               else
                 python3 tests/wtl10/verify_pe_machine.py "$build/$target.exe" "$arch"
               fi
             done
+            python3 tests/wtl10/verify_pe_machine.py "$build/openatl_unload_fixture.dll" "$arch"
           done
