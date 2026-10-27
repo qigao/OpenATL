@@ -668,6 +668,190 @@ static int encoder_failure_injection() {
     return 0;
 }
 
+
+// Test-only, unregistered IStream that presents deterministic Read failures.
+// No CLSID, registry, class factory, application-owned COM Server, or
+// additional COM apartment. Every other operation is forbidden to verify
+// the decoder snapshots only Read bytes from its borrowed source.
+class FaultReadStream final : public IStream {
+public:
+    enum Policy { ShortPositive, ShortZero, FailImmediately, FailSecond, EarlyEof };
+    FaultReadStream(IStream* backing, Policy policy) noexcept
+        : backing_(backing), policy_(policy) {}
+    FaultReadStream(const FaultReadStream&) = delete;
+    FaultReadStream& operator=(const FaultReadStream&) = delete;
+
+    ULONG calls = 0;
+    ULONG otherCalls = 0;
+    ULONGLONG suppliedBytes = 0;
+    ULONG refs = 1;
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** output) override {
+        ++otherCalls;
+        if (output == nullptr) return E_POINTER;
+        *output = nullptr;
+        if (::IsEqualIID(iid, IID_IUnknown) ||
+            ::IsEqualIID(iid, IID_IStream) ||
+            ::IsEqualIID(iid, IID_ISequentialStream)) {
+            *output = static_cast<IStream*>(this);
+            AddRef();
+            return S_OK;
+        }
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override {
+        ++otherCalls;
+        return ++refs;
+    }
+    ULONG STDMETHODCALLTYPE Release() override {
+        ++otherCalls;
+        return --refs;
+    }
+    HRESULT STDMETHODCALLTYPE Read(void* out, ULONG amount, ULONG* got) override {
+        ++calls;
+        if (got != nullptr) *got = 0;
+        if (backing_ == nullptr || out == nullptr || amount == 0 ||
+            got == nullptr)
+            return E_INVALIDARG;
+        if (policy_ == FailImmediately ||
+            (policy_ == FailSecond && calls >= 2))
+            return STG_E_MEDIUMFULL;
+        if (policy_ == ShortZero)
+            return S_OK;
+        if (policy_ == ShortPositive) {
+            const ULONG count = amount > 1 ? amount - 1 : 0;
+            const HRESULT inner = backing_->Read(out, count, got);
+            if (FAILED(inner)) return inner;
+            suppliedBytes += *got;
+            return S_OK;
+        }
+        if (policy_ == EarlyEof) {
+            const HRESULT inner = backing_->Read(out, 1, got);
+            if (FAILED(inner)) return inner;
+            suppliedBytes += *got;
+            return S_FALSE;
+        }
+        const HRESULT inner = backing_->Read(out, amount, got);
+        suppliedBytes += *got;
+        return inner;
+    }
+    HRESULT STDMETHODCALLTYPE Write(const void*, ULONG, ULONG* wrote) override {
+        ++otherCalls;
+        if (wrote) *wrote = 0;
+        return STG_E_ACCESSDENIED;
+    }
+    HRESULT STDMETHODCALLTYPE Seek(LARGE_INTEGER, DWORD, ULARGE_INTEGER*) override {
+        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    }
+    HRESULT STDMETHODCALLTYPE SetSize(ULARGE_INTEGER) override {
+        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    }
+    HRESULT STDMETHODCALLTYPE CopyTo(IStream*, ULARGE_INTEGER, ULARGE_INTEGER*,
+                                     ULARGE_INTEGER*) override {
+        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    }
+    HRESULT STDMETHODCALLTYPE Commit(DWORD) override {
+        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    }
+    HRESULT STDMETHODCALLTYPE Revert() override {
+        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    }
+    HRESULT STDMETHODCALLTYPE LockRegion(ULARGE_INTEGER, ULARGE_INTEGER,
+                                          DWORD) override {
+        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    }
+    HRESULT STDMETHODCALLTYPE UnlockRegion(ULARGE_INTEGER, ULARGE_INTEGER,
+                                            DWORD) override {
+        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    }
+    HRESULT STDMETHODCALLTYPE Stat(STATSTG*, DWORD) override {
+        ++otherCalls; return STG_E_INVALIDFUNCTION;
+    }
+    HRESULT STDMETHODCALLTYPE Clone(IStream** clone) override {
+        ++otherCalls;
+        if (clone != nullptr) *clone = nullptr;
+        return STG_E_INVALIDFUNCTION;
+    }
+private:
+    IStream* backing_;
+    Policy policy_;
+};
+
+static int decoder_failure_injection() {
+    ATL::CImage input;
+    if (!input.Create(128, 96, 24))
+        return fail(111, "read_failure_create_image");
+    std::uint32_t random = 0x5b1d940fu;
+    for (int y = 0; y < input.GetHeight(); ++y) {
+        BYTE* row = static_cast<BYTE*>(input.GetPixelAddress(0, y));
+        if (row == nullptr) return fail(112, "read_failure_source_row");
+        for (int x = 0; x < input.GetWidth() * 3; ++x) {
+            random = random * 1664525u + 1013904223u;
+            row[x] = static_cast<BYTE>(random >> 24);
+        }
+    }
+    OwnedStream full;
+    if (!full.Create()) return fail(113, "read_failure_create_stream");
+    HRESULT hr = input.Save(full.ptr, &Gdiplus::ImageFormatPNG);
+    if (FAILED(hr)) return fail(114, "read_failure_encode_source");
+    STATSTG encoded{};
+    if (FAILED(full.ptr->Stat(&encoded, STATFLAG_NONAME)) ||
+        encoded.cbSize.QuadPart <= 8192)
+        return fail(115, "read_failure_source_must_exceed_one_chunk");
+
+    struct Scenario {
+        FaultReadStream::Policy mode;
+        HRESULT expected;
+        ULONG calls;
+    };
+    const Scenario cases[] = {
+        {FaultReadStream::ShortPositive, STG_E_READFAULT, 1},
+        {FaultReadStream::ShortZero, STG_E_READFAULT, 1},
+        {FaultReadStream::FailImmediately, STG_E_MEDIUMFULL, 1},
+        {FaultReadStream::FailSecond, STG_E_MEDIUMFULL, 2}
+    };
+    for (const auto& test : cases) {
+        if (!full.Rewind())
+            return fail(116, "read_failure_rewind");
+        FaultReadStream stream(full.ptr, test.mode);
+        ATL::CImage rejected;
+        hr = rejected.Load(&stream);
+        if (hr != test.expected || stream.calls != test.calls ||
+            stream.otherCalls != 0 || stream.refs != 1 ||
+            !rejected.IsNull() || rejected.GetWidth() != 0)
+            return fail(117, "read_failure_hardened_HRESULT_and_owner");
+    }
+
+    if (!full.Rewind())
+        return fail(118, "read_failure_early_eof_rewind");
+    FaultReadStream early(full.ptr, FaultReadStream::EarlyEof);
+    ATL::CImage truncated;
+    hr = truncated.Load(&early);
+    if (SUCCEEDED(hr) || early.calls != 1 ||
+        early.otherCalls != 0 || early.refs != 1 ||
+        !truncated.IsNull() || truncated.GetBits() != nullptr)
+        return fail(119, "read_failure_truncated_input");
+
+    OwnedStream empty;
+    if (!empty.Create())
+        return fail(120, "read_failure_empty_stream");
+    ATL::CImage noInput;
+    hr = noInput.Load(empty.ptr);
+    if (hr != STG_E_READFAULT || !noInput.IsNull())
+        return fail(121, "read_failure_empty_body");
+
+    // Failure is isolated to each invocation. The caller's original
+    // stream is still owned by the caller and can be repositioned.
+    if (!full.Rewind())
+        return fail(122, "read_failure_recover_rewind");
+    ATL::CImage recovered;
+    hr = recovered.Load(full.ptr);
+    if (FAILED(hr) || recovered.GetWidth() != 128 ||
+        recovered.GetHeight() != 96 || recovered.GetBits() == nullptr)
+        return fail(123, "read_failure_success_after_faults");
+    return 0;
+}
+
 int main() {
     static_assert(sizeof(void*) == 8, "Only Windows x64 and ARM64 qualified");
     ULONG_PTR token = 0;
@@ -678,8 +862,9 @@ int main() {
     if (int result = codec_roundtrip()) return result;
     if (int result = stream_roundtrip()) return result;
     if (int result = encoder_failure_injection()) return result;
+    if (int result = decoder_failure_injection()) return result;
     if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED)
         return fail(2, "COM_apartment_leaked");
-    std::puts("ATL_IMAGE_OK dib=1 attach=1 draw=1 orientation=1 codec=1 stream=1 shortwrite=1 alpha=1 cleanup=1 no_com=1");
+    std::puts("ATL_IMAGE_OK dib=1 attach=1 draw=1 orientation=1 codec=1 stream=1 shortwrite=1 shortread=1 alpha=1 cleanup=1 no_com=1");
     return 0;
 }
