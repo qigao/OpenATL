@@ -5,10 +5,13 @@ The OpenATL CFG/CET native scope has two distinct claims:
 1. **PE image metadata:** CFG Load Config and CETCOMPAT (x64) are checked by
    verify_pe_mitigations.py. All Windows build hosts and Linux/macOS
    cross builds can qualify these image properties.
-2. **Actual CPU/OS return integrity:** This requires an x64 Windows process
+2. **Actual CPU/OS return integrity and guarded thunk:** This requires an x64 Windows process
    where ProcessUserShadowStackPolicy.EnableUserShadowStack is active,
-   AuditUserShadowStack is not active, and an observed control-protection
-   exception after corrupting an x64 CETCOMPAT function's saved return address.
+   AuditUserShadowStack is not active; the source-owned CWndProcThunk must
+   perform a true W^X indirect callback under the same enforced HSP process,
+   release its page after return, and then the isolated child must produce an
+   observed control-protection exception after corrupting an x64 CETCOMPAT
+   function's saved return address.
 
 The second claim is NEVER inferred from a compiler/linker flag, portable
 cross-build, kernel-only HSP setting, or ARM64 runtime. No test attempts to

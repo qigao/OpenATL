@@ -9,6 +9,7 @@
 #include <windows.h>
 #include <intrin.h>
 #include <atlbase.h>
+#include <atlwin.h>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -223,6 +224,44 @@ static bool spawn_debug_violation(CrashEvidence* evidence) {
     return completed && !error;
 }
 
+// A CET-enabled return-address death test alone does not qualify OpenATL's
+// generated executable WndProc. Exercise the actual OpenATL CWndProcThunk
+// indirect call under that same enforced shadow-stack process policy.
+static LRESULT CALLBACK cet_window_thunk(HWND opaque, UINT message,
+                                         WPARAM w, LPARAM l) {
+    if (message != WM_APP + 91 || opaque == nullptr)
+        return -91;
+    int* invocations = reinterpret_cast<int*>(opaque);
+    ++*invocations;
+    return static_cast<LRESULT>(w + l);
+}
+
+static bool qualify_cet_thunk() {
+    int invocations = 0;
+    void* code = nullptr;
+    {
+        ATL::CWndProcThunk thunk;
+        if (!thunk.Init(cet_window_thunk, &invocations))
+            return false;
+        code = thunk.GetCodeAddress();
+        MEMORY_BASIC_INFORMATION page{};
+        if (!code || ::VirtualQuery(code, &page, sizeof(page)) !=
+                         sizeof(page) ||
+            page.State != MEM_COMMIT ||
+            (page.Protect & 0xffu) != PAGE_EXECUTE_READ ||
+            (page.Protect & PAGE_GUARD) != 0)
+            return false;
+        const WNDPROC callback = thunk.GetWNDPROC();
+        if (!callback || callback(nullptr, WM_APP + 91, 17, 25) != 42 ||
+            invocations != 1)
+            return false;
+    }
+    // The thunk owner is destroyed only after its callback returned.
+    MEMORY_BASIC_INFORMATION page{};
+    return code && ::VirtualQuery(code, &page, sizeof(page)) ==
+                       sizeof(page) && page.State == MEM_FREE;
+}
+
 static int qualify(bool required) {
     ShadowPolicy policy = shadow_policy();
     if (!policy.enabled() || policy.audit()) {
@@ -234,6 +273,10 @@ static int qualify(bool required) {
         // The ordinary CFG/PE CI only inventories CET. An explicitly
         // requested CET *enforcement* gate MUST fail when it is unavailable.
         return required ? 77 : 0;
+    }
+    if (!qualify_cet_thunk()) {
+        std::fprintf(stderr, "OPENATL_CET_FAIL stage=HSP_protected_thunk\n");
+        return 93;
     }
     DWORD controlExit = ~0u;
     if (!spawn(L"--control", &controlExit) || controlExit != 0) {
@@ -266,7 +309,7 @@ static int qualify(bool required) {
     }
     std::printf("OPENATL_CET_ENFORCED_OK query=1 enabled=1 audit=0 "
                 "strict=%d control=0x00000000 "
-                "exception=0x%08lx fastfail=0x%llx\n",
+                "exception=0x%08lx fastfail=0x%llx thunk=1\n",
                 policy.strict() ? 1 : 0,
                 static_cast<unsigned long>(evidence.exception),
                 static_cast<unsigned long long>(evidence.fastFailCode));
