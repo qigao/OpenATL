@@ -141,11 +141,13 @@ struct TempImages {
     wchar_t bmp[MAX_PATH]{};
     wchar_t unknown[MAX_PATH]{};
     wchar_t corrupt[MAX_PATH]{};
+    wchar_t gif[MAX_PATH]{};
     ~TempImages() {
         if (png[0]) (void)::DeleteFileW(png);
         if (bmp[0]) (void)::DeleteFileW(bmp);
         if (unknown[0]) (void)::DeleteFileW(unknown);
         if (corrupt[0]) (void)::DeleteFileW(corrupt);
+        if (gif[0]) (void)::DeleteFileW(gif);
     }
 };
 
@@ -160,7 +162,8 @@ static bool make_temp_paths(TempImages* paths) {
     return std::swprintf(paths->png, MAX_PATH, L"%ls.png", temporary) > 0 &&
            std::swprintf(paths->bmp, MAX_PATH, L"%ls.bmp", temporary) > 0 &&
            std::swprintf(paths->unknown, MAX_PATH, L"%ls.dat", temporary) > 0 &&
-           std::swprintf(paths->corrupt, MAX_PATH, L"%ls.bad", temporary) > 0;
+           std::swprintf(paths->corrupt, MAX_PATH, L"%ls.bad", temporary) > 0 &&
+           std::swprintf(paths->gif, MAX_PATH, L"%ls.gif", temporary) > 0;
 }
 
 static bool signature(const wchar_t* path, const BYTE* prefix, DWORD count) {
@@ -299,6 +302,30 @@ static int codec_roundtrip() {
     hr = rejected.Load(L"Z:\\OpenATL-nonexistent-folder\\unreadable.png");
     if (SUCCEEDED(hr) || !rejected.IsNull())
         return fail(62, "missing_file_cleanup");
+
+    // GDI+ itself can decode GIF, but this bounded OpenATL API must
+    // reject it instead of silently expanding support beyond BMP/PNG.
+    static constexpr BYTE smallGif[] = {
+        0x47,0x49,0x46,0x38,0x39,0x61,0x01,0x00,0x01,0x00,
+        0x80,0x00,0x00,0x00,0x00,0x00,0xff,0xff,0xff,
+        0x21,0xf9,0x04,0x01,0x00,0x00,0x00,0x00,
+        0x2c,0x00,0x00,0x00,0x00,0x01,0x00,0x01,0x00,0x00,
+        0x02,0x02,0x44,0x01,0x00,0x3b
+    };
+    HANDLE gifFile = ::CreateFileW(paths.gif, GENERIC_WRITE, 0, NULL,
+                                   CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (gifFile == INVALID_HANDLE_VALUE)
+        return fail(65, "Create_gif_test_data");
+    written = 0;
+    const BOOL gifWritten = ::WriteFile(gifFile, smallGif,
+                     static_cast<DWORD>(sizeof(smallGif)), &written, NULL);
+    (void)::CloseHandle(gifFile);
+    if (!gifWritten || written != sizeof(smallGif))
+        return fail(66, "Write_gif_test_data");
+    ATL::CImage unsupportedDecoder;
+    hr = unsupportedDecoder.Load(paths.gif);
+    if (hr != E_NOTIMPL || !unsupportedDecoder.IsNull())
+        return fail(67, "Reject_GDIplus_GIF_decoder");
 
     return 0;
 }
