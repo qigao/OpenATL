@@ -3,6 +3,12 @@ name: OpenATL source-tree native and cross-platform qualification
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      require_cet_runtime:
+        description: "Require genuine Windows x64 hardware Shadow Stack violation enforcement (red when unavailable)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -77,6 +83,8 @@ jobs:
           Run git @('-C','tools/wtl10-test','apply',$uiPatch)
       - name: CMake native x64 and cross ARM64, PE/resources, CTest x5
         shell: pwsh
+        env:
+          OPENATL_REQUIRE_CET_RUNTIME: ${{ inputs.require_cet_runtime && 'ON' || 'OFF' }}
         run: |
           $ErrorActionPreference='Stop'
           function Run([string]$tool,[string[]]$argv) {
@@ -89,14 +97,21 @@ jobs:
           foreach($arch in @('x86_64','aarch64')) {
             $triplet=if($arch -eq 'x86_64'){'x64-openatl-mingw'}else{'arm64-openatl-mingw'}
             $build="build-llvm-$arch"
+            $requireCET=if($arch -eq 'x86_64'){$env:OPENATL_REQUIRE_CET_RUNTIME}else{'OFF'}
             Run cmake @('-S','.','-B',$build,'-G','Ninja',"-DCMAKE_TOOLCHAIN_FILE=$toolchain",
               "-DOPENATL_LLVM_MINGW_BIN=$env:OPENATL_LLVM_BIN","-DOPENATL_TARGET_ARCH=$arch",
               "-DVCPKG_TARGET_TRIPLET=$triplet","-DOPENATL_WTL_DEMO_DIR=$sample",
-              '-DCMAKE_BUILD_TYPE=Release','-DOPENATL_BUILD_QUALIFICATION=ON')
+              '-DCMAKE_BUILD_TYPE=Release','-DOPENATL_BUILD_QUALIFICATION=ON',
+              "-DOPENATL_REQUIRE_CET_RUNTIME=$requireCET")
             Run cmake @('--build',$build,'--parallel','2')
             $peCheck=@('tests/wtl10/verify_pe_mitigations.py',"$build/openatl_mitigation_runtime.exe",$arch,'--require-cfg')
             if($arch -eq 'x86_64') { $peCheck+='--require-cet' }
             Run python $peCheck
+            if($arch -eq 'x86_64') {
+              Run python @('tests/wtl10/verify_pe_mitigations.py',
+                "$build/openatl_cet_shadow_stack.exe",$arch,'--require-cfg','--require-cet')
+              Run "$build/openatl_cet_shadow_stack.exe" @('--inventory')
+            }
             $manifest=@{}
             foreach($target in $targets) {
               $file="$build/$target.exe"
@@ -167,6 +182,8 @@ jobs:
           Run git @('-C','tools/wtl10-test','apply',$uiPatch)
       - name: MSVC source-tree CMake, PE/resources and native CTest x5
         shell: pwsh
+        env:
+          OPENATL_REQUIRE_CET_RUNTIME: ${{ inputs.require_cet_runtime && 'ON' || 'OFF' }}
         run: |
           $ErrorActionPreference='Stop'
           function Run([string]$tool,[string[]]$argv) {
@@ -177,14 +194,21 @@ jobs:
           $machine=if($arch -eq 'x64'){'x86_64'}else{'aarch64'}
           $triplet="$arch-windows-static"
           $build="build-msvc-$arch"
+          $requireCET=if($arch -eq 'x64'){$env:OPENATL_REQUIRE_CET_RUNTIME}else{'OFF'}
           $sample=(Resolve-Path tools/wtl10-test).Path
           Run cmake @('-S','.','-B',$build,'-G','Ninja','-DCMAKE_BUILD_TYPE=Release',
             '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',"-DVCPKG_TARGET_TRIPLET=$triplet",
-            "-DOPENATL_WTL_DEMO_DIR=$sample",'-DOPENATL_BUILD_QUALIFICATION=ON')
+            "-DOPENATL_WTL_DEMO_DIR=$sample",'-DOPENATL_BUILD_QUALIFICATION=ON',
+            "-DOPENATL_REQUIRE_CET_RUNTIME=$requireCET")
           Run cmake @('--build',$build,'--parallel','2')
           $peCheck=@('tests/wtl10/verify_pe_mitigations.py',"$build/openatl_mitigation_runtime.exe",$machine,'--require-cfg')
           if($machine -eq 'x86_64') { $peCheck+='--require-cet' }
           Run python $peCheck
+          if($machine -eq 'x86_64') {
+            Run python @('tests/wtl10/verify_pe_mitigations.py',
+              "$build/openatl_cet_shadow_stack.exe",$machine,'--require-cfg','--require-cet')
+            Run "$build/openatl_cet_shadow_stack.exe" @('--inventory')
+          }
           $identity=Get-ChildItem "$build/CMakeFiles" -Recurse -Filter CMakeCXXCompiler.cmake | Select-Object -First 1
           if(!$identity -or !(Select-String -Path $identity.FullName -Pattern 'CMAKE_CXX_COMPILER_ID "MSVC"' -Quiet)) {
             throw 'MSVC cl.exe was not the actual compiler'
@@ -319,6 +343,7 @@ jobs:
             cmake --build "$build" --parallel 2
             if [ "$arch" = x86_64 ]; then
               python3 tests/wtl10/verify_pe_mitigations.py "$build/openatl_mitigation_runtime.exe" "$arch" --require-cfg --require-cet
+              python3 tests/wtl10/verify_pe_mitigations.py "$build/openatl_cet_shadow_stack.exe" "$arch" --require-cfg --require-cet
             else
               python3 tests/wtl10/verify_pe_mitigations.py "$build/openatl_mitigation_runtime.exe" "$arch" --require-cfg
             fi
