@@ -134,6 +134,15 @@ def main() -> int:
         if not u.IsWindow(frame):
             raise RuntimeError("SDI disappeared on File/New")
 
+        post(frame, ID_APP_ABOUT)
+        about = until("native About dialog", lambda: next(
+            (h for h, title in windows(process.pid)
+             if title.startswith("About OpenATL + WTL Test")), None))
+        if not u.GetDlgItem(about, IDOK):
+            raise RuntimeError("About dialog OK button missing")
+        post(about, IDOK)
+        until("About dialog closed", lambda: not u.IsWindow(about))
+
         post(frame, ID_VIEW_CONTROLS)
         def controls_window():
             title = caption(frame)
@@ -155,15 +164,6 @@ def main() -> int:
               lambda: caption(button) == "Push (1)")
         post(controls, IDCANCEL)
         until("controls dialog closed", lambda: not u.IsWindow(controls))
-
-        post(frame, ID_APP_ABOUT)
-        about = until("native About dialog", lambda: next(
-            (h for h, title in windows(process.pid)
-             if title.startswith("About OpenATL + WTL Test")), None))
-        if not u.GetDlgItem(about, IDOK):
-            raise RuntimeError("About dialog OK button missing")
-        post(about, IDOK)
-        until("About dialog closed", lambda: not u.IsWindow(about))
 
         post(frame, ID_TOOLS_OPTIONS)
         options = until("native Options property sheet", lambda: next(
