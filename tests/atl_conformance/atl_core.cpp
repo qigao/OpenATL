@@ -242,9 +242,16 @@ static int registry() {
                         sizeof(unterminated)) != ERROR_SUCCESS)
         return failure(67, "registry_nonterminated_fixture");
     ULONG malformedSize = 0;
-    if (key.QueryStringValue(_T("NonTerminated"), nullptr, &malformedSize) !=
-            ERROR_SUCCESS || malformedSize != _countof(unterminated) + 1)
+    const LSTATUS sizeStatus = key.QueryStringValue(
+        _T("NonTerminated"), nullptr, &malformedSize);
+    if (sizeStatus != ERROR_SUCCESS ||
+        malformedSize < _countof(unterminated) + 1 ||
+        malformedSize > _countof(unterminated) + 2) {
+        std::fprintf(stderr, "NonTerminated size: status=%ld chars=%lu\n",
+                     static_cast<long>(sizeStatus),
+                     static_cast<unsigned long>(malformedSize));
         return failure(68, "registry_nonterminated_size");
+    }
 
     TCHAR noTermBuffer[3] = {_T('!'), _T('!'), _T('!')};
     ULONG exactCapacity = _countof(noTermBuffer);
