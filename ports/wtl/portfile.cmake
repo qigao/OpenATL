@@ -165,7 +165,8 @@ _openatl_replace_between(
     "namespace WTL\n{\n\n"
     "COM callback-based PrintDlgEx")
 if(_wtl_ui_text MATCHES "#include <atlcom.h>" OR
-   _wtl_ui_text MATCHES "CPrintDialogExImpl" OR
+   _wtl_ui_text MATCHES "class ATL_NO_VTABLE CPrintDialogExImpl" OR
+   _wtl_ui_text MATCHES "public ATL::IObjectWithSiteImpl" OR
    NOT _wtl_ui_text MATCHES "class CPageSetupDialog")
     message(FATAL_ERROR "WTL UI-only: common-dialog/COM separation invalid")
 endif()

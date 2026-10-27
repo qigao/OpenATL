@@ -89,7 +89,8 @@ if(OPENATL_BUILD_QUALIFICATION)
   if(_wtl_hyperlink_scope MATCHES "ATL::CRegKey" OR
      _wtl_hyperlink_scope MATCHES "_ParseColorString" OR
      _wtl_dialog_scope MATCHES "#include <atlcom.h>" OR
-     _wtl_dialog_scope MATCHES "CPrintDialogExImpl" OR
+     _wtl_dialog_scope MATCHES "class ATL_NO_VTABLE CPrintDialogExImpl" OR
+     _wtl_dialog_scope MATCHES "public ATL::IObjectWithSiteImpl" OR
      NOT _wtl_dialog_scope MATCHES "class CPageSetupDialog")
     message(FATAL_ERROR "WTL UI-only: registry or COM printing callbacks still exposed")
   endif()
