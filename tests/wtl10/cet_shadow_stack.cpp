@@ -61,7 +61,7 @@ __declspec(noinline) static void corrupt_one_return() {
     // MSVC lowers this as an intrinsic. llvm-mingw declares but does not
     // lower the same name; use x64 [RBP+8] with a real frame pointer.
     // The LLVM target is compiled -fno-omit-frame-pointer and no sibling calls.
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(_OPENATL_DEFINED_MSC_VER)
     void* volatile* slot =
         reinterpret_cast<void* volatile*>(_AddressOfReturnAddress());
 #else
