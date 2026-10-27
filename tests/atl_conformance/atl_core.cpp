@@ -164,17 +164,33 @@ static int synchronization() {
     }
     return 0;
 }
-// Registry acceptance uses a process-unique HKCU leaf. It neither registers
-// COM servers nor relies on a COM apartment, and leaves no persistent data.
+// Registry acceptance uses a process-unique HKCU leaf and NEVER deletes an
+// existing key. Only an explicitly newly-created key belongs to this test.
 struct TemporaryRegistry {
     TCHAR path[160] = {};
+    bool owned = false;
     TemporaryRegistry() {
-        _stprintf_s(path, _countof(path), _T("Software\\OpenATL_RegKey_%lu_%lu"),
+        LARGE_INTEGER counter = {};
+        if (!::QueryPerformanceCounter(&counter))
+            return;
+        _stprintf_s(path, _countof(path), _T("Software\\OpenATL_RegKey_%lu_%08lx_%08lx"),
                     static_cast<unsigned long>(::GetCurrentProcessId()),
-                    static_cast<unsigned long>(::GetTickCount()));
+                    static_cast<unsigned long>(counter.HighPart),
+                    static_cast<unsigned long>(counter.LowPart));
+    }
+    void MarkCreated(DWORD disposition) {
+        owned = (disposition == REG_CREATED_NEW_KEY);
+    }
+    LSTATUS Cleanup() {
+        if (!owned)
+            return ERROR_INVALID_PARAMETER;
+        LSTATUS status = ::RegDeleteTree(HKEY_CURRENT_USER, path);
+        if (status == ERROR_SUCCESS)
+            owned = false;
+        return status;
     }
     ~TemporaryRegistry() {
-        if (path[0] != 0)
+        if (owned)
             (void)::RegDeleteTree(HKEY_CURRENT_USER, path);
     }
 };
@@ -184,9 +200,13 @@ static int registry() {
     if (temp.path[0] == 0) return failure(50, "registry_fixture");
     ATL::CRegKey key;
     DWORD created = 0;
-    if (key.Create(HKEY_CURRENT_USER, temp.path, nullptr, REG_OPTION_NON_VOLATILE,
-                   KEY_READ | KEY_WRITE, nullptr, &created) != ERROR_SUCCESS ||
-        !key.m_hKey || created != REG_CREATED_NEW_KEY)
+    const LSTATUS createStatus = key.Create(
+        HKEY_CURRENT_USER, temp.path, nullptr, REG_OPTION_NON_VOLATILE,
+        KEY_READ | KEY_WRITE, nullptr, &created);
+    if (createStatus == ERROR_SUCCESS)
+        temp.MarkCreated(created);
+    if (createStatus != ERROR_SUCCESS || !key.m_hKey ||
+        created != REG_CREATED_NEW_KEY)
         return failure(51, "registry_create");
 
     DWORD count = 77;
@@ -212,6 +232,58 @@ static int registry() {
         _tcscmp(text, label) != 0 ||
         capacity != _tcslen(label) + 1)
         return failure(56, "registry_string_roundtrip");
+
+
+    // The registry may store REG_SZ without its terminating NUL. Its
+    // reported size must include a terminator, even for a size-only query.
+    const TCHAR unterminated[] = {_T('r'), _T('a'), _T('w')};
+    if (::RegSetValueEx(key.m_hKey, _T("NonTerminated"), 0, REG_SZ,
+                        reinterpret_cast<const BYTE*>(unterminated),
+                        sizeof(unterminated)) != ERROR_SUCCESS)
+        return failure(67, "registry_nonterminated_fixture");
+    ULONG malformedSize = 0;
+    if (key.QueryStringValue(_T("NonTerminated"), nullptr, &malformedSize) !=
+            ERROR_SUCCESS || malformedSize != _countof(unterminated) + 1)
+        return failure(68, "registry_nonterminated_size");
+
+    TCHAR noTermBuffer[3] = {_T('!'), _T('!'), _T('!')};
+    ULONG exactCapacity = _countof(noTermBuffer);
+    if (key.QueryStringValue(_T("NonTerminated"), noTermBuffer,
+                             &exactCapacity) != ERROR_MORE_DATA ||
+        exactCapacity != _countof(unterminated) + 1 ||
+        noTermBuffer[0] != 0)
+        return failure(69, "registry_nonterminated_no_partial");
+    TCHAR terminated[4] = {};
+    ULONG termCapacity = _countof(terminated);
+    if (key.QueryStringValue(_T("NonTerminated"), terminated,
+                             &termCapacity) != ERROR_SUCCESS ||
+        termCapacity != _countof(terminated) ||
+        _tcscmp(terminated, _T("raw")) != 0)
+        return failure(70, "registry_nonterminated_repaired");
+
+    // The expand-string API must not silently expand environment variables.
+    const TCHAR* expanded = _T("%SystemRoot%\\suffix");
+    if (key.SetStringValue(_T("Expandable"), expanded, REG_EXPAND_SZ) !=
+            ERROR_SUCCESS)
+        return failure(71, "registry_expand_fixture");
+    TCHAR expansion[64] = {};
+    ULONG expansionCapacity = _countof(expansion);
+    if (key.QueryStringValue(_T("Expandable"), expansion,
+                             &expansionCapacity) != ERROR_SUCCESS ||
+        _tcscmp(expansion, expanded) != 0)
+        return failure(72, "registry_expand_noexpand");
+
+    // Incorrect types, missing value and null length are rejected, not
+    // mistaken for a successfully initialized string.
+    ULONG invalidCapacity = 4;
+    TCHAR invalid[4] = {_T('!'), _T('!'), _T('!'), 0};
+    if (key.QueryStringValue(_T("Count"), invalid,
+                             &invalidCapacity) != ERROR_INVALID_DATATYPE ||
+        key.QueryStringValue(_T("Missing"), invalid,
+                             &invalidCapacity) != ERROR_FILE_NOT_FOUND ||
+        key.QueryStringValue(_T("Label"), invalid, nullptr) !=
+            ERROR_INVALID_PARAMETER)
+        return failure(73, "registry_string_rejections");
 
     const BYTE source[] = {0, 1, 127, 255, 42};
     if (key.SetBinaryValue(_T("Raw"), source, sizeof(source)) != ERROR_SUCCESS)
@@ -260,6 +332,12 @@ static int registry() {
         readOnly.Close() != ERROR_SUCCESS)
         return failure(65, "registry_delete_close");
     if (!no_com()) return failure(66, "registry_initialized_com");
+    if (temp.Cleanup() != ERROR_SUCCESS)
+        return failure(74, "registry_cleanup");
+    ATL::CRegKey missingAfterCleanup;
+    if (missingAfterCleanup.Open(HKEY_CURRENT_USER, temp.path, KEY_READ) !=
+            ERROR_FILE_NOT_FOUND)
+        return failure(75, "registry_cleanup_verified");
     return 0;
 }
 

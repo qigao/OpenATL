@@ -271,13 +271,40 @@ struct OwnedPopupMenu {
 
 struct MRURegistryFixture {
     wchar_t path[160] = {};
-    MRURegistryFixture() {
-        swprintf_s(path, _countof(path), L"Software\\OpenATL_MRU_%lu_%lu",
+    bool owned = false;
+    bool Create() {
+        LARGE_INTEGER counter = {};
+        if (!::QueryPerformanceCounter(&counter))
+            return false;
+        swprintf_s(path, _countof(path), L"Software\\OpenATL_MRU_%lu_%08lx_%08lx",
                    static_cast<unsigned long>(::GetCurrentProcessId()),
-                   static_cast<unsigned long>(::GetTickCount()));
+                   static_cast<unsigned long>(counter.HighPart),
+                   static_cast<unsigned long>(counter.LowPart));
+        HKEY fresh = nullptr;
+        DWORD disposition = 0;
+        const LSTATUS status = ::RegCreateKeyExW(
+            HKEY_CURRENT_USER, path, 0, nullptr, REG_OPTION_NON_VOLATILE,
+            KEY_READ | KEY_WRITE, nullptr, &fresh, &disposition);
+        if (status != ERROR_SUCCESS)
+            return false;
+        owned = (disposition == REG_CREATED_NEW_KEY);
+        const LSTATUS closeStatus = ::RegCloseKey(fresh);
+        return owned && closeStatus == ERROR_SUCCESS;
+    }
+    bool Cleanup() {
+        if (!owned || ::RegDeleteTreeW(HKEY_CURRENT_USER, path) !=
+                          ERROR_SUCCESS)
+            return false;
+        owned = false;
+        HKEY probe = nullptr;
+        const LSTATUS status = ::RegOpenKeyExW(
+            HKEY_CURRENT_USER, path, 0, KEY_READ, &probe);
+        if (status == ERROR_SUCCESS)
+            (void)::RegCloseKey(probe);
+        return status == ERROR_FILE_NOT_FOUND;
     }
     ~MRURegistryFixture() {
-        if (path[0] != 0)
+        if (owned)
             (void)::RegDeleteTreeW(HKEY_CURRENT_USER, path);
     }
 };
@@ -345,7 +372,7 @@ static bool check_mru_registry_and_menu() {
         return mru_fail("item_bounds");
 
     MRURegistryFixture scope;
-    if (scope.path[0] == 0 || !recent.WriteToRegistry(scope.path))
+    if (!scope.Create() || !recent.WriteToRegistry(scope.path))
         return mru_fail("registry_write");
     OwnedPopupMenu restoredMenu;
     if (restoredMenu.menu == NULL ||
@@ -361,6 +388,8 @@ static bool check_mru_registry_and_menu() {
         !mru_equals(restored, ID_FILE_MRU_FIRST + 1, L"C:\\Delta.txt"))
         return mru_fail("registry_roundtrip");
 
+    if (!scope.Cleanup())
+        return mru_fail("registry_cleanup");
     ULONG_PTR context = 0;
     return ::CoGetContextToken(&context) == CO_E_NOTINITIALIZED;
 }

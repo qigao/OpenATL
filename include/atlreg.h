@@ -128,64 +128,33 @@ public:
     }
 
     // In/out character capacity includes the NUL. A null destination queries
-    // required capacity only. Nonterminated REG_SZ is terminated if space allows.
+    // required capacity only. REG_EXPAND_SZ is returned verbatim, not expanded.
+    // RegGetValue handles malformed REG_SZ lacking the trailing NUL; its
+    // ZEROONFAILURE flag prevents callers from using unterminated partial data.
     LSTATUS QueryStringValue(LPCTSTR valueName, LPTSTR out,
                              ULONG* characters) const noexcept {
         if (characters == nullptr)
             return ERROR_INVALID_PARAMETER;
         if (m_hKey == nullptr)
             return ERROR_INVALID_HANDLE;
-        DWORD type = 0, bytes = 0;
-        LSTATUS status = ::RegQueryValueEx(m_hKey, valueName, nullptr,
-                                           &type, nullptr, &bytes);
-        if (status != ERROR_SUCCESS)
-            return status;
-        if (type != REG_SZ && type != REG_EXPAND_SZ)
-            return ERROR_INVALID_DATATYPE;
-        if (bytes % sizeof(TCHAR) != 0)
-            return ERROR_INVALID_DATA;
-        ULONG needed = bytes / sizeof(TCHAR);
-        if (needed == 0)
-            needed = 1;
-        if (out == nullptr) {
-            *characters = needed + (bytes ? 1u : 0u);
-            return ERROR_SUCCESS;
-        }
-        ULONG capacity = *characters;
-        if (capacity < needed) {
-            *characters = needed;
-            return ERROR_MORE_DATA;
-        }
-        if (capacity > MAXDWORD / sizeof(TCHAR))
+        if (out != nullptr && *characters > MAXDWORD / sizeof(TCHAR))
             return ERROR_INVALID_PARAMETER;
-        DWORD actualBytes = capacity * sizeof(TCHAR);
-        status = ::RegQueryValueEx(m_hKey, valueName, nullptr,
-                                   &type, reinterpret_cast<LPBYTE>(out),
-                                   &actualBytes);
-        if (status == ERROR_MORE_DATA) {
-            *characters = actualBytes / sizeof(TCHAR) + 1;
-            return status;
+
+        DWORD size = (out != nullptr) ? *characters * sizeof(TCHAR) : 0;
+        constexpr DWORD flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ |
+                                RRF_NOEXPAND | RRF_ZEROONFAILURE;
+        const LSTATUS status = ::RegGetValue(m_hKey, nullptr, valueName, flags,
+                                              nullptr, out, &size);
+        // Preserve ATL's documented invalid-type response, while using the
+        // Win32 API that guarantees terminating NUL for REG_SZ/REG_EXPAND_SZ.
+        if (status == ERROR_UNSUPPORTED_TYPE)
+            return ERROR_INVALID_DATATYPE;
+        if (status == ERROR_SUCCESS || status == ERROR_MORE_DATA) {
+            if (size % sizeof(TCHAR) != 0)
+                return ERROR_INVALID_DATA;
+            *characters = size / sizeof(TCHAR);
         }
-        if (status != ERROR_SUCCESS)
-            return status;
-        if ((type != REG_SZ && type != REG_EXPAND_SZ) ||
-            actualBytes % sizeof(TCHAR) != 0)
-            return ERROR_INVALID_DATA;
-        ULONG actualChars = actualBytes / sizeof(TCHAR);
-        if (actualChars == 0) {
-            out[0] = 0;
-            *characters = 1;
-            return ERROR_SUCCESS;
-        }
-        if (out[actualChars - 1] != 0) {
-            if (actualChars == capacity) {
-                *characters = actualChars + 1;
-                return ERROR_MORE_DATA;
-            }
-            out[actualChars++] = 0;
-        }
-        *characters = actualChars;
-        return ERROR_SUCCESS;
+        return status;
     }
 
     LSTATUS SetStringValue(LPCTSTR valueName, LPCTSTR value,
