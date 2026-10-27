@@ -104,9 +104,13 @@ is part of this repository (not a second ATL provider).
   `IStream`. A short successful write returns `STG_E_WRITEFAULT`, and a
   failed write returns the destination's original HRESULT. A failed write
   may leave a partial output in the **caller** stream; arbitrary IStreams
-  do not provide atomic rollback. The image and stream ownership remain
-  unchanged. Image stream codec callers link both `gdiplus` and `ole32`
-  explicitly; neither is a transitive `OpenATL::ATL`/WTL dependency.
+  do not provide atomic rollback. Stream `Load` reads a bounded (64 MiB)
+  snapshot into an OS-owned memory stream before decoding, rejects short
+  `S_OK` reads with `STG_E_READFAULT`, and propagates failing read HRESULTs.
+  Callers must account for the source stream's advanced position on failure.
+  The image and stream ownership remain unchanged. Image stream codec
+  callers link both `gdiplus` and `ole32` explicitly; neither is a
+  transitive `OpenATL::ATL`/WTL dependency.
   File and stream paths share validated decoder, pixel copy, encoder
   selection and cleanup.
   GIF/JPEG/TIFF codecs, alpha compositing, GDI+ metadata, and the full
