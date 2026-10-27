@@ -218,7 +218,7 @@ jobs:
         with:
           name: openatl-llvm-arm64
           path: llvm-arm64
-      - name: Verify SHA256, ARM64 PE, resources and 10 native tests x5
+      - name: Verify SHA256, ARM64 PE, resources and real SDI native tests x5
         run: python tests/wtl10/native_arm64.py llvm-arm64
 
   windows-arm64-msvc:
@@ -232,7 +232,7 @@ jobs:
         with:
           name: openatl-msvc-arm64
           path: msvc-arm64
-      - name: Verify SHA256, ARM64 PE, resources and 10 native tests x5
+      - name: Verify SHA256, ARM64 PE, resources and real SDI native tests x5
         run: python tests/wtl10/native_arm64.py msvc-arm64
 
   linux-macos-cross:

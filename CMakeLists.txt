@@ -184,6 +184,12 @@ if(OPENATL_BUILD_QUALIFICATION)
     add_executable(openatl_wtl10_sdi WIN32
       "${OPENATL_WTL_DEMO_DIR}/main.cpp"
       "${OPENATL_WTL_DEMO_DIR}/wtltest.rc")
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME openatl.wtl10_sdi_native_ui
+      COMMAND "${Python3_EXECUTABLE}"
+              "${CMAKE_CURRENT_SOURCE_DIR}/tests/wtl10/sdi_interactive.py"
+              "$<TARGET_FILE:openatl_wtl10_sdi>")
+    set_tests_properties(openatl.wtl10_sdi_native_ui PROPERTIES TIMEOUT 35)
     target_include_directories(openatl_wtl10_sdi PRIVATE "${OPENATL_WTL_DEMO_DIR}" "${_wtl_headers}")
     target_link_libraries(openatl_wtl10_sdi PRIVATE OpenATL::ATL
       ole32 oleaut32 uuid comctl32 msimg32 uxtheme gdi32 comdlg32

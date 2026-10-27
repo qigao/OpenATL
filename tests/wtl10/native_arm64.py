@@ -62,6 +62,7 @@ def main() -> int:
         if filename in ("openatl_gui_runtime.exe", "openatl_wtl10_sdi.exe"):
             arguments.append("--require-resources")
         subprocess.run(arguments, check=True, timeout=20)
+    sdi_ui = Path(__file__).with_name("sdi_interactive.py")
     for attempt in range(1, 6):
         for name, args, expected in CASES:
             proc = subprocess.run([str(root / (name + ".exe")), *args],
@@ -72,7 +73,18 @@ def main() -> int:
                     f"Native ARM64 {name} {args} repeat {attempt} "
                     f"exit={proc.returncode} stdout={proc.stdout!r} "
                     f"stderr={proc.stderr!r} expected={expected!r}")
-    print("OPENATL_NATIVE_ARM64_OK files=9 tests=13 repeats=5 "
+        sdi = subprocess.run([sys.executable, str(sdi_ui),
+                              str(root / "openatl_wtl10_sdi.exe")],
+                             capture_output=True, text=True,
+                             errors="replace", timeout=45, check=False)
+        if (sdi.returncode != 0 or sdi.stderr.strip() or
+                sdi.stdout.strip() !=
+                "OPENATL_SDI_UI_OK menu=1 controls=1 click=1 about=1 options=1 exit=1"):
+            raise SystemExit(
+                f"Native ARM64 real SDI UI repeat {attempt} "
+                f"exit={sdi.returncode} stdout={sdi.stdout!r} "
+                f"stderr={sdi.stderr!r}")
+    print("OPENATL_NATIVE_ARM64_OK files=9 tests=14 repeats=5 "
           "sha256=1 pe=1 resources=1")
     return 0
 
