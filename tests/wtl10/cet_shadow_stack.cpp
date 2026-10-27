@@ -81,7 +81,10 @@ __declspec(noinline) static void return_site_a() {
 }
 __declspec(noinline) static void return_site_b() {
     corrupt_one_return();
-    ::InterlockedIncrement(&observed_stages);
+    // Different post-call instruction from site A: link.exe /OPT:ICF
+    // otherwise folds their identical function bodies, yielding the
+    // same saved return address and a false-negative CET death probe.
+    ::InterlockedExchangeAdd(&observed_stages, 2);
 }
 
 static int child(const char* option) {
