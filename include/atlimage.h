@@ -215,6 +215,16 @@ public:
             return E_INVALIDARG;
         if (bitmap_ != NULL)
             return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+        // Reject a known oversized encoded file before initializing GDI+.
+        // The same 64 MiB policy applies to file paths and borrowed streams.
+        WIN32_FILE_ATTRIBUTE_DATA fileInfo{};
+        if (::GetFileAttributesExW(filename, GetFileExInfoStandard, &fileInfo)) {
+            const ULONGLONG length =
+                (static_cast<ULONGLONG>(fileInfo.nFileSizeHigh) << 32) |
+                static_cast<ULONGLONG>(fileInfo.nFileSizeLow);
+            if (length > kMaximumEncodedBytes)
+                return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
+        }
         CodecSession session;
         if (!session.active())
             return CodecHRESULT(session.status);
@@ -305,6 +315,8 @@ public:
 
 
 private:
+    static constexpr ULONGLONG kMaximumEncodedBytes =
+        64ULL * 1024ULL * 1024ULL;
     static constexpr ULONGLONG kMaximumDecodedBytes =
         128ULL * 1024ULL * 1024ULL;
 
@@ -501,7 +513,6 @@ private:
         if (staged == NULL)
             return E_FAIL;
 
-        constexpr ULONGLONG kMaximumEncodedBytes = 64ULL * 1024ULL * 1024ULL;
         // If the source supports Stat + Seek(CUR, 0), reject a known
         // oversized remaining range before allocating even one read chunk.
         // Unseekable streams still work and are bounded by the byte counter.
