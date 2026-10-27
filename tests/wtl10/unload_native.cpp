@@ -6,7 +6,7 @@
 #include <cwchar>
 
 using Start = BOOL (WINAPI*)(HMODULE);
-using GetWindow = HWND (WINAPI*)();
+using ProbeWindowFn = HWND (WINAPI*)();
 using Address = void* (WINAPI*)();
 using WaitEntered = BOOL (WINAPI*)(DWORD);
 using Release = BOOL (WINAPI*)();
@@ -57,7 +57,7 @@ int main() {
         if (dll == nullptr)
             return fail(5, "LoadLibrary", cycle);
         auto start = reinterpret_cast<Start>(::GetProcAddress(dll, "OpenATLStart"));
-        auto window = reinterpret_cast<GetWindow>(::GetProcAddress(dll, "OpenATLWindow"));
+        auto window = reinterpret_cast<ProbeWindowFn>(::GetProcAddress(dll, "OpenATLWindow"));
         auto address = reinterpret_cast<Address>(::GetProcAddress(dll, "OpenATLThunkAddress"));
         auto wait = reinterpret_cast<WaitEntered>(::GetProcAddress(dll, "OpenATLWaitEntered"));
         auto release = reinterpret_cast<Release>(::GetProcAddress(dll, "OpenATLReleaseCallback"));
