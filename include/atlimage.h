@@ -216,6 +216,15 @@ public:
         Gdiplus::Status status = decoded.GetLastStatus();
         if (status != Gdiplus::Ok)
             return CodecHRESULT(status);
+        GUID actualFormat{};
+        status = decoded.GetRawFormat(&actualFormat);
+        if (status != Gdiplus::Ok)
+            return CodecHRESULT(status);
+        // Decode only the formats this OpenATL subset explicitly supports.
+        // GDI+ may recognize JPEG/GIF/TIFF; that does not expand our API.
+        if (!::IsEqualGUID(actualFormat, Gdiplus::ImageFormatBMP) &&
+            !::IsEqualGUID(actualFormat, Gdiplus::ImageFormatPNG))
+            return E_NOTIMPL;
         const UINT width = decoded.GetWidth();
         const UINT height = decoded.GetHeight();
         if (width == 0 || height == 0 ||
@@ -360,6 +369,9 @@ private:
         Gdiplus::Status status = Gdiplus::GenericError;
         CodecSession() noexcept {
             Gdiplus::GdiplusStartupInput input;
+            // System built-in BMP/PNG codecs only; never load external
+            // codec plug-ins into an otherwise COM-free Win32 UI process.
+            input.SuppressExternalCodecs = TRUE;
             status = Gdiplus::GdiplusStartup(&token, &input, NULL);
             if (status != Gdiplus::Ok)
                 token = 0;
