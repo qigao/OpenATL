@@ -19,6 +19,8 @@ They exist only within a source-tree CMake build. OpenATL **never** defines
 `install()`, `export()`, a package config, or an Installed SDK. Consumers
 build from the repository checkout; a post-install consumption path is
 permanently excluded.
+Optional CImage BMP/PNG codec calls use Windows GDI+ with a per-call startup/shutdown scope and explicit `gdiplus` linkage by the consumer. GDI+ is not a transitive `OpenATL::ATL` or WTL dependency and does not initialize a COM apartment. A failed decode never replaces an existing bitmap; invalid save formats are rejected before writing.
+
 Win32 UI can use WTL windowing, dialogs, message maps and common controls
 without COM initialization or registry writes. CPath, CAtlFile,
 CString and native Win32 synchronization are support utilities that
