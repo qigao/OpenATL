@@ -108,10 +108,11 @@ if(OPENATL_BUILD_QUALIFICATION)
   target_link_libraries(openatl_atl_mapping PRIVATE OpenATL::ATL ole32)
   add_test(NAME openatl.atl_mapping_no_com COMMAND openatl_atl_mapping)
 
-  # GDI-only image handling: no COM initialization, with ole32 used
-  # only by the test to assert that the COM apartment remains absent.
+  # GDI bitmap owners plus optional BMP/PNG GDI+ codec calls. No COM
+  # initialization; ole32 is linked only for the no-apartment assertion.
+  # Consumers calling CImage::Load/Save must link Windows gdiplus.
   add_executable(openatl_atl_image tests/atl_conformance/atl_image.cpp)
-  target_link_libraries(openatl_atl_image PRIVATE OpenATL::ATL gdi32 ole32)
+  target_link_libraries(openatl_atl_image PRIVATE OpenATL::ATL gdi32 gdiplus ole32)
   add_test(NAME openatl.atl_image_no_com COMMAND openatl_atl_image)
 
   # Direct OS failure injection is compiled from the in-repo atlwin.h
