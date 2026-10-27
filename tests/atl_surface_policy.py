@@ -51,7 +51,7 @@ EXPECTED = {
     "atlbase.h": "class CAtlWinModule",
     "atlcore.h": "class CAtlBaseModule",
     "atlcomcli.h": "class CComPtr",
-    "atlwin.h": "class CWindowImplBaseT",
+    "atlwin.h": "class ATL_NO_VTABLE CWindowImplBaseT",
 }
 
 

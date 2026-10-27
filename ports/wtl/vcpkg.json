@@ -1,8 +1,8 @@
 {
   "name": "wtl",
   "version": "10.0.10320",
-  "port-version": 6,
-  "description": "Official WTL10 headers for OpenATL; the in-tree OpenATL implementation supplies ATL instead of Microsoft ATL.",
+  "port-version": 7,
+  "description": "Pinned official WTL10 source patched to Win32-only CAppModule, without Microsoft ATL or COM Server.",
   "homepage": "https://sourceforge.net/projects/wtl/",
   "license": "MS-PL",
   "supports": "windows & !xbox"

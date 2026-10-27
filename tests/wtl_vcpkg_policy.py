@@ -37,6 +37,22 @@ def check() -> int:
     if ("vcpkg_from_sourceforge(" not in recipe or
             "086a6cf6a49a4318a8c519136ba6019" not in recipe):
         errors.append("WTL vcpkg overlay must retain pinned upstream recipe")
+    if port.get("port-version") != 7:
+        errors.append("WTL UI-only overlay must use exact #7")
+    ui_patch = ROOT / "ports/wtl/atlapp.h-openatl-ui-only.patch"
+    sample_patch = ROOT / "tests/wtl10/wtltest-ui-only.patch"
+    if ("atlapp.h-openatl-ui-only.patch" not in recipe or not ui_patch.exists()):
+        errors.append("WTL10 source must use the UI-only CAppModule patch")
+    else:
+        diff = ui_patch.read_text(encoding="utf-8")
+        if ("+\tHRESULT Init(HINSTANCE hInstance)" not in diff or
+                "-class CServerAppModule" not in diff or
+                "-typedef ATL::CRegKey CRegKeyEx;" not in diff):
+            errors.append("WTL UI patch missing Win32 Init/server/registry deletion")
+    if not sample_patch.exists() or (
+            "-    hRes = _Module.Init(NULL, hInstance);" not in
+            sample_patch.read_text(encoding="utf-8")):
+        errors.append("WTL test sample must pin source change to Init(hInstance)")
     if re.search(r"(?i)OpenATL::WTL|add_library\s*\(\s*openatl_wtl\b", cmake):
         errors.append("OpenATL must not synthesize a WTL target")
     if ("VCPKG_TARGET_TRIPLET" not in cmake or
@@ -47,6 +63,8 @@ def check() -> int:
     workflow = (ROOT / ".github/workflows/openatl-qualification.yml").read_text("utf-8")
     if "vcpkg install" not in workflow and "vcpkg.exe" not in workflow and "vcpkg/vcpkg" not in workflow:
         errors.append("GitHub Actions must install WTL through vcpkg manifest")
+    if "wtltest-ui-only.patch" not in workflow:
+        errors.append("CI must apply exactly the pinned UI-only SDI test patch")
     if "--x-install-root" not in workflow or "cmake --build" not in workflow:
         errors.append("GitHub Actions must isolate target triplets and build with CMake")
     if "scripts/" in workflow or (ROOT / "scripts").exists():

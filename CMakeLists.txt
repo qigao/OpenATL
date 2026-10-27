@@ -77,6 +77,13 @@ if(OPENATL_BUILD_QUALIFICATION)
   if(NOT _wtl_version_probe MATCHES "WTL version 10\\.0")
     message(FATAL_ERROR "Unrecognized vcpkg WTL version; expected WTL10")
   endif()
+  file(READ "${_wtl_headers}/atlapp.h" _wtl_scope)
+  if(NOT _wtl_scope MATCHES "OpenATL UI-only" OR
+     NOT _wtl_scope MATCHES "HRESULT Init\\(HINSTANCE hInstance\\)" OR
+     _wtl_scope MATCHES "class CServerAppModule" OR
+     _wtl_scope MATCHES "class CAppModule : public ATL::CComModule")
+    message(FATAL_ERROR "The pinned vcpkg WTL10 source must be UI-only with Init(HINSTANCE)")
+  endif()
   enable_language(RC)
   enable_testing()
 

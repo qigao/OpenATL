@@ -72,6 +72,9 @@ jobs:
           Run git @('clone','--quiet','https://github.com/kkhaike/wtltest.git','tools/wtl10-test')
           Run git @('-C','tools/wtl10-test','checkout','--quiet','--detach',$sample)
           if((git -C tools/wtl10-test rev-parse HEAD).Trim() -ne $sample) { throw 'SDI sample SHA mismatch' }
+          $uiPatch=(Resolve-Path tests/wtl10/wtltest-ui-only.patch).Path
+          Run git @('-C','tools/wtl10-test','apply','--check',$uiPatch)
+          Run git @('-C','tools/wtl10-test','apply',$uiPatch)
       - name: CMake native x64 and cross ARM64, PE/resources, CTest x5
         shell: pwsh
         run: |
@@ -156,6 +159,9 @@ jobs:
           Run git @('clone','--quiet','https://github.com/kkhaike/wtltest.git','tools/wtl10-test')
           Run git @('-C','tools/wtl10-test','checkout','--quiet','--detach',$sample)
           if((git -C tools/wtl10-test rev-parse HEAD).Trim() -ne $sample) { throw 'SDI sample SHA mismatch' }
+          $uiPatch=(Resolve-Path tests/wtl10/wtltest-ui-only.patch).Path
+          Run git @('-C','tools/wtl10-test','apply','--check',$uiPatch)
+          Run git @('-C','tools/wtl10-test','apply',$uiPatch)
       - name: MSVC source-tree CMake, PE/resources and native CTest x5
         shell: pwsh
         run: |
@@ -287,6 +293,8 @@ jobs:
           git clone -q https://github.com/kkhaike/wtltest.git tools/wtl10-test
           git -C tools/wtl10-test checkout -q --detach 63ba6a992cb3d79d56be66cd283f6615c6646b3d
           test "$(git -C tools/wtl10-test rev-parse HEAD)" = 63ba6a992cb3d79d56be66cd283f6615c6646b3d
+          git -C tools/wtl10-test apply --check "$PWD/tests/wtl10/wtltest-ui-only.patch"
+          git -C tools/wtl10-test apply "$PWD/tests/wtl10/wtltest-ui-only.patch"
       - name: CMake/WTL SDI and Windows PE resource qualification for both RIDs
         shell: bash
         run: |

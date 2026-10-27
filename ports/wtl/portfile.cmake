@@ -1,5 +1,6 @@
-# The upstream vcpkg WTL 10.0.10320#5 recipe, retaining its
-# upstream source checksum and three upstream maintenance patches.
+# WTL 10.0.10320 overlay #7: the original source SHA512 and maintenance
+# patches are retained. The WTL UI module is made independent of
+# Microsoft ATL's COM Server, class maps and registry writers.
 # Difference: our overlay removes the stock WTL -> atl dependency;
 # stock vcpkg's 'atl' port requires Microsoft Visual Studio ATL.
 # OpenATL's source-tree include/ is the ONLY ATL implementation.
@@ -14,6 +15,7 @@ vcpkg_from_sourceforge(
         appwizard_setup.js-vs2022.patch
         atlmisc.h-bug329.patch
         atlribbon.h-wtl66.patch
+        atlapp.h-openatl-ui-only.patch
 )
 
 file(INSTALL "${SOURCE_PATH}/Include/" DESTINATION "${CURRENT_PACKAGES_DIR}/include" FILES_MATCHING PATTERN "*.h")
