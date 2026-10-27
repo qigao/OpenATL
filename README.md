@@ -13,7 +13,10 @@ WTL 10, and optional COM *client* helpers.** Its only supported scope is:
   no COM apartment needed.
 - COM **client**: `CComPtr`, `CComBSTR`, `CComVariant`, and
   `CoCreateInstance` of existing Windows components after the *application*
-  explicitly initializes a COM apartment.
+  explicitly initializes a COM apartment. BSTR self-assignment and
+  self-append, embedded-NUL comparisons, length overflow rejection,
+  VARIANT copy/Detach ownership and COM identity-query failure handling
+  have native Windows tests; no registration or COM Server is added.
 
 **Not supported:** COM server creation, `IClassFactory` implementations,
 `OBJECT_ENTRY_AUTO`, `DllRegisterServer/UnregisterServer`, RGS,

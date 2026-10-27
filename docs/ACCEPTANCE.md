@@ -7,7 +7,7 @@ these paths separately on the exact branch HEAD.
 | Gate | llvm-mingw Windows x64 | llvm-mingw Windows ARM64 | MSVC Windows x64 | MSVC Windows ARM64 | Linux/macOS |
 | --- | --- | --- | --- | --- | --- |
 | WTL10 hidden GUI, message map, resource dialog, W^X | 5× native, **no COM apartment** | 5× real native, **no COM apartment** | 5× native CTest, **no COM apartment** | 5× real native, **no COM apartment** | llvm-mingw PE build |
-| COM Client `CoCreateInstance`, `CComPtr`, BSTR, Variant | 5× native | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
+| COM Client `CoCreateInstance`, `CComPtr`, BSTR/VARIANT ownership, BSTR alias/overflow/embedded NUL, QI failure, self-Detach | 5× native | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
 | In-tree file/string/sync utility tests | 5× native | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
 | In-tree Unicode `CPath` + Win32 file test | 5× native | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
 | Source-owned ATL heap, FILETIME, typed array and linked-list (`POSITION`, swap, ownership, throwing copy) | 5× native, **no COM apartment** | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
