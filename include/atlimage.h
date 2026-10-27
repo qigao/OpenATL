@@ -382,7 +382,10 @@ private:
                                 static_cast<size_t>(bpp_ / 8);
         if (rowBytes > pitch)
             return E_INVALIDARG;
-        std::unique_ptr<BYTE[]> pixels(new (std::nothrow) BYTE[bytes]);
+        // A 24-bpp DIB may have up to three padding bytes per row.
+        // Initialize the entire staging area, including row padding,
+        // so the BMP encoder cannot serialize stale allocator contents.
+        std::unique_ptr<BYTE[]> pixels(new (std::nothrow) BYTE[bytes]());
         if (!pixels)
             return E_OUTOFMEMORY;
         if (dc_ != NULL)
