@@ -58,8 +58,16 @@ static volatile LONG observed_stages = 0;
 // documented intrinsic. Both call sites must remain distinct and noinline.
 // On enforcement the second return must cause an OS control-protection fault.
 __declspec(noinline) static void corrupt_one_return() {
+    // MSVC lowers this as an intrinsic. llvm-mingw declares but does not
+    // lower the same name; use x64 [RBP+8] with a real frame pointer.
+    // The LLVM target is compiled -fno-omit-frame-pointer and no sibling calls.
+#if defined(_MSC_VER)
     void* volatile* slot =
         reinterpret_cast<void* volatile*>(_AddressOfReturnAddress());
+#else
+    void* volatile* slot =
+        reinterpret_cast<void* volatile*>(__builtin_frame_address(0)) + 1;
+#endif
     if (saved_return == nullptr)
         saved_return = *slot;
     else if (*slot != saved_return)
