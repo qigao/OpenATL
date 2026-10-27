@@ -170,9 +170,10 @@ def main() -> int:
         if not edit or not u.SetWindowTextW(edit, new_text):
             raise RuntimeError(
                 f"native edit WM_SETTEXT failed: {ctypes.get_last_error()}")
+        # GetWindowTextW cannot read a remote process's edit control.
+        # Its parent title is the actual observable result of EN_CHANGE.
         until("edit change propagated to real dialog title",
-              lambda: caption(edit) == new_text and
-                      caption(controls) ==
+              lambda: caption(controls) ==
                       'All WTL Controls Showcase - "OpenATL-東京"')
         post(controls, IDCANCEL)
         until("controls dialog closed", lambda: not u.IsWindow(controls))
