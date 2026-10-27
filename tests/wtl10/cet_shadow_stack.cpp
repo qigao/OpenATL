@@ -58,15 +58,16 @@ static volatile LONG observed_stages = 0;
 // documented intrinsic. Both call sites must remain distinct and noinline.
 // On enforcement the second return must cause an OS control-protection fault.
 __declspec(noinline) static void corrupt_one_return() {
-    // MSVC lowers this as an intrinsic. llvm-mingw declares but does not
-    // lower the same name; use x64 [RBP+8] with a real frame pointer.
-    // The LLVM target is compiled -fno-omit-frame-pointer and no sibling calls.
+    // MSVC uses the native intrinsic. OpenATL supplies an _MSC_VER shim
+    // for WTL on llvm-mingw, so test that marker explicitly. Clang's
+    // __builtin_frame_address(0) on Win64 does NOT directly address the
+    // saved return slot; the preserved RBP register does, at [RBP+8].
 #if defined(_MSC_VER) && !defined(_OPENATL_DEFINED_MSC_VER)
     void* volatile* slot =
         reinterpret_cast<void* volatile*>(_AddressOfReturnAddress());
 #else
-    void* volatile* slot =
-        reinterpret_cast<void* volatile*>(__builtin_frame_address(0)) + 1;
+    void* volatile* slot = nullptr;
+    __asm__ volatile("leaq 8(%%rbp), %0" : "=r"(slot));
 #endif
     if (saved_return == nullptr)
         saved_return = *slot;
