@@ -149,6 +149,29 @@ static int com_client_ownership_regressions(IGlobalInterfaceTable* real) {
     if (live.vt != VT_BSTR || !live.bstrVal ||
         std::wcscmp(live.bstrVal,L"another") != 0)
         return failure(67, "VARIANT_BSTR_self_alias", E_FAIL);
+    // VariantClear refuses to destroy a locked SAFEARRAY. Assignment
+    // must retain its original tag/handle until the lock is released.
+    SAFEARRAY* lockedArray = ::SafeArrayCreateVector(VT_UI1, 0, 3);
+    if (lockedArray == nullptr)
+        return failure(68, "VARIANT_locked_array_setup", E_OUTOFMEMORY);
+    ATL::CComVariant guarded;
+    guarded.vt = VT_ARRAY | VT_UI1;
+    guarded.parray = lockedArray;
+    hr = ::SafeArrayLock(lockedArray);
+    if (FAILED(hr))
+        return failure(69, "VARIANT_array_lock", hr);
+    guarded = 314;
+    const bool retained = guarded.vt == (VT_ARRAY | VT_UI1) &&
+                          guarded.parray == lockedArray;
+    hr = ::SafeArrayUnlock(lockedArray);
+    if (FAILED(hr) || !retained) {
+        if (!retained)
+            (void)::SafeArrayDestroy(lockedArray);
+        return failure(70, "VARIANT_locked_array_owner_preserved", hr);
+    }
+    guarded = 314;
+    if (guarded.vt != VT_I4 || guarded.lVal != 314)
+        return failure(71, "VARIANT_assignment_after_unlock", E_FAIL);
     return 0;
 }
 

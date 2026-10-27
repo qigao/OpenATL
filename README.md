@@ -182,8 +182,10 @@ HKCU registry MRU persistence through source-owned CRegKey, with native menu,
 capacity, dedup, reorder and persistence tests. It still removes the separate
 CRegProperty serializer, Internet Explorer registry hyperlink colors and
 COM-based extended print callbacks. No COM Server API or registration shim is reintroduced. Win32 CRegKey
-is confined to include/atlreg.h; its native HKCU tests cover ownership,
-values, errors and access masks without COM initialization.
+is confined to `include/atlreg.h`; native HKCU tests cover ownership,
+malformed strings, values, errors, access masks and cleanup without COM
+initialization. Applications using its registry methods explicitly link
+Windows `advapi32` (the UI target does not require it transitively).
 
 The former 14-file `scripts/` directory has been deleted. GitHub Actions now installs pinned WTL through `vcpkg.json`, invokes CMake and CTest directly, and validates Windows x64/ARM64 PE files. Real ARM64 SHA-256 and runtime checks are defined as acceptance tests in `tests/wtl10/native_arm64.py`. No standalone build wrapper or Installed SDK is provided.
 
@@ -207,7 +209,8 @@ See [architecture](docs/ARCHITECTURE.md),
 [acceptance](docs/ACCEPTANCE.md), and
 [toolchain matrix](docs/TOOLCHAIN_MATRIX.md).
 
-**Draft / qualification only.** Full GUI CFG/CET, failure cleanup, DSO
-unloading and interactive SDI still need explicit acceptance. No WTL8
+**Source-tree qualified; final review required before merge.** Full GUI
+CFG/CET, failure cleanup, DSO unloading and interactive SDI still need
+explicit acceptance. No WTL8
 fallback, no Salts production ABI or compiler switch. **Installed SDK is
 permanently out of scope**; there is no future installation gate.

@@ -52,13 +52,12 @@ REGISTRY_WRITE_TOKENS = (
 BAD = re.compile("|".join(FORBIDDEN_TOKENS))
 BAD_REGISTRY = re.compile("|".join(REGISTRY_WRITE_TOKENS))
 EXPECTED = {
-    "atlbase.h": "class CAtlWinModule",
-    "atlcore.h": "class CAtlBaseModule",
-    "atlcomcli.h": "class CComPtr",
-    "atlwin.h": "class ATL_NO_VTABLE CWindowImplBaseT",
-    "atldef.h": "#define _ATL_NO_HOSTING 1",
-    "atlbase.h": "struct DLGTEMPLATEEX",
-    "atlreg.h": "class CRegKey",
+    "atlbase.h": ("class CAtlWinModule", "struct DLGTEMPLATEEX", '#include "atlreg.h"'),
+    "atlcore.h": ("class CAtlBaseModule",),
+    "atlcomcli.h": ("class CComPtr",),
+    "atlwin.h": ("class ATL_NO_VTABLE CWindowImplBaseT",),
+    "atldef.h": ("#define _ATL_NO_HOSTING 1",),
+    "atlreg.h": ("class CRegKey", "RegGetValue", "RegOpenKeyEx", "RegCreateKeyEx"),
 }
 
 
@@ -76,10 +75,17 @@ def main() -> int:
             for match in BAD_REGISTRY.finditer(data):
                 line = data.count("\n", 0, match.start()) + 1
                 failures.append(f"{path.relative_to(ROOT)}:{line}: registry API outside atlreg.h: {match.group(0)}")
-    for name, marker in EXPECTED.items():
+    for name, markers in EXPECTED.items():
         path = ROOT / "include" / name
-        if not path.exists() or marker not in path.read_text(encoding="utf-8"):
+        if not path.exists():
             failures.append(f"include/{name}: missing required Windows UI/COM Client contract")
+            continue
+        source = path.read_text(encoding="utf-8")
+        for marker in markers:
+            if marker not in source:
+                failures.append(
+                    f"include/{name}: missing required Windows UI/COM Client contract: {marker}"
+                )
     if failures:
         for item in failures:
             print("OPENATL_UI_CLIENT_SURFACE_FAIL " + item, file=sys.stderr)

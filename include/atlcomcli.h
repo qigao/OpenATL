@@ -570,7 +570,10 @@ public:
     CComVariant& operator=(int nSrc) noexcept
     {
         if (vt != VT_I4) {
-            Clear();
+            // A locked SAFEARRAY cannot be cleared. Preserve its VARIANT
+            // tag and owner instead of overwriting a live resource.
+            if (FAILED(Clear()))
+                return *this;
             vt = VT_I4;
         }
         lVal = nSrc;
