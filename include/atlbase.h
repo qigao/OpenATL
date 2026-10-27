@@ -32,6 +32,7 @@
 #include "atlcore.h"
 #include "atlsimpcoll.h"
 #include "atlalloc.h"
+#include "atlreg.h"
 #include "atlcomcli.h"
 #include "atlconv.h"
 
@@ -289,190 +290,6 @@ private:
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-// CRegKey - Registry key wrapper
-
-class CRegKey {
-public:
-    HKEY m_hKey;
-
-    CRegKey() noexcept : m_hKey(NULL) {}
-
-    CRegKey(CRegKey&& key) noexcept : m_hKey(key.m_hKey) { key.m_hKey = NULL; }
-
-    explicit CRegKey(HKEY hKey) noexcept : m_hKey(hKey) {}
-
-    ~CRegKey()
-    {
-        Close();
-    }
-
-    CRegKey& operator=(CRegKey&& key) noexcept
-    {
-        if (this != &key) {
-            Close();
-            m_hKey = key.m_hKey;
-            key.m_hKey = NULL;
-        }
-        return *this;
-    }
-
-    operator HKEY() const noexcept { return m_hKey; }
-
-    void Attach(HKEY hKey) noexcept
-    {
-        ATLASSERT(m_hKey == NULL);
-        m_hKey = hKey;
-    }
-
-    HKEY Detach() noexcept
-    {
-        HKEY hKey = m_hKey;
-        m_hKey = NULL;
-        return hKey;
-    }
-
-    LSTATUS Close() noexcept
-    {
-        LSTATUS lRes = ERROR_SUCCESS;
-        if (m_hKey != NULL) {
-            lRes = ::RegCloseKey(m_hKey);
-            m_hKey = NULL;
-        }
-        return lRes;
-    }
-
-    LSTATUS Create(HKEY hKeyParent, LPCTSTR lpszKeyName,
-        LPTSTR lpszClass = REG_NONE, DWORD dwOptions = REG_OPTION_NON_VOLATILE,
-        REGSAM samDesired = KEY_READ | KEY_WRITE,
-        LPSECURITY_ATTRIBUTES lpSecAttr = NULL,
-        LPDWORD lpdwDisposition = NULL) noexcept
-    {
-        ATLASSERT(hKeyParent != NULL);
-        DWORD dw;
-        HKEY hKey = NULL;
-        LSTATUS lRes = ::RegCreateKeyEx(hKeyParent, lpszKeyName, 0,
-            lpszClass, dwOptions, samDesired, lpSecAttr, &hKey, &dw);
-        if (lpdwDisposition != NULL)
-            *lpdwDisposition = dw;
-        if (lRes == ERROR_SUCCESS) {
-            Close();
-            m_hKey = hKey;
-        }
-        return lRes;
-    }
-
-    LSTATUS Open(HKEY hKeyParent, LPCTSTR lpszKeyName,
-        REGSAM samDesired = KEY_READ | KEY_WRITE) noexcept
-    {
-        ATLASSERT(hKeyParent != NULL);
-        HKEY hKey = NULL;
-        LSTATUS lRes = ::RegOpenKeyEx(hKeyParent, lpszKeyName, 0, samDesired, &hKey);
-        if (lRes == ERROR_SUCCESS) {
-            Close();
-            m_hKey = hKey;
-        }
-        return lRes;
-    }
-
-    LSTATUS DeleteSubKey(LPCTSTR lpszSubKey) noexcept
-    {
-        ATLASSERT(m_hKey != NULL);
-        return ::RegDeleteKey(m_hKey, lpszSubKey);
-    }
-
-    LSTATUS DeleteValue(LPCTSTR lpszValue) noexcept
-    {
-        ATLASSERT(m_hKey != NULL);
-        return ::RegDeleteValue(m_hKey, lpszValue);
-    }
-
-    LSTATUS QueryValue(LPCTSTR pszValueName, DWORD* pdwType, void* pData, ULONG* pnBytes) noexcept
-    {
-        ATLASSERT(m_hKey != NULL);
-        return ::RegQueryValueEx(m_hKey, pszValueName, NULL, pdwType, (LPBYTE)pData, pnBytes);
-    }
-
-    LSTATUS QueryDWORDValue(LPCTSTR pszValueName, DWORD& dwValue) noexcept
-    {
-        ULONG nBytes = sizeof(DWORD);
-        DWORD dwType = 0;
-        LSTATUS lRes = QueryValue(pszValueName, &dwType, &dwValue, &nBytes);
-        if (lRes == ERROR_SUCCESS && dwType != REG_DWORD)
-            lRes = ERROR_INVALID_DATA;
-        return lRes;
-    }
-
-    LSTATUS QueryStringValue(LPCTSTR pszValueName, LPTSTR pszValue, ULONG* pnChars) noexcept
-    {
-        ULONG nBytes = (*pnChars) * sizeof(TCHAR);
-        DWORD dwType = 0;
-        LSTATUS lRes = QueryValue(pszValueName, &dwType, pszValue, &nBytes);
-        if (lRes == ERROR_SUCCESS && dwType != REG_SZ && dwType != REG_EXPAND_SZ)
-            lRes = ERROR_INVALID_DATA;
-        if (lRes == ERROR_SUCCESS)
-            *pnChars = nBytes / sizeof(TCHAR);
-        return lRes;
-    }
-
-    LSTATUS SetValue(LPCTSTR pszValueName, DWORD dwType, const void* pValue, ULONG nBytes) noexcept
-    {
-        ATLASSERT(m_hKey != NULL);
-        return ::RegSetValueEx(m_hKey, pszValueName, 0, dwType, (const BYTE*)pValue, nBytes);
-    }
-
-    LSTATUS SetDWORDValue(LPCTSTR pszValueName, DWORD dwValue) noexcept
-    {
-        return SetValue(pszValueName, REG_DWORD, &dwValue, sizeof(DWORD));
-    }
-
-    LSTATUS SetStringValue(LPCTSTR pszValueName, LPCTSTR pszValue, DWORD dwType = REG_SZ) noexcept
-    {
-        ATLASSERT(pszValue != NULL);
-        return SetValue(pszValueName, dwType, pszValue,
-            (ULONG)(_tcslen(pszValue) + 1) * sizeof(TCHAR));
-    }
-
-    LSTATUS QueryBinaryValue(LPCTSTR pszValueName, void* pValue, ULONG* pnBytes) noexcept
-    {
-        ATLASSERT(pnBytes != NULL);
-        DWORD dwType = 0;
-        LSTATUS lRes = ::RegQueryValueEx(m_hKey, pszValueName, NULL, &dwType, (LPBYTE)pValue, pnBytes);
-        if (lRes != ERROR_SUCCESS) return lRes;
-        if (dwType != REG_BINARY) return ERROR_INVALID_DATA;
-        return ERROR_SUCCESS;
-    }
-
-    LSTATUS SetBinaryValue(LPCTSTR pszValueName, const void* pValue, ULONG nBytes) noexcept
-    {
-        return SetValue(pszValueName, REG_BINARY, pValue, nBytes);
-    }
-
-    LSTATUS RecurseDeleteKey(LPCTSTR lpszKey) noexcept
-    {
-        CRegKey key;
-        LSTATUS lRes = key.Open(m_hKey, lpszKey, KEY_READ | KEY_WRITE);
-        if (lRes != ERROR_SUCCESS)
-            return lRes;
-
-        FILETIME time;
-        DWORD dwSize = 256;
-        TCHAR szBuffer[256];
-        while (::RegEnumKeyEx(key.m_hKey, 0, szBuffer, &dwSize, NULL, NULL, NULL, &time) == ERROR_SUCCESS) {
-            lRes = key.RecurseDeleteKey(szBuffer);
-            if (lRes != ERROR_SUCCESS)
-                return lRes;
-            dwSize = 256;
-        }
-        key.Close();
-        return DeleteSubKey(lpszKey);
-    }
-
-private:
-    CRegKey(const CRegKey&) = delete;
-    CRegKey& operator=(const CRegKey&) = delete;
-};
-
-///////////////////////////////////////////////////////////////////////////////
 // CComAllocator
 
 class CComAllocator {
@@ -522,119 +339,32 @@ inline HRESULT AtlHresultFromLastError() noexcept
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////
-// _DialogSplitHelper - dialog template helpers
+// Pure Win32 packed dialog-resource layouts
 
+// Plain extended-dialog layout required by WTL CMemDlgTemplate.
+// These are Win32 UI resource structures, not the former ActiveX
+// _DialogSplitHelper parser or any COM Server machinery.
 namespace _DialogSplitHelper {
-
 #pragma pack(push, 1)
-struct DLGTEMPLATEEX
-{
+struct DLGTEMPLATEEX {
     WORD dlgVer;
     WORD signature;
     DWORD helpID;
     DWORD exStyle;
     DWORD style;
     WORD cDlgItems;
-    short x;
-    short y;
-    short cx;
-    short cy;
+    short x, y, cx, cy;
 };
-
-struct DLGITEMTEMPLATEEX
-{
+struct DLGITEMTEMPLATEEX {
     DWORD helpID;
     DWORD exStyle;
     DWORD style;
-    short x;
-    short y;
-    short cx;
-    short cy;
+    short x, y, cx, cy;
     DWORD id;
 };
 #pragma pack(pop)
-
-inline BOOL IsDialogEx(const DLGTEMPLATE* pTemplate) noexcept
-{
-    return ((DLGTEMPLATEEX*)pTemplate)->signature == 0xFFFF;
-}
-
-inline WORD DlgTemplateItemCount(const DLGTEMPLATE* pTemplate) noexcept
-{
-    if (IsDialogEx(pTemplate))
-        return ((DLGTEMPLATEEX*)pTemplate)->cDlgItems;
-    else
-        return pTemplate->cdit;
-}
-
-inline BOOL IsActiveXControl(DLGITEMTEMPLATE* /*pItem*/, BOOL /*bDialogEx*/) noexcept
-{
-    return FALSE;
-}
-
-inline DLGITEMTEMPLATE* FindFirstDlgItem(const DLGTEMPLATE* pTemplate) noexcept
-{
-    BOOL bDialogEx = IsDialogEx(pTemplate);
-    WORD* pw;
-    if (bDialogEx) {
-        pw = (WORD*)((DLGTEMPLATEEX*)pTemplate + 1);
-    } else {
-        pw = (WORD*)(pTemplate + 1);
-    }
-    // Skip menu
-    if (*pw == 0xFFFF) pw += 2; else while (*pw++) {}
-    // Skip class
-    if (*pw == 0xFFFF) pw += 2; else while (*pw++) {}
-    // Skip title
-    while (*pw++) {}
-    // Skip font if DS_SETFONT
-    DWORD dwStyle = bDialogEx ? ((DLGTEMPLATEEX*)pTemplate)->style : pTemplate->style;
-    if (dwStyle & DS_SETFONT) {
-        pw++; // size
-        if (bDialogEx) { pw++; pw++; } // weight, italic
-        while (*pw++) {} // typeface
-    }
-    // Align to DWORD
-    pw = (WORD*)(((ULONG_PTR)pw + 3) & ~3);
-    return (DLGITEMTEMPLATE*)pw;
-}
-
-inline DLGITEMTEMPLATE* FindNextDlgItem(DLGITEMTEMPLATE* pItem, BOOL bDialogEx) noexcept
-{
-    WORD* pw;
-    if (bDialogEx)
-        pw = (WORD*)((DLGITEMTEMPLATEEX*)pItem + 1);
-    else
-        pw = (WORD*)(pItem + 1);
-    // Skip class
-    if (*pw == 0xFFFF) pw += 2; else while (*pw++) {}
-    // Skip title
-    if (*pw == 0xFFFF) pw += 2; else while (*pw++) {}
-    // Skip creation data
-    WORD cbExtra = *pw++;
-    pw = (WORD*)((BYTE*)pw + cbExtra);
-    // Align to DWORD
-    pw = (WORD*)(((ULONG_PTR)pw + 3) & ~3);
-    return (DLGITEMTEMPLATE*)pw;
-}
-
-inline LPCDLGTEMPLATE SplitDialogTemplate(DLGTEMPLATE* pTemplate, BYTE*& pInitData) noexcept
-{
-    pInitData = NULL;
-    return pTemplate;
-}
-
-inline DWORD FindCreateData(DWORD /*wID*/, BYTE* /*pInitData*/, BYTE** ppData) noexcept
-{
-    if (ppData) *ppData = NULL;
-    return 0;
-}
-
-inline HRESULT ParseInitData(IStream* /*pStream*/, BSTR* /*pbstrLicKey*/) noexcept
-{
-    return E_NOTIMPL;
-}
-
+static_assert(sizeof(DLGTEMPLATEEX) == 26, "Win32 DLGTEMPLATEEX packed layout");
+static_assert(sizeof(DLGITEMTEMPLATEEX) == 24, "Win32 DLGITEMTEMPLATEEX packed layout");
 } // namespace _DialogSplitHelper
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -642,12 +372,6 @@ inline HRESULT ParseInitData(IStream* /*pStream*/, BSTR* /*pbstrLicKey*/) noexce
 
 struct _AtlCreateWndData;
 class CAtlWinModule;
-class CAtlModule;
-class CComModule;
-
-// Global module pointers (set by constructors of CAtlModule / CComModule)
-__declspec(selectany) CAtlModule* _pAtlModule = NULL;
-__declspec(selectany) CComModule* _pModule = NULL;
 
 ///////////////////////////////////////////////////////////////////////////////
 // _AtlCreateWndData
@@ -669,193 +393,6 @@ struct _ATL_WIN_MODULE70 {
 };
 
 typedef _ATL_WIN_MODULE70 _ATL_WIN_MODULE;
-
-///////////////////////////////////////////////////////////////////////////////
-// _ATL_COM_MODULE
-
-struct _ATL_COM_MODULE70 {
-    UINT cbSize;
-    HINSTANCE m_hInstTypeLib;
-    CComCriticalSection m_csObjMap;
-};
-
-typedef _ATL_COM_MODULE70 _ATL_COM_MODULE;
-
-///////////////////////////////////////////////////////////////////////////////
-// _ATL_MODULE
-
-struct _ATL_MODULE70 {
-    UINT cbSize;
-    LONG m_nLockCnt;
-    CComCriticalSection m_csStaticDataInitAndTypeInfo;
-};
-
-typedef _ATL_MODULE70 _ATL_MODULE;
-
-///////////////////////////////////////////////////////////////////////////////
-// _ATL_OBJMAP_ENTRY / _ATL_INTMAP_ENTRY
-
-struct _ATL_OBJMAP_ENTRY30 {
-    const CLSID* pclsid;
-    HRESULT (WINAPI *pfnUpdateRegistry)(BOOL bRegister);
-    HRESULT (WINAPI *pfnGetClassObject)(void* pv, REFIID riid, LPVOID* ppv);
-    HRESULT (WINAPI *pfnCreateInstance)(void* pv, REFIID riid, LPVOID* ppv);
-    IUnknown* pCF;
-    DWORD dwRegister;
-    void* pfnObjectMain;
-};
-
-typedef _ATL_OBJMAP_ENTRY30 _ATL_OBJMAP_ENTRY;
-
-#define _ATL_SIMPLEMAPENTRY ((ATL::_ATL_CREATORDATA*)1)
-
-struct _ATL_CREATORDATA {
-    HRESULT (WINAPI *pfnCreateInstance)(void*, REFIID, LPVOID*);
-};
-
-struct _ATL_INTMAP_ENTRY {
-    const IID* piid;
-    DWORD_PTR dw;
-    HRESULT (WINAPI *pFunc)(void* pv, REFIID riid, LPVOID* ppv, DWORD_PTR dw);
-};
-
-struct _ATL_REGMAP_ENTRY {
-    LPCOLESTR szKey;
-    LPCOLESTR szData;
-};
-
-///////////////////////////////////////////////////////////////////////////////
-// AtlInternalQueryInterface
-
-inline HRESULT WINAPI AtlInternalQueryInterface(
-    void* pThis,
-    const _ATL_INTMAP_ENTRY* pEntries,
-    REFIID iid,
-    void** ppvObject) noexcept
-{
-    ATLASSERT(pThis != NULL);
-    ATLASSERT(pEntries != NULL);
-    ATLASSERT(ppvObject != NULL);
-
-    if (ppvObject == NULL)
-        return E_POINTER;
-
-    *ppvObject = NULL;
-
-    if (InlineIsEqualUnknown(iid)) {
-        // First non-NULL entry is the IUnknown
-        for (; pEntries->pFunc != NULL; pEntries++) {
-            if (pEntries->piid != NULL) {
-                IUnknown* pUnk = (IUnknown*)((LONG_PTR)pThis + pEntries->dw);
-                *ppvObject = pUnk;
-                pUnk->AddRef();
-                return S_OK;
-            }
-        }
-        return E_NOINTERFACE;
-    }
-
-    for (; pEntries->pFunc != NULL; pEntries++) {
-        if (pEntries->piid == NULL)
-            continue;
-
-        if (pEntries->pFunc == (HRESULT(WINAPI*)(void*, REFIID, LPVOID*, DWORD_PTR))1) {
-            // _ATL_SIMPLEMAPENTRY - offset only
-            if (IsEqualGUID(iid, *pEntries->piid)) {
-                IUnknown* pUnk = (IUnknown*)((LONG_PTR)pThis + pEntries->dw);
-                *ppvObject = pUnk;
-                pUnk->AddRef();
-                return S_OK;
-            }
-        } else {
-            // Custom function
-            HRESULT hr = pEntries->pFunc(pThis, iid, ppvObject, pEntries->dw);
-            if (hr == S_OK || (FAILED(hr) && hr != E_NOINTERFACE))
-                return hr;
-        }
-    }
-
-    return E_NOINTERFACE;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// CAtlModule - base module class
-
-class CAtlModule : public _ATL_MODULE {
-public:
-    CAtlModule() noexcept
-    {
-        cbSize = sizeof(_ATL_MODULE);
-        m_nLockCnt = 0;
-        m_csStaticDataInitAndTypeInfo.Init();
-        _pAtlModule = this;
-    }
-
-    virtual ~CAtlModule()
-    {
-        m_csStaticDataInitAndTypeInfo.Term();
-    }
-
-    virtual LONG Lock() noexcept
-    {
-        return CComGlobalsThreadModel::Increment(&m_nLockCnt);
-    }
-
-    virtual LONG Unlock() noexcept
-    {
-        return CComGlobalsThreadModel::Decrement(&m_nLockCnt);
-    }
-
-    virtual LONG GetLockCount() noexcept
-    {
-        return m_nLockCnt;
-    }
-
-    HRESULT AddCommonRGSReplacements(void* /*pRegistrar*/) noexcept
-    {
-        // Stub - no registry support
-        return S_OK;
-    }
-
-    virtual HRESULT AddCommonRGSReplacements(IUnknown* /*pRegistrar*/) noexcept
-    {
-        return S_OK;
-    }
-};
-
-template <typename T>
-class CAtlModuleT : public CAtlModule {
-public:
-    HRESULT RegisterServer(BOOL /*bRegTypeLib*/ = FALSE, const CLSID* /*pCLSID*/ = NULL) noexcept
-    {
-        return S_OK;
-    }
-
-    HRESULT UnregisterServer(BOOL /*bUnRegTypeLib*/, const CLSID* /*pCLSID*/ = NULL) noexcept
-    {
-        return S_OK;
-    }
-};
-
-///////////////////////////////////////////////////////////////////////////////
-// CAtlComModule
-
-class CAtlComModule : public _ATL_COM_MODULE {
-public:
-    CAtlComModule() noexcept
-    {
-        cbSize = sizeof(_ATL_COM_MODULE);
-        m_hInstTypeLib = NULL;
-        m_csObjMap.Init();
-    }
-
-    ~CAtlComModule()
-    {
-        m_csObjMap.Term();
-    }
-};
-
-__declspec(selectany) CAtlComModule _AtlComModule;
 
 ///////////////////////////////////////////////////////////////////////////////
 // CAtlWinModule
@@ -917,117 +454,15 @@ public:
 __declspec(selectany) CAtlWinModule _AtlWinModule;
 
 ///////////////////////////////////////////////////////////////////////////////
-// Free-standing functions (legacy compatibility)
-
-inline void AtlWinModuleAddCreateWndData(_ATL_WIN_MODULE* pWinModule, _AtlCreateWndData* pData, void* pObject) noexcept
-{
-    (void)pWinModule;
-    _AtlWinModule.AddCreateWndData(pData, pObject);
-}
-
-inline void* AtlWinModuleExtractCreateWndData(_ATL_WIN_MODULE* pWinModule) noexcept
-{
-    (void)pWinModule;
-    return _AtlWinModule.ExtractCreateWndData();
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// CComModule - legacy module class
-
-class CComModule : public CAtlModuleT<CComModule> {
-public:
-    HINSTANCE m_hInst;
-    HINSTANCE m_hInstResource;
-    HINSTANCE m_hInstTypeLib;
-    _ATL_OBJMAP_ENTRY* m_pObjMap;
-
-    CComModule() noexcept
-        : m_hInst(NULL), m_hInstResource(NULL), m_hInstTypeLib(NULL), m_pObjMap(NULL)
-    {
-        _pModule = this;
-    }
-
-    HRESULT Init(_ATL_OBJMAP_ENTRY* p, HINSTANCE h, const GUID* /*plibid*/ = NULL) noexcept
-    {
-        m_pObjMap = p;
-        m_hInst = h;
-        m_hInstResource = h;
-        m_hInstTypeLib = h;
-
-        _AtlBaseModule.m_hInst = h;
-        _AtlBaseModule.m_hInstResource = h;
-
-        if (p != NULL) {
-            while (p->pclsid != NULL) {
-                p->pCF = NULL;
-                p++;
-            }
-        }
-
-        return S_OK;
-    }
-
-    void Term() noexcept
-    {
-        if (m_pObjMap != NULL) {
-            _ATL_OBJMAP_ENTRY* p = m_pObjMap;
-            while (p->pclsid != NULL) {
-                if (p->pCF != NULL) {
-                    p->pCF->Release();
-                    p->pCF = NULL;
-                }
-                p++;
-            }
-        }
-    }
-
-    HRESULT GetClassObject(REFCLSID rclsid, REFIID riid, LPVOID* ppv) noexcept
-    {
-        if (ppv == NULL)
-            return E_POINTER;
-        *ppv = NULL;
-
-        if (m_pObjMap == NULL)
-            return CLASS_E_CLASSNOTAVAILABLE;
-
-        _ATL_OBJMAP_ENTRY* p = m_pObjMap;
-        while (p->pclsid != NULL) {
-            if (IsEqualCLSID(*p->pclsid, rclsid)) {
-                if (p->pfnGetClassObject != NULL)
-                    return p->pfnGetClassObject(p->pCF ? (void*)p->pCF : NULL, riid, ppv);
-                return CLASS_E_CLASSNOTAVAILABLE;
-            }
-            p++;
-        }
-        return CLASS_E_CLASSNOTAVAILABLE;
-    }
-
-    HINSTANCE GetModuleInstance() const noexcept { return m_hInst; }
-    HINSTANCE GetResourceInstance() const noexcept { return m_hInstResource; }
-    HINSTANCE GetTypeLibInstance() const noexcept { return m_hInstTypeLib; }
-};
-
-///////////////////////////////////////////////////////////////////////////////
 // AtlGetCommCtrlVersion - forward declaration
 // Full implementation is provided by WTL's atlapp.h for _ATL_VER >= 0x0B00
 
 HRESULT AtlGetCommCtrlVersion(LPDWORD pdwMajor, LPDWORD pdwMinor);
-
-///////////////////////////////////////////////////////////////////////////////
-// AtlAxWinInit - stub for ActiveX hosting (not supported)
-
-inline BOOL AtlAxWinInit() noexcept
-{
-    return TRUE;
-}
 
 } // namespace ATL
 
 // For headers that use the ATL:: prefix
 using ATL::_AtlBaseModule;
 using ATL::_AtlWinModule;
-using ATL::_AtlComModule;
-using ATL::_pAtlModule;
-using ATL::_pModule;
 
 #endif // __ATLBASE_H__

@@ -16,8 +16,16 @@ if(NOT EXISTS "${_openatl_atl_include}/atlbase.h" OR
    NOT EXISTS "${_openatl_atl_include}/atlwin.h" OR
    NOT EXISTS "${_openatl_atl_include}/atlfile.h" OR
    NOT EXISTS "${_openatl_atl_include}/atlpath.h" OR
-   NOT EXISTS "${_openatl_atl_include}/atlsync.h")
+   NOT EXISTS "${_openatl_atl_include}/atlsync.h" OR
+   NOT EXISTS "${_openatl_atl_include}/atlmem.h" OR
+   NOT EXISTS "${_openatl_atl_include}/atltime.h" OR
+   NOT EXISTS "${_openatl_atl_include}/atlcoll.h" OR
+   NOT EXISTS "${_openatl_atl_include}/atlimage.h")
   message(FATAL_ERROR "Missing repository-owned OpenATL headers")
+endif()
+# Server-side ATL and registration are deliberately absent, not stubbed.
+if(EXISTS "${_openatl_atl_include}/atlcom.h")
+  message(FATAL_ERROR "COM Server atlcom.h is outside OpenATL UI/COM Client scope")
 endif()
 if(DEFINED OPENATL_WTL_INCLUDE_DIR)
   message(FATAL_ERROR "Manual WTL header roots are forbidden; install WTL with vcpkg.json")
@@ -69,6 +77,33 @@ if(OPENATL_BUILD_QUALIFICATION)
   if(NOT _wtl_version_probe MATCHES "WTL version 10\\.0")
     message(FATAL_ERROR "Unrecognized vcpkg WTL version; expected WTL10")
   endif()
+  file(READ "${_wtl_headers}/atlapp.h" _wtl_scope)
+  if(NOT _wtl_scope MATCHES "OpenATL UI-only" OR
+     NOT _wtl_scope MATCHES "HRESULT Init\\(HINSTANCE hInstance\\)" OR
+     _wtl_scope MATCHES "class CServerAppModule" OR
+     _wtl_scope MATCHES "class CAppModule : public ATL::CComModule")
+    message(FATAL_ERROR "The pinned vcpkg WTL10 source must be UI-only with Init(HINSTANCE)")
+  endif()
+  file(READ "${_wtl_headers}/atlmisc.h" _wtl_mru_scope)
+  if(NOT _wtl_mru_scope MATCHES "ATL::CRegKey" OR
+     NOT _wtl_mru_scope MATCHES "ReadFromRegistry\\(" OR
+     NOT _wtl_mru_scope MATCHES "WriteToRegistry\\(" OR
+     _wtl_mru_scope MATCHES "class CRegProperty" OR
+     NOT _wtl_mru_scope MATCHES "CRecentDocumentListBase" OR
+     NOT _wtl_mru_scope MATCHES "class CFindFile" OR
+     NOT _wtl_mru_scope MATCHES "AtlGetStockPen")
+    message(FATAL_ERROR "WTL UI-only: missing MRU persistence/menu/file utilities or registry serializer returned")
+  endif()
+  file(READ "${_wtl_headers}/atlctrlx.h" _wtl_hyperlink_scope)
+  file(READ "${_wtl_headers}/atldlgs.h" _wtl_dialog_scope)
+  if(_wtl_hyperlink_scope MATCHES "ATL::CRegKey" OR
+     _wtl_hyperlink_scope MATCHES "_ParseColorString" OR
+     _wtl_dialog_scope MATCHES "#include <atlcom.h>" OR
+     _wtl_dialog_scope MATCHES "class ATL_NO_VTABLE CPrintDialogExImpl" OR
+     _wtl_dialog_scope MATCHES "public ATL::IObjectWithSiteImpl" OR
+     NOT _wtl_dialog_scope MATCHES "class CPageSetupDialog")
+    message(FATAL_ERROR "WTL UI-only: registry or COM printing callbacks still exposed")
+  endif()
   enable_language(RC)
   enable_testing()
 
@@ -78,19 +113,38 @@ if(OPENATL_BUILD_QUALIFICATION)
   target_link_libraries(openatl_gui_runtime PRIVATE OpenATL::ATL
     # ole32 is used by the test ONLY to prove COM stays uninitialized.
     ole32 comctl32 gdi32 user32 shell32 shlwapi
-    comdlg32 uxtheme msimg32 oleaut32 uuid)
+    comdlg32 uxtheme msimg32 oleaut32 uuid advapi32)
   add_test(NAME openatl.ui_no_com COMMAND openatl_gui_runtime)
 
   # Repository-owned ATL utilities (file/string/sync), independent of COM.
   # ole32 belongs ONLY to this test to verify apartment stays uninitialized.
   add_executable(openatl_atl_core tests/atl_conformance/atl_core.cpp)
-  target_link_libraries(openatl_atl_core PRIVATE OpenATL::ATL ole32)
+  target_link_libraries(openatl_atl_core PRIVATE OpenATL::ATL ole32 advapi32)
   add_test(NAME openatl.atl_core_no_com COMMAND openatl_atl_core)
 
   # Repository-owned path and Unicode Win32 file test. No COM dependency.
   add_executable(openatl_atl_path tests/atl_conformance/atl_path.cpp)
   target_link_libraries(openatl_atl_path PRIVATE OpenATL::ATL)
   add_test(NAME openatl.atl_path COMMAND openatl_atl_path)
+
+  # Additional source-owned ATL-style heap, time and typed array utilities.
+  # ole32 is used only by the native test to detect accidental COM init.
+  add_executable(openatl_atl_extensions tests/atl_conformance/atl_extensions.cpp)
+  target_link_libraries(openatl_atl_extensions PRIVATE OpenATL::ATL ole32)
+  add_test(NAME openatl.atl_extensions_no_com COMMAND openatl_atl_extensions)
+
+  # Actual Win32 file/shared-memory mappings, offsets and handle lifetime.
+  # No COM initialization: ole32 is only linked by the no-apartment test.
+  add_executable(openatl_atl_mapping tests/atl_conformance/atl_mapping.cpp)
+  target_link_libraries(openatl_atl_mapping PRIVATE OpenATL::ATL ole32)
+  add_test(NAME openatl.atl_mapping_no_com COMMAND openatl_atl_mapping)
+
+  # GDI bitmap owners plus optional BMP/PNG GDI+ codec calls. No COM
+  # initialization; ole32 is linked only for the no-apartment assertion.
+  # Consumers calling CImage::Load/Save must link Windows gdiplus.
+  add_executable(openatl_atl_image tests/atl_conformance/atl_image.cpp)
+  target_link_libraries(openatl_atl_image PRIVATE OpenATL::ATL gdi32 gdiplus ole32)
+  add_test(NAME openatl.atl_image_no_com COMMAND openatl_atl_image)
 
   # Direct OS failure injection is compiled from the in-repo atlwin.h
   # and isolated behind OPENATL_WX_FAULT_TEST.
@@ -109,7 +163,7 @@ if(OPENATL_BUILD_QUALIFICATION)
              COMMAND openatl_com_client "--${_client_mode}")
   endforeach()
 
-  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_atl_core openatl_atl_path)
+  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)
     if(MSVC)
       set_property(TARGET ${_qualified} PROPERTY
@@ -133,7 +187,7 @@ if(OPENATL_BUILD_QUALIFICATION)
     target_include_directories(openatl_wtl10_sdi PRIVATE "${OPENATL_WTL_DEMO_DIR}" "${_wtl_headers}")
     target_link_libraries(openatl_wtl10_sdi PRIVATE OpenATL::ATL
       ole32 oleaut32 uuid comctl32 msimg32 uxtheme gdi32 comdlg32
-      shell32 shlwapi dwmapi user32)
+      shell32 shlwapi dwmapi user32 advapi32)
     if(MSVC)
       set_property(TARGET openatl_wtl10_sdi PROPERTY
         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

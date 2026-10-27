@@ -7,6 +7,13 @@ on:
 permissions:
   contents: read
 
+# Keep the exact PR HEAD qualified while avoiding obsolete pending
+# attempts for earlier commits on that same pull request. Separate PRs
+# and manual dispatch refs retain independent job groups.
+concurrency:
+  group: openatl-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   source-tree-only:
     name: Source-only and vcpkg WTL policy
@@ -15,6 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 tests/source_tree_policy.py
+      - run: python3 tests/atl_surface_policy.py
       - run: python3 tests/wtl_vcpkg_policy.py
 
   windows-llvm:
@@ -64,6 +72,9 @@ jobs:
           Run git @('clone','--quiet','https://github.com/kkhaike/wtltest.git','tools/wtl10-test')
           Run git @('-C','tools/wtl10-test','checkout','--quiet','--detach',$sample)
           if((git -C tools/wtl10-test rev-parse HEAD).Trim() -ne $sample) { throw 'SDI sample SHA mismatch' }
+          $uiPatch=(Resolve-Path tests/wtl10/wtltest-ui-only.patch).Path
+          Run git @('-C','tools/wtl10-test','apply','--check',$uiPatch)
+          Run git @('-C','tools/wtl10-test','apply',$uiPatch)
       - name: CMake native x64 and cross ARM64, PE/resources, CTest x5
         shell: pwsh
         run: |
@@ -74,7 +85,7 @@ jobs:
           }
           $toolchain=(Resolve-Path cmake/toolchains/llvm-mingw.cmake).Path
           $sample=(Resolve-Path tools/wtl10-test).Path
-          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_thunk_fault','openatl_com_client','openatl_wtl10_sdi')
+          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_com_client','openatl_wtl10_sdi')
           foreach($arch in @('x86_64','aarch64')) {
             $triplet=if($arch -eq 'x86_64'){'x64-openatl-mingw'}else{'arm64-openatl-mingw'}
             $build="build-llvm-$arch"
@@ -148,6 +159,9 @@ jobs:
           Run git @('clone','--quiet','https://github.com/kkhaike/wtltest.git','tools/wtl10-test')
           Run git @('-C','tools/wtl10-test','checkout','--quiet','--detach',$sample)
           if((git -C tools/wtl10-test rev-parse HEAD).Trim() -ne $sample) { throw 'SDI sample SHA mismatch' }
+          $uiPatch=(Resolve-Path tests/wtl10/wtltest-ui-only.patch).Path
+          Run git @('-C','tools/wtl10-test','apply','--check',$uiPatch)
+          Run git @('-C','tools/wtl10-test','apply',$uiPatch)
       - name: MSVC source-tree CMake, PE/resources and native CTest x5
         shell: pwsh
         run: |
@@ -169,7 +183,7 @@ jobs:
           if(!$identity -or !(Select-String -Path $identity.FullName -Pattern 'CMAKE_CXX_COMPILER_ID "MSVC"' -Quiet)) {
             throw 'MSVC cl.exe was not the actual compiler'
           }
-          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_thunk_fault','openatl_com_client','openatl_wtl10_sdi')
+          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_com_client','openatl_wtl10_sdi')
           $manifest=@{}
           foreach($target in $targets) {
             $file="$build/$target.exe"
@@ -279,6 +293,8 @@ jobs:
           git clone -q https://github.com/kkhaike/wtltest.git tools/wtl10-test
           git -C tools/wtl10-test checkout -q --detach 63ba6a992cb3d79d56be66cd283f6615c6646b3d
           test "$(git -C tools/wtl10-test rev-parse HEAD)" = 63ba6a992cb3d79d56be66cd283f6615c6646b3d
+          git -C tools/wtl10-test apply --check "$PWD/tests/wtl10/wtltest-ui-only.patch"
+          git -C tools/wtl10-test apply "$PWD/tests/wtl10/wtltest-ui-only.patch"
       - name: CMake/WTL SDI and Windows PE resource qualification for both RIDs
         shell: bash
         run: |
@@ -295,7 +311,7 @@ jobs:
               "-DOPENATL_WTL_DEMO_DIR=$PWD/tools/wtl10-test" \
               -DCMAKE_BUILD_TYPE=Release -DOPENATL_BUILD_QUALIFICATION=ON
             cmake --build "$build" --parallel 2
-            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_thunk_fault openatl_com_client openatl_wtl10_sdi; do
+            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image openatl_thunk_fault openatl_com_client openatl_wtl10_sdi; do
               if [ "$target" = openatl_gui_runtime ] || [ "$target" = openatl_wtl10_sdi ]; then
                 python3 tests/wtl10/verify_pe_machine.py "$build/$target.exe" "$arch" --require-resources
               else

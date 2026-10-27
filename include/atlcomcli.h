@@ -10,6 +10,9 @@
 
 #include <ole2.h>
 #include <memory>
+#include <limits>
+#include <cwchar>
+#include <cstring>
 
 namespace ATL {
 
@@ -137,9 +140,10 @@ public:
 
     void Attach(T* p2) noexcept
     {
-        if (p != NULL)
-            p->Release();
+        if (p == p2) return; // Same raw pointer cannot be released first.
+        T* old = p;
         p = p2;
+        if (old != NULL) old->Release();
     }
 
     void Release() noexcept
@@ -165,23 +169,26 @@ public:
     template <typename Q>
     HRESULT QueryInterface(Q** pp) const noexcept
     {
-        ATLASSERT(pp != NULL);
+        if (pp == NULL) return E_POINTER;
+        *pp = NULL;
+        if (p == NULL) return E_POINTER;
         return p->QueryInterface(__uuidof(Q), (void**)pp);
     }
 
     HRESULT CoCreateInstance(REFCLSID rclsid, LPUNKNOWN pUnkOuter = NULL,
         DWORD dwClsContext = CLSCTX_ALL) noexcept
     {
-        ATLASSERT(p == NULL);
+        if (p != NULL) return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
         return ::CoCreateInstance(rclsid, pUnkOuter, dwClsContext, __uuidof(T), (void**)&p);
     }
 
     HRESULT CoCreateInstance(LPCOLESTR szProgID, LPUNKNOWN pUnkOuter = NULL,
         DWORD dwClsContext = CLSCTX_ALL) noexcept
     {
+        if (p != NULL) return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+        if (szProgID == NULL) return E_INVALIDARG;
         CLSID clsid;
         HRESULT hr = ::CLSIDFromProgID(szProgID, &clsid);
-        ATLASSERT(p == NULL);
         if (SUCCEEDED(hr))
             hr = ::CoCreateInstance(clsid, pUnkOuter, dwClsContext, __uuidof(T), (void**)&p);
         return hr;
@@ -194,11 +201,16 @@ public:
         if (p == NULL || pOther == NULL)
             return false;
 
-        CComPtr<IUnknown> punk1;
-        CComPtr<IUnknown> punk2;
-        p->QueryInterface(__uuidof(IUnknown), (void**)&punk1);
-        pOther->QueryInterface(__uuidof(IUnknown), (void**)&punk2);
-        return punk1 == punk2;
+        CComPtr<IUnknown> first, second;
+        IUnknown* raw1 = NULL;
+        HRESULT hr = p->QueryInterface(__uuidof(IUnknown), (void**)&raw1);
+        first.Attach(raw1);
+        if (FAILED(hr) || raw1 == NULL) return false;
+        IUnknown* raw2 = NULL;
+        hr = pOther->QueryInterface(__uuidof(IUnknown), (void**)&raw2);
+        second.Attach(raw2);
+        if (FAILED(hr) || raw2 == NULL) return false;
+        return first.p == second.p;
     }
 };
 
@@ -271,7 +283,8 @@ public:
     CComBSTR() noexcept : m_str(NULL) {}
 
     CComBSTR(int nSize, LPCOLESTR sz = NULL)
-        : m_str(::SysAllocStringLen(sz, nSize))
+        : m_str(nSize < 0 ? NULL :
+                ::SysAllocStringLen(sz, static_cast<UINT>(nSize)))
     {
     }
 
@@ -311,8 +324,12 @@ public:
     CComBSTR& operator=(const CComBSTR& src)
     {
         if (this != &src) {
+            BSTR copy = src.m_str == NULL ? NULL :
+                ::SysAllocStringLen(src.m_str, ::SysStringLen(src.m_str));
+            if (src.m_str != NULL && copy == NULL)
+                return *this; // Preserve the old value on OOM.
             ::SysFreeString(m_str);
-            m_str = ::SysAllocStringLen(src.m_str, ::SysStringLen(src.m_str));
+            m_str = copy;
         }
         return *this;
     }
@@ -329,8 +346,11 @@ public:
 
     CComBSTR& operator=(LPCOLESTR pSrc)
     {
+        // Allocate before release; pSrc may equal m_str or point inside it.
+        BSTR copy = pSrc == NULL ? NULL : ::SysAllocString(pSrc);
+        if (pSrc != NULL && copy == NULL) return *this;
         ::SysFreeString(m_str);
-        m_str = ::SysAllocString(pSrc);
+        m_str = copy;
         return *this;
     }
 
@@ -393,18 +413,23 @@ public:
 
     HRESULT Append(LPCOLESTR lpsz, int nLen) noexcept
     {
-        if (lpsz == NULL || nLen == 0)
-            return S_OK;
-        int nOldLen = Length();
-        BSTR bstrNew = ::SysAllocStringLen(NULL, nOldLen + nLen);
-        if (bstrNew == NULL)
-            return E_OUTOFMEMORY;
-        if (m_str != NULL)
-            memcpy(bstrNew, m_str, nOldLen * sizeof(OLECHAR));
-        memcpy(bstrNew + nOldLen, lpsz, nLen * sizeof(OLECHAR));
-        bstrNew[nOldLen + nLen] = L'\0';
+        if (nLen < 0) return E_INVALIDARG;
+        if (nLen == 0) return S_OK;
+        if (lpsz == NULL) return E_POINTER;
+        const UINT oldLen = Length();
+        if (oldLen > static_cast<UINT>((std::numeric_limits<int>::max)() - nLen))
+            return E_INVALIDARG;
+        const UINT size = oldLen + static_cast<UINT>(nLen);
+        BSTR copy = ::SysAllocStringLen(NULL, size);
+        if (copy == NULL) return E_OUTOFMEMORY;
+        if (oldLen != 0)
+            std::memcpy(copy, m_str, static_cast<size_t>(oldLen)*sizeof(OLECHAR));
+        // lpsz can alias the original m_str until after copying it.
+        std::memcpy(copy + oldLen, lpsz,
+                    static_cast<size_t>(nLen)*sizeof(OLECHAR));
+        copy[size] = L'\0';
         ::SysFreeString(m_str);
-        m_str = bstrNew;
+        m_str = copy;
         return S_OK;
     }
 
@@ -412,12 +437,18 @@ public:
     {
         if (lpsz == NULL)
             return S_OK;
-        return Append(lpsz, (int)wcslen(lpsz));
+        const size_t len = std::wcslen(lpsz);
+        if (len > static_cast<size_t>((std::numeric_limits<int>::max)()))
+            return E_INVALIDARG;
+        return Append(lpsz, static_cast<int>(len));
     }
 
     HRESULT Append(const CComBSTR& bstrSrc) noexcept
     {
-        return Append(bstrSrc.m_str, bstrSrc.Length());
+        if (bstrSrc.Length() >
+            static_cast<UINT>((std::numeric_limits<int>::max)()))
+            return E_INVALIDARG;
+        return Append(bstrSrc.m_str, static_cast<int>(bstrSrc.Length()));
     }
 
     CComBSTR& operator+=(const CComBSTR& bstrSrc)
@@ -432,7 +463,9 @@ public:
             return true;
         if (m_str == NULL || bstrSrc.m_str == NULL)
             return false;
-        return wcscmp(m_str, bstrSrc.m_str) == 0;
+        const UINT a = ::SysStringLen(m_str);
+        const UINT b = ::SysStringLen(bstrSrc.m_str);
+        return a == b && std::wmemcmp(m_str, bstrSrc.m_str, a) == 0;
     }
 
     bool operator!=(const CComBSTR& bstrSrc) const noexcept
@@ -446,7 +479,11 @@ public:
             return bstrSrc.m_str != NULL;
         if (bstrSrc.m_str == NULL)
             return false;
-        return wcscmp(m_str, bstrSrc.m_str) < 0;
+        const UINT a = ::SysStringLen(m_str);
+        const UINT b = ::SysStringLen(bstrSrc.m_str);
+        const UINT common = a < b ? a : b;
+        const int result = std::wmemcmp(m_str, bstrSrc.m_str, common);
+        return result < 0 || (result == 0 && a < b);
     }
 };
 
@@ -468,13 +505,13 @@ public:
     CComVariant(const VARIANT& varSrc)
     {
         ::VariantInit(this);
-        ::VariantCopy(this, const_cast<VARIANT*>(&varSrc));
+        (void)Copy(&varSrc);
     }
 
     CComVariant(const CComVariant& varSrc)
     {
         ::VariantInit(this);
-        ::VariantCopy(this, const_cast<VARIANT*>(static_cast<const VARIANT*>(&varSrc)));
+        (void)Copy(static_cast<const VARIANT*>(&varSrc));
     }
 
     CComVariant(LPCOLESTR lpszSrc)
@@ -507,28 +544,36 @@ public:
 
     CComVariant& operator=(const CComVariant& varSrc)
     {
-        ::VariantCopy(this, const_cast<VARIANT*>(static_cast<const VARIANT*>(&varSrc)));
+        (void)Copy(static_cast<const VARIANT*>(&varSrc));
         return *this;
     }
 
     CComVariant& operator=(const VARIANT& varSrc)
     {
-        ::VariantCopy(this, const_cast<VARIANT*>(&varSrc));
+        (void)Copy(&varSrc);
         return *this;
     }
 
     CComVariant& operator=(LPCOLESTR lpszSrc)
     {
-        Clear();
+        BSTR copy = lpszSrc == NULL ? NULL : ::SysAllocString(lpszSrc);
+        if (lpszSrc != NULL && copy == NULL) return *this;
+        if (FAILED(Clear())) {
+            ::SysFreeString(copy);
+            return *this;
+        }
         vt = VT_BSTR;
-        bstrVal = ::SysAllocString(lpszSrc);
+        bstrVal = copy;
         return *this;
     }
 
     CComVariant& operator=(int nSrc) noexcept
     {
         if (vt != VT_I4) {
-            Clear();
+            // A locked SAFEARRAY cannot be cleared. Preserve its VARIANT
+            // tag and owner instead of overwriting a live resource.
+            if (FAILED(Clear()))
+                return *this;
             vt = VT_I4;
         }
         lVal = nSrc;
@@ -547,11 +592,13 @@ public:
             return lVal == varSrc.lVal;
         case VT_BOOL:
             return boolVal == varSrc.boolVal;
-        case VT_BSTR:
-            return (::SysStringLen(bstrVal) == ::SysStringLen(varSrc.bstrVal)) &&
-                (bstrVal == NULL || varSrc.bstrVal == NULL ?
-                    bstrVal == varSrc.bstrVal :
-                    wcscmp(bstrVal, varSrc.bstrVal) == 0);
+        case VT_BSTR: {
+            if (bstrVal == NULL || varSrc.bstrVal == NULL)
+                return bstrVal == varSrc.bstrVal;
+            const UINT len = ::SysStringLen(bstrVal);
+            return len == ::SysStringLen(varSrc.bstrVal) &&
+                std::wmemcmp(bstrVal, varSrc.bstrVal, len) == 0;
+        }
         default:
             break;
         }
@@ -570,7 +617,23 @@ public:
 
     HRESULT Copy(const VARIANT* pSrc) noexcept
     {
-        return ::VariantCopy(this, const_cast<VARIANT*>(pSrc));
+        if (pSrc == NULL) return E_POINTER;
+        if (pSrc == static_cast<const VARIANT*>(this)) return S_OK;
+        VARIANT tmp;
+        ::VariantInit(&tmp);
+        HRESULT hr = ::VariantCopy(&tmp, const_cast<VARIANT*>(pSrc));
+        if (FAILED(hr)) {
+            (void)::VariantClear(&tmp);
+            return hr;
+        }
+        hr = ::VariantClear(this);
+        if (FAILED(hr)) {
+            (void)::VariantClear(&tmp);
+            return hr;
+        }
+        std::memcpy(static_cast<VARIANT*>(this), &tmp, sizeof(VARIANT));
+        ::VariantInit(&tmp); // Ownership is now held only by this VARIANT.
+        return S_OK;
     }
 
     HRESULT ChangeType(VARTYPE vtNew, const VARIANT* pSrc = NULL) noexcept
@@ -583,11 +646,12 @@ public:
 
     HRESULT Detach(VARIANT* pDest) noexcept
     {
-        ATLASSERT(pDest != NULL);
+        if (pDest == NULL) return E_POINTER;
+        if (pDest == static_cast<VARIANT*>(this)) return E_INVALIDARG;
         HRESULT hr = ::VariantClear(pDest);
         if (SUCCEEDED(hr)) {
-            memcpy(pDest, this, sizeof(VARIANT));
-            vt = VT_EMPTY;
+            std::memcpy(pDest, static_cast<VARIANT*>(this), sizeof(VARIANT));
+            ::VariantInit(this);
         }
         return hr;
     }

@@ -42,6 +42,13 @@
 #endif
 #endif
 
+// OpenATL is Win32 UI + optional COM Client only. Never compile
+// WTL ActiveX-hosting property pages or fabricate COM UI stubs.
+// This is a single enforced product scope, not a provider fallback.
+#ifndef _ATL_NO_HOSTING
+#define _ATL_NO_HOSTING 1
+#endif
+
 // ATL version - 14.0, satisfies WTL's >= 0x0800 check
 #define _ATL_VER 0x0E00
 

@@ -1,5 +1,6 @@
-# The upstream vcpkg WTL 10.0.10320#5 recipe, retaining its
-# upstream source checksum and three upstream maintenance patches.
+# WTL 10.0.10320 overlay #10: SHA512-pinned SourceForge source is
+# transformed using unique structural anchors; no mirror patch or
+# registry/COM Server compatibility fallback.
 # Difference: our overlay removes the stock WTL -> atl dependency;
 # stock vcpkg's 'atl' port requires Microsoft Visual Studio ATL.
 # OpenATL's source-tree include/ is the ONLY ATL implementation.
@@ -15,6 +16,195 @@ vcpkg_from_sourceforge(
         atlmisc.h-bug329.patch
         atlribbon.h-wtl66.patch
 )
+
+
+# Transform the SHA512-verified SourceForge WTL10 source itself.
+# Exact structural anchors: fail if source ownership changes.
+set(_wtl_ui_header "${SOURCE_PATH}/Include/atlapp.h")
+file(READ "${_wtl_ui_header}" _wtl_ui_text)
+string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
+
+function(_openatl_replace_once needle value label)
+    string(FIND "${_wtl_ui_text}" "${needle}" _begin)
+    if(_begin EQUAL -1)
+        message(FATAL_ERROR "WTL UI-only missing ${label}")
+    endif()
+    string(LENGTH "${needle}" _length)
+    math(EXPR _after "${_begin} + ${_length}")
+    string(SUBSTRING "${_wtl_ui_text}" ${_after} -1 _tail)
+    string(FIND "${_tail}" "${needle}" _repeat)
+    if(NOT _repeat EQUAL -1)
+        message(FATAL_ERROR "WTL UI-only duplicate ${label}")
+    endif()
+    string(SUBSTRING "${_wtl_ui_text}" 0 ${_begin} _prefix)
+    set(_wtl_ui_text "${_prefix}${value}${_tail}" PARENT_SCOPE)
+endfunction()
+
+function(_openatl_replace_between start_marker end_marker value label)
+    string(FIND "${_wtl_ui_text}" "${start_marker}" _begin)
+    if(_begin EQUAL -1)
+        message(FATAL_ERROR "WTL UI-only missing start ${label}")
+    endif()
+    string(LENGTH "${start_marker}" _size)
+    math(EXPR _after "${_begin} + ${_size}")
+    string(SUBSTRING "${_wtl_ui_text}" ${_after} -1 _tail)
+    string(FIND "${_tail}" "${start_marker}" _duplicate)
+    if(NOT _duplicate EQUAL -1)
+        message(FATAL_ERROR "WTL UI-only duplicate start ${label}")
+    endif()
+    string(FIND "${_tail}" "${end_marker}" _end_rel)
+    if(_end_rel EQUAL -1)
+        message(FATAL_ERROR "WTL UI-only missing end ${label}")
+    endif()
+    math(EXPR _end "${_after} + ${_end_rel}")
+    string(SUBSTRING "${_wtl_ui_text}" 0 ${_begin} _prefix)
+    string(SUBSTRING "${_wtl_ui_text}" ${_end} -1 _suffix)
+    set(_wtl_ui_text "${_prefix}${value}${_suffix}" PARENT_SCOPE)
+endfunction()
+
+_openatl_replace_once(
+    "ATL::_pAtlModule->m_csStaticDataInitAndTypeInfo"
+    "ATL::_AtlWinModule.m_csWindowCreate"
+    "Win32 UI critical-section owner")
+_openatl_replace_between(
+    "class CAppModule : public ATL::CComModule"
+    "// Message loop map methods"
+    [==[
+class CAppModule
+{
+public:
+	DWORD m_dwMainThreadID = 0;
+	ATL::CSimpleMap<DWORD, CMessageLoop*>* m_pMsgLoopMap = NULL;
+	ATL::CSimpleArray<HWND>* m_pSettingChangeNotify = NULL;
+
+	// OpenATL UI-only: real Win32 module lifecycle, no COM object map.
+	HRESULT Init(HINSTANCE hInstance)
+	{
+		if(hInstance == NULL)
+			return E_INVALIDARG;
+		if(m_pMsgLoopMap != NULL)
+			return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+
+		typedef ATL::CSimpleMap<DWORD, CMessageLoop*> _mapClass;
+		_mapClass* pMap = NULL;
+		ATLTRY(pMap = new _mapClass);
+		if(pMap == NULL)
+			return E_OUTOFMEMORY;
+
+		m_dwMainThreadID = ::GetCurrentThreadId();
+		m_pMsgLoopMap = pMap;
+		m_pSettingChangeNotify = NULL;
+		ATL::_AtlBaseModule.m_hInst = hInstance;
+		ATL::_AtlBaseModule.m_hInstResource = hInstance;
+		return S_OK;
+	}
+
+	void Term()
+	{
+		if(m_pMsgLoopMap != NULL)
+		{
+			TermSettingChangeNotify();
+			delete m_pMsgLoopMap;
+			m_pMsgLoopMap = NULL;
+		}
+	}
+
+	HINSTANCE GetModuleInstance() const
+	{
+		return ATL::_AtlBaseModule.GetModuleInstance();
+	}
+
+	HINSTANCE GetResourceInstance() const
+	{
+		return ATL::_AtlBaseModule.GetResourceInstance();
+	}
+
+]==]
+    "CAppModule lifecycle")
+_openatl_replace_between(
+    "// CServerAppModule - module class for a COM server application"
+    "typedef ATL::CRegKey CRegKeyEx;"
+    ""
+    "COM Server class and legacy registration block")
+_openatl_replace_once(
+    "typedef ATL::CRegKey CRegKeyEx;"
+    ""
+    "retired CRegKeyEx alias")
+if(NOT _wtl_ui_text MATCHES "HRESULT Init\\(HINSTANCE hInstance\\)" OR
+   _wtl_ui_text MATCHES "class CAppModule : public ATL::CComModule" OR
+   _wtl_ui_text MATCHES "class CServerAppModule" OR
+   _wtl_ui_text MATCHES "typedef ATL::CRegKey CRegKeyEx" OR
+   _wtl_ui_text MATCHES "ATL::_pAtlModule")
+    message(FATAL_ERROR "WTL UI-only source still exposes COM Server")
+endif()
+file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+
+# Legacy IE-registry color lookup adds no required UI capability.
+set(_wtl_ui_header "${SOURCE_PATH}/Include/atlctrlx.h")
+file(READ "${_wtl_ui_header}" _wtl_ui_text)
+string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
+_openatl_replace_between(
+    "\t\t// set link colors"
+    "\tbool CalcLabelRect()"
+    "\t}\n\n\t"
+    "legacy hyperlink registry color access")
+if(_wtl_ui_text MATCHES "ATL::CRegKey" OR
+   _wtl_ui_text MATCHES "_ParseColorString")
+    message(FATAL_ERROR "WTL UI-only: registry hyperlink code still present")
+endif()
+file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+
+# Preserve standard common printing, page setup and property sheets;
+# only the COM callback-based PrintDlgEx implementation requires atlcom.h.
+set(_wtl_ui_header "${SOURCE_PATH}/Include/atldlgs.h")
+file(READ "${_wtl_ui_header}" _wtl_ui_text)
+string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
+_openatl_replace_between(
+    "#include <atlcom.h>"
+    "// CPageSetupDialogImpl - Page Setup dialog"
+    "namespace WTL\n{\n\n"
+    "COM callback-based PrintDlgEx")
+if(_wtl_ui_text MATCHES "#include <atlcom.h>" OR
+   _wtl_ui_text MATCHES "class ATL_NO_VTABLE CPrintDialogExImpl" OR
+   _wtl_ui_text MATCHES "public ATL::IObjectWithSiteImpl" OR
+   NOT _wtl_ui_text MATCHES "class CPageSetupDialog")
+    message(FATAL_ERROR "WTL UI-only: common-dialog/COM separation invalid")
+endif()
+file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+
+# Preserve MRU menu operations and per-user registry persistence.
+# These are ordinary app settings via OpenATL::CRegKey, not COM registration.
+set(_wtl_ui_header "${SOURCE_PATH}/Include/atlmisc.h")
+file(READ "${_wtl_ui_header}" _wtl_ui_text)
+string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
+# This SourceForge release has a separate CRegProperty registry-backed
+# serializer, independent of the real MRU and CFindFile UI helpers.
+_openatl_replace_between(
+    "// CRegProperty and CRegPropertyImpl<> - properties stored in registry"
+    "// Global functions for stock GDI objects"
+    ""
+    "registry-only CRegProperty module")
+# Fail closed if upstream changes the MRU API or resurrects the
+# unrelated CRegProperty serializer. Registry access remains owned by CRegKey.
+if(NOT _wtl_ui_text MATCHES "ReadFromRegistry\\(" OR
+   NOT _wtl_ui_text MATCHES "WriteToRegistry\\(" OR
+   NOT _wtl_ui_text MATCHES "ATL::CRegKey" OR
+   _wtl_ui_text MATCHES "class CRegProperty")
+    message(FATAL_ERROR "WTL UI-only: MRU persistence missing or registry serializer returned")
+endif()
+if(NOT _wtl_ui_text MATCHES "CRecentDocumentListBase")
+    message(FATAL_ERROR "WTL UI-only: CRecentDocumentListBase menu helper missing")
+endif()
+if(NOT _wtl_ui_text MATCHES "CFindFile")
+    message(FATAL_ERROR "WTL UI-only: CFindFile helper missing")
+endif()
+if(NOT _wtl_ui_text MATCHES "AtlGetStockPen")
+    message(FATAL_ERROR "WTL UI-only: stock Win32 GDI helper missing")
+endif()
+file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+
+unset(_wtl_ui_header)
+unset(_wtl_ui_text)
 
 file(INSTALL "${SOURCE_PATH}/Include/" DESTINATION "${CURRENT_PACKAGES_DIR}/include" FILES_MATCHING PATTERN "*.h")
 file(COPY "${SOURCE_PATH}/Samples" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")

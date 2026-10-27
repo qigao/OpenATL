@@ -7,11 +7,15 @@ these paths separately on the exact branch HEAD.
 | Gate | llvm-mingw Windows x64 | llvm-mingw Windows ARM64 | MSVC Windows x64 | MSVC Windows ARM64 | Linux/macOS |
 | --- | --- | --- | --- | --- | --- |
 | WTL10 hidden GUI, message map, resource dialog, W^X | 5× native, **no COM apartment** | 5× real native, **no COM apartment** | 5× native CTest, **no COM apartment** | 5× real native, **no COM apartment** | llvm-mingw PE build |
-| COM Client `CoCreateInstance`, `CComPtr`, BSTR, Variant | 5× native | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
+| COM Client `CoCreateInstance`, `CComPtr`, BSTR/VARIANT ownership, BSTR alias/overflow/embedded NUL, QI failure, self-Detach, locked-SAFEARRAY clear/assignment | 5× native | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
+| Native `CRegKey` HKCU DWORD/REG_SZ/REG_EXPAND_SZ/binary, invalid type, malformed nonterminated strings, capacity bounds, handle ownership and cleanup; WTL MRU menu ordering/dedup/roundtrip | 5× native, **no COM apartment** | 5× real native, **no COM apartment** | 5× native CTest, **no COM apartment** | 5× real native, **no COM apartment** | llvm-mingw PE build |
 | In-tree file/string/sync utility tests | 5× native | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
 | In-tree Unicode `CPath` + Win32 file test | 5× native | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
+| Source-owned ATL heap, FILETIME, typed array and linked-list (`POSITION`, swap, ownership, throwing copy) | 5× native, **no COM apartment** | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
+| Win32 `CAtlFileMapping`: unaligned offsets, file/writeback, duplicate section ownership, named shared memory | 5× native, **no COM apartment** | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
+| Win32 `CImage`: 24/32-bpp DIB, HBITMAP/DC lifecycle, BMP/PNG file and caller-owned IStream Save/Load, BGRA alpha, unsupported GIF, fail-closed short/zero IStream writes, failing reads on first/second chunk, unproven short S_OK reads, verified HGLOBAL-style EOF, premature EOF, rejected empty input, 64 MiB one-open file snapshot and IStream preflight, 128 MiB decoded budget including 24bpp row padding, exclusive handle-release checks | 5× native, **no COM apartment** | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
 | Full official WTL10 SDI + .rc | PE + `.rsrc` link | PE machine/link | PE + `.rsrc` link | PE machine/link | llvm-mingw PE/link |
-| COM Server, RGS, `OBJECT_ENTRY_AUTO`, registry writer | **Out of scope** | Out of scope | Out of scope | Out of scope | Out of scope |
+| COM Server, RGS, `OBJECT_ENTRY_AUTO`, `CRegObject`, `statreg.h`, COM printing callback, class factories and fake ActiveX init | **Source policy: absent** | Absent | Absent | Absent | Header scan + native WTL10 PE compile |
 | CFG/CET, DSO unload, interactive full SDI | Not qualified | Not qualified | Not qualified | Not qualified | N/A |
 
 **Separation contracts**:
@@ -34,8 +38,7 @@ these paths separately on the exact branch HEAD.
   provenance and executes on genuine Windows ARM64; cross-build != run.
 - No required test may be skipped, disabled, or replaced by a fake pass.
 
-**Draft / DO NOT MERGE.** Passing tests qualify the scoped source-tree
-behavior only, not production GUI mitigation compliance.
+**Scope qualification:** passing the exact-head native and cross-platform tests qualifies the checked-in source-tree APIs, not production CFG/CET mitigation compliance. The PR may be reviewed for merge separately; this document does not authorize an automatic merge.
 
 **Permanent exclusion:** no OpenATL Installed SDK, OpenATL `install()`/
 `export()` CMake rules, OpenATL package metadata, or post-install consumers.
