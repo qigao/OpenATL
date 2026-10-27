@@ -84,6 +84,14 @@ if(OPENATL_BUILD_QUALIFICATION)
      _wtl_scope MATCHES "class CAppModule : public ATL::CComModule")
     message(FATAL_ERROR "The pinned vcpkg WTL10 source must be UI-only with Init(HINSTANCE)")
   endif()
+  file(READ "${_wtl_headers}/atlmisc.h" _wtl_mru_scope)
+  if(_wtl_mru_scope MATCHES "ATL::CRegKey" OR
+     _wtl_mru_scope MATCHES "ReadFromRegistry\\(" OR
+     _wtl_mru_scope MATCHES "WriteToRegistry\\(" OR
+     NOT _wtl_mru_scope MATCHES "class CRecentDocumentListBase" OR
+     NOT _wtl_mru_scope MATCHES "class CFindFile")
+    message(FATAL_ERROR "WTL UI-only: registry MRU or missing menu/file utilities")
+  endif()
   file(READ "${_wtl_headers}/atlctrlx.h" _wtl_hyperlink_scope)
   file(READ "${_wtl_headers}/atldlgs.h" _wtl_dialog_scope)
   if(_wtl_hyperlink_scope MATCHES "ATL::CRegKey" OR

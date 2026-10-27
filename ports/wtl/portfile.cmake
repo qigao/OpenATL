@@ -1,4 +1,4 @@
-# WTL 10.0.10320 overlay #9: SHA512-pinned SourceForge source is
+# WTL 10.0.10320 overlay #10: SHA512-pinned SourceForge source is
 # transformed using unique structural anchors; no mirror patch or
 # registry/COM Server compatibility fallback.
 # Difference: our overlay removes the stock WTL -> atl dependency;
@@ -171,6 +171,25 @@ if(_wtl_ui_text MATCHES "#include <atlcom.h>" OR
     message(FATAL_ERROR "WTL UI-only: common-dialog/COM separation invalid")
 endif()
 file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+
+# Keep MRU menu operations and file search, remove only registry I/O.
+set(_wtl_ui_header "${SOURCE_PATH}/Include/atlmisc.h")
+file(READ "${_wtl_ui_header}" _wtl_ui_text)
+string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
+_openatl_replace_between(
+    "\tBOOL ReadFromRegistry(LPCTSTR lpstrRegKey)"
+    "// Implementation"
+    ""
+    "MRU registry persistence")
+if(_wtl_ui_text MATCHES "ATL::CRegKey" OR
+   _wtl_ui_text MATCHES "ReadFromRegistry\\(" OR
+   _wtl_ui_text MATCHES "WriteToRegistry\\(" OR
+   NOT _wtl_ui_text MATCHES "class CRecentDocumentListBase" OR
+   NOT _wtl_ui_text MATCHES "class CFindFile")
+    message(FATAL_ERROR "WTL UI-only: MRU persistence or normal utilities invalid")
+endif()
+file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+
 unset(_wtl_ui_header)
 unset(_wtl_ui_text)
 

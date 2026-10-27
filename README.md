@@ -32,7 +32,7 @@ No RATL provider, fallback or alternate ATL implementation.
 
 - `OpenATL::ATL`: clean-room ATL header subset for Win32 UI utilities.
 - `wtl`: **third-party dependency managed by `vcpkg.json`** (WTL10
-  `10.0.10320#6` overlay). WTL is header-only and has **no OpenATL
+  `10.0.10320#10` overlay). WTL is header-only and has **no OpenATL
   namespaced target**; no dependency on Visual Studio's Microsoft ATL.
 - `OpenATL::COMClient`: **opt-in** ATL client helpers, depending on
   `OpenATL::ATL`, Windows `ole32`, `oleaut32` and `uuid`.
@@ -162,7 +162,7 @@ clean-room ATL subset derived from
 [kkhaike/openatl](https://github.com/kkhaike/openatl):
 **MIT** (original revision `7b587f3e10f3f8d93a01522033de80007368bad5`);
 [official WTL10](https://sourceforge.net/projects/wtl/) version
-`10.0.10320` via vcpkg overlay revision `#6`: **MS-PL**; the
+`10.0.10320` via vcpkg overlay revision `#10`: **MS-PL**; the
 `ports/wtl/portfile.cmake` upstream source archive has pinned SHA512
 `086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309`.
 There is one ATL implementation: the files owned under `include/`.
@@ -175,6 +175,11 @@ permanently out of scope; installing the external WTL dependency with
 vcpkg does not install OpenATL.
 
 ## CI structure
+
+The pinned WTL UI overlay retains MRU menu helpers and CFindFile, but
+removes their legacy registry persistence operations together with the
+Internet Explorer registry hyperlink colors and COM-based extended print
+callbacks. No COM Server API or registration shim is reintroduced.
 
 The former 14-file `scripts/` directory has been deleted. GitHub Actions now installs pinned WTL through `vcpkg.json`, invokes CMake and CTest directly, and validates Windows x64/ARM64 PE files. Real ARM64 SHA-256 and runtime checks are defined as acceptance tests in `tests/wtl10/native_arm64.py`. No standalone build wrapper or Installed SDK is provided.
 
