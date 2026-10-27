@@ -2,8 +2,8 @@
 """Reject server, registration and false-success ATL APIs from OpenATL source.
 
 This is a source-surface gate, separate from the real native WTL10 GUI
-and opt-in COM Client build/runtime gates. The supported Win32 modules
-remain part of ATL; COM class factories and registry writers do not.
+and opt-in COM Client build/runtime gates. Ordinary registry key operations
+are isolated to atlreg.h; COM class factories and registration remain banned.
 """
 from pathlib import Path
 import re
@@ -11,9 +11,10 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 HEADERS = sorted((ROOT / "include").glob("*.h"))
-FORBIDDEN_FILES = ("atlcom.h",)
+FORBIDDEN_FILES = ("atlcom.h", "statreg.h")
 FORBIDDEN_TOKENS = (
-    r"\bCRegKey\b",
+    r"\bCRegObject\b",
+    r"\bIRegistrarBase\b",
     r"\bCComModule\b",
     r"\bCAtlModuleT\b",
     r"\bCAtlComModule\b",
@@ -40,6 +41,8 @@ FORBIDDEN_TOKENS = (
     r"\bRegisterServer\s*\(",
     r"\bUnregisterServer\s*\(",
     r"\bAddCommonRGSReplacements\s*\(",
+)
+REGISTRY_WRITE_TOKENS = (
     r"\bRegCreateKeyEx(?:A|W)?\b",
     r"\bRegSetValueEx(?:A|W)?\b",
     r"\bRegDeleteKey(?:A|W)?\b",
@@ -47,6 +50,7 @@ FORBIDDEN_TOKENS = (
     r"\bRegEnumKeyEx(?:A|W)?\b",
 )
 BAD = re.compile("|".join(FORBIDDEN_TOKENS))
+BAD_REGISTRY = re.compile("|".join(REGISTRY_WRITE_TOKENS))
 EXPECTED = {
     "atlbase.h": "class CAtlWinModule",
     "atlcore.h": "class CAtlBaseModule",
@@ -54,6 +58,7 @@ EXPECTED = {
     "atlwin.h": "class ATL_NO_VTABLE CWindowImplBaseT",
     "atldef.h": "#define _ATL_NO_HOSTING 1",
     "atlbase.h": "struct DLGTEMPLATEEX",
+    "atlreg.h": "class CRegKey",
 }
 
 
@@ -67,6 +72,10 @@ def main() -> int:
         for match in BAD.finditer(data):
             line = data.count("\n", 0, match.start()) + 1
             failures.append(f"{path.relative_to(ROOT)}:{line}: {match.group(0)}")
+        if path.name != "atlreg.h":
+            for match in BAD_REGISTRY.finditer(data):
+                line = data.count("\n", 0, match.start()) + 1
+                failures.append(f"{path.relative_to(ROOT)}:{line}: registry API outside atlreg.h: {match.group(0)}")
     for name, marker in EXPECTED.items():
         path = ROOT / "include" / name
         if not path.exists() or marker not in path.read_text(encoding="utf-8"):
@@ -76,7 +85,7 @@ def main() -> int:
             print("OPENATL_UI_CLIENT_SURFACE_FAIL " + item, file=sys.stderr)
         return 1
     print(f"OPENATL_UI_CLIENT_SURFACE_OK headers={len(HEADERS)} "
-          "com_server=0 registry_writers=0 fake_activation=0 "
+          "com_server=0 registry_owner=atlreg.h fake_activation=0 "
           "win32_ui=1 com_client=1")
     return 0
 

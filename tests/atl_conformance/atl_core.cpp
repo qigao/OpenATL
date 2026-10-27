@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstring>
 #include <utility>
+#include <atlbase.h>
 #include <atlfile.h>
 #include <atlsync.h>
 #include <atlstr.h>
@@ -163,13 +164,113 @@ static int synchronization() {
     }
     return 0;
 }
+// Registry acceptance uses a process-unique HKCU leaf. It neither registers
+// COM servers nor relies on a COM apartment, and leaves no persistent data.
+struct TemporaryRegistry {
+    TCHAR path[160] = {};
+    TemporaryRegistry() {
+        _stprintf_s(path, _countof(path), _T("Software\\OpenATL_RegKey_%lu_%lu"),
+                    static_cast<unsigned long>(::GetCurrentProcessId()),
+                    static_cast<unsigned long>(::GetTickCount()));
+    }
+    ~TemporaryRegistry() {
+        if (path[0] != 0)
+            (void)::RegDeleteTree(HKEY_CURRENT_USER, path);
+    }
+};
+
+static int registry() {
+    TemporaryRegistry temp;
+    if (temp.path[0] == 0) return failure(50, "registry_fixture");
+    ATL::CRegKey key;
+    DWORD created = 0;
+    if (key.Create(HKEY_CURRENT_USER, temp.path, nullptr, REG_OPTION_NON_VOLATILE,
+                   KEY_READ | KEY_WRITE, nullptr, &created) != ERROR_SUCCESS ||
+        !key.m_hKey || created != REG_CREATED_NEW_KEY)
+        return failure(51, "registry_create");
+
+    DWORD count = 77;
+    if (key.SetDWORDValue(_T("Count"), 1234) != ERROR_SUCCESS ||
+        key.QueryDWORDValue(_T("Count"), count) != ERROR_SUCCESS || count != 1234)
+        return failure(52, "registry_dword");
+
+    const TCHAR* label = _T("alpha-\u6771\u4eac");
+    if (key.SetStringValue(_T("Label"), label) != ERROR_SUCCESS)
+        return failure(53, "registry_string_write");
+    ULONG chars = 0;
+    if (key.QueryStringValue(_T("Label"), nullptr, &chars) != ERROR_SUCCESS ||
+        chars < _tcslen(label) + 1 || chars > 64)
+        return failure(54, "registry_string_size");
+    TCHAR small[2] = {};
+    ULONG capacity = 2;
+    if (key.QueryStringValue(_T("Label"), small, &capacity) != ERROR_MORE_DATA ||
+        capacity < _tcslen(label) + 1)
+        return failure(55, "registry_small_buffer");
+    TCHAR text[64] = {};
+    capacity = _countof(text);
+    if (key.QueryStringValue(_T("Label"), text, &capacity) != ERROR_SUCCESS ||
+        _tcscmp(text, label) != 0 ||
+        capacity != _tcslen(label) + 1)
+        return failure(56, "registry_string_roundtrip");
+
+    const BYTE source[] = {0, 1, 127, 255, 42};
+    if (key.SetBinaryValue(_T("Raw"), source, sizeof(source)) != ERROR_SUCCESS)
+        return failure(57, "registry_binary_write");
+    ULONG bytes = 0;
+    if (key.QueryBinaryValue(_T("Raw"), nullptr, &bytes) != ERROR_SUCCESS ||
+        bytes != sizeof(source))
+        return failure(58, "registry_binary_size");
+    BYTE raw[sizeof(source)] = {};
+    bytes = sizeof(raw);
+    if (key.QueryBinaryValue(_T("Raw"), raw, &bytes) != ERROR_SUCCESS ||
+        bytes != sizeof(source) || std::memcmp(raw, source, sizeof(raw)) != 0)
+        return failure(59, "registry_binary_roundtrip");
+
+    DWORD unchanged = 912;
+    if (key.QueryDWORDValue(_T("Label"), unchanged) != ERROR_INVALID_DATATYPE ||
+        unchanged != 912 ||
+        key.Open(HKEY_CURRENT_USER, _T("Software\\OpenATL_nonexistent_sentinel"),
+                 KEY_READ) != ERROR_FILE_NOT_FOUND ||
+        !key.m_hKey ||
+        key.SetBinaryValue(_T("Invalid"), nullptr, 1) != ERROR_INVALID_PARAMETER)
+        return failure(60, "registry_errors_preserve_owner");
+
+    HKEY transferred = key.Detach();
+    if (transferred == nullptr || key.m_hKey != nullptr ||
+        key.QueryDWORDValue(_T("Count"), count) != ERROR_INVALID_HANDLE)
+        return failure(61, "registry_detach");
+    ATL::CRegKey moved;
+    if (moved.Attach(transferred) != ERROR_SUCCESS ||
+        moved.m_hKey != transferred)
+        return failure(62, "registry_attach");
+    ATL::CRegKey movedAgain(std::move(moved));
+    if (moved.m_hKey != nullptr ||
+        movedAgain.QueryDWORDValue(_T("Count"), count) != ERROR_SUCCESS ||
+        count != 1234)
+        return failure(63, "registry_move");
+    ATL::CRegKey readOnly;
+    if (readOnly.Open(HKEY_CURRENT_USER, temp.path, KEY_READ) != ERROR_SUCCESS ||
+        readOnly.SetDWORDValue(_T("Denied"), 1) != ERROR_ACCESS_DENIED)
+        return failure(64, "registry_access_rights");
+
+    if (movedAgain.DeleteValue(_T("Count")) != ERROR_SUCCESS ||
+        movedAgain.QueryDWORDValue(_T("Count"), count) != ERROR_FILE_NOT_FOUND ||
+        movedAgain.Close() != ERROR_SUCCESS ||
+        movedAgain.Close() != ERROR_SUCCESS ||
+        readOnly.Close() != ERROR_SUCCESS)
+        return failure(65, "registry_delete_close");
+    if (!no_com()) return failure(66, "registry_initialized_com");
+    return 0;
+}
+
 int main() {
     if(!no_com())return failure(1,"COM_apartment_unexpected");
     int result=strings();
     if(!result)result=files();
     if(!result)result=synchronization();
+    if(!result)result=registry();
     if(result)return result;
     if(!no_com())return failure(2,"ATL_utility_initialized_COM");
-    std::puts("ATL_CORE_OK file=1 string=1 sync=1 no_com=1");
+    std::puts("ATL_CORE_OK file=1 string=1 sync=1 registry=1 no_com=1");
     return 0;
 }

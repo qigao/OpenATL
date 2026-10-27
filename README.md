@@ -20,9 +20,10 @@ WTL 10, and optional COM *client* helpers.** Its only supported scope is:
 
 **Not supported or present:** COM server creation, `IClassFactory`
 implementations, `OBJECT_ENTRY_AUTO`, `DllRegisterServer/UnregisterServer`,
-RGS, COM registration and registry writer APIs, ActiveX hosting and COM
-class-object maps. The former server-only `atlcom.h`, `CComModule`,
-`CAtlModuleT`, `CAtlComModule`, `CRegKey`, object maps and no-op
+RGS, COM registration and ActiveX hosting, and COM
+class-object maps. A separate source-owned Win32 CRegKey handles ordinary
+application settings; it is not a registrar. The former server-only `atlcom.h`, `CComModule`,
+`CAtlModuleT`, `CAtlComModule`, object maps and no-op
 `RegisterServer`/`AtlAxWinInit` stubs have been **deleted**, not replaced
 with compatibility shims. The real `_AtlBaseModule` and `_AtlWinModule`
 remain for Windows UI; `atlcomcli.h` remains only for the COM **client**.
@@ -176,10 +177,12 @@ vcpkg does not install OpenATL.
 
 ## CI structure
 
-The pinned WTL UI overlay retains MRU menu helpers and CFindFile, but
-removes their legacy registry persistence operations together with the
+The pinned WTL UI overlay retains MRU menu helpers and CFindFile. It currently
+removes MRU persistence operations together with the
 Internet Explorer registry hyperlink colors and COM-based extended print
-callbacks. No COM Server API or registration shim is reintroduced.
+callbacks. No COM Server API or registration shim is reintroduced. Win32 CRegKey
+is confined to include/atlreg.h; its native HKCU tests cover ownership,
+values, errors and access masks without COM initialization.
 
 The former 14-file `scripts/` directory has been deleted. GitHub Actions now installs pinned WTL through `vcpkg.json`, invokes CMake and CTest directly, and validates Windows x64/ARM64 PE files. Real ARM64 SHA-256 and runtime checks are defined as acceptance tests in `tests/wtl10/native_arm64.py`. No standalone build wrapper or Installed SDK is provided.
 

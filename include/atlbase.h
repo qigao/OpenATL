@@ -32,6 +32,7 @@
 #include "atlcore.h"
 #include "atlsimpcoll.h"
 #include "atlalloc.h"
+#include "atlreg.h"
 #include "atlcomcli.h"
 #include "atlconv.h"
 
