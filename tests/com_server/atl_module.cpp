@@ -226,6 +226,18 @@ bool executable() {
 // as the explicit OpenATL::COM server. No COM apartment is initialized
 // by constructing this module or querying its class factory.
 class Library : public ATL::CAtlDllModuleT<Library> {};
+class RegistrationProbe : public ATL::CAtlDllModuleT<RegistrationProbe> {
+public:
+    int installs = 0, removals = 0;
+    HRESULT RegisterServer(BOOL withTypeLib, const CLSID* selected) noexcept {
+        if (withTypeLib || selected || GetLockCount() != 1) return E_UNEXPECTED;
+        ++installs; return E_ACCESSDENIED;
+    }
+    HRESULT UnregisterServer(BOOL withTypeLib, const CLSID* selected) noexcept {
+        if (withTypeLib || selected || GetLockCount() != 1) return E_UNEXPECTED;
+        ++removals; return E_ABORT;
+    }
+};
 HRESULT makeDllValue(OpenATL::COM::Module& server, REFIID iid, void** output) noexcept {
     return ATL::CComObject<Value>::CreateInstance(server, iid, output);
 }
@@ -280,6 +292,14 @@ bool dll_module() {
     }
     CHECK(noCom() && ATL::_pAtlModule == nullptr &&
           server.CanUnloadNow() == S_OK);
+    {
+        RegistrationProbe dll;
+        CHECK(dll.DllRegisterServer(FALSE) == E_ACCESSDENIED &&
+              dll.DllUnregisterServer(FALSE) == E_ABORT);
+        CHECK(dll.installs == 1 && dll.removals == 1 &&
+              dll.GetLockCount() == 0 && dll.DllCanUnloadNow() == S_OK);
+    }
+    CHECK(noCom() && ATL::_pAtlModule == nullptr);
     return true;
 }
 }
