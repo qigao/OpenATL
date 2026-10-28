@@ -147,6 +147,9 @@ public:
         } catch (...) {
             result = detail::AtlModuleException();
         }
+        // A successful COM lookup without an owned interface must never be
+        // advertised as success, even by a custom derived ATL module.
+        if (SUCCEEDED(result) && *output == nullptr) result = E_UNEXPECTED;
         if (FAILED(result)) *output = nullptr;
         this->Unlock();
         return result;
