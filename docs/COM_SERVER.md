@@ -57,10 +57,11 @@ cleanup failure is returned and may require installer intervention.
 
 ## Integration and validation
 
-Link `OpenATL::COMServer` for the core and `OpenATL::COMRegistration` for
-explicit registry support. UI and COM client consumers acquire neither
-dependency transitively. Include `openatl/com_server.h` or
-`openatl/com_registration.h` explicitly.
+Link the single `OpenATL::ATL` target. It supplies `ole32`, `oleaut32`,
+`uuid` and `advapi32`; no separate client/server/registration targets are
+required. Include `openatl/com_server.h` or `openatl/com_registration.h`
+explicitly. Neither linking nor including a header initializes COM or
+registers a class.
 
 For a user-defined `IExample : IUnknown`, use an explicit IID descriptor:
 

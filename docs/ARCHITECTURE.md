@@ -1,4 +1,4 @@
-# OpenATL UI + optional COM client architecture
+# OpenATL UI and COM architecture
 
 UI/client paths share repository-owned clean-room ATL headers. An explicit
 server API lives separately under `include/openatl/`:
@@ -10,17 +10,20 @@ Win32 GUI application
        (NO OpenATL::WTL target; NO COM apartment initialization)
 
 Optional system COM consumer
-  └─ OpenATL::COMClient ──> OpenATL::ATL + Windows ole32 / oleaut32 / uuid
+  └─ OpenATL::ATL ──> Windows ole32 / oleaut32 / uuid / advapi32
        (caller owns CoInitializeEx / CoUninitialize; CLIENT ONLY)
+
+Optional in-process COM server / explicit registration
+  └─ OpenATL::ATL ──> include/openatl/ headers + the same system libraries
 ```
 
-`OpenATL::ATL` is a header-only build configuration
-targets. `OpenATL::COMClient` is an explicitly selected client dependency.
-They exist only within a source-tree CMake build. OpenATL **never** defines
+`OpenATL::ATL` is the single header-only consumer build target for UI, COM
+client, server and registration APIs. It exists only within a source-tree
+CMake build. OpenATL **never** defines
 `install()`, `export()`, a package config, or an Installed SDK. Consumers
 build from the repository checkout; a post-install consumption path is
 permanently excluded.
-Optional CImage BMP/PNG file and caller-owned `IStream*` codec calls use Windows GDI+ with a per-call startup/shutdown scope and explicit `gdiplus` linkage by the consumer. Stream I/O never initializes a COM apartment or takes ownership of the stream; the caller handles positioning and release. File Load opens its Win32 input handle once and copies at most 64 MiB into an OS-owned HGLOBAL stream before invoking GDI+; the same bytes whose size was checked are decoded, and the file handle is closed before returning. Stream Load snapshots up to 64 MiB with exact HRESULT/byte-count checks before GDI+ decoding. Where supported, Stat and Seek(CUR, 0) also preflight the 64 MiB remaining-body limit before reading; unseekable streams remain supported via the byte counter. DIB Create and decoded GDI+ images have a separate 128 MiB pixel budget including 24bpp DIB row padding, enforced before OpenATL bitmap allocation or LockBits; this does not bound GDI+'s internal parser allocations: it accepts S_FALSE at EOF or a short S_OK only when Stat plus a non-moving Seek(CUR, 0) prove the caller stream reached EOF. Without EOF evidence short S_OK fails STG_E_READFAULT; read failures propagate their original HRESULT. Failed reads may advance the caller's position but never install a partial HBITMAP. For saving, an OS-created temporary HGLOBAL IStream holds the completed PNG/BMP encoding. OpenATL copies it in 8 KiB chunks to the caller's stream, rejecting short S_OK writes and propagating failing HRESULTs; partial caller-stream output can remain on failure, but there is no claim of transactional rollback. The image codec consumer explicitly links `gdiplus` and `ole32` without altering the ordinary UI link closure. GDI+ is not a transitive `OpenATL::ATL` or WTL dependency and does not initialize a COM apartment. A failed decode never replaces an existing bitmap; invalid save formats are rejected before writing.
+Optional CImage BMP/PNG file and caller-owned `IStream*` codec calls use Windows GDI+ with a per-call startup/shutdown scope and explicit `gdiplus` linkage by the consumer. Stream I/O never initializes a COM apartment or takes ownership of the stream; the caller handles positioning and release. File Load opens its Win32 input handle once and copies at most 64 MiB into an OS-owned HGLOBAL stream before invoking GDI+; the same bytes whose size was checked are decoded, and the file handle is closed before returning. Stream Load snapshots up to 64 MiB with exact HRESULT/byte-count checks before GDI+ decoding. Where supported, Stat and Seek(CUR, 0) also preflight the 64 MiB remaining-body limit before reading; unseekable streams remain supported via the byte counter. DIB Create and decoded GDI+ images have a separate 128 MiB pixel budget including 24bpp DIB row padding, enforced before OpenATL bitmap allocation or LockBits; this does not bound GDI+'s internal parser allocations: it accepts S_FALSE at EOF or a short S_OK only when Stat plus a non-moving Seek(CUR, 0) prove the caller stream reached EOF. Without EOF evidence short S_OK fails STG_E_READFAULT; read failures propagate their original HRESULT. Failed reads may advance the caller's position but never install a partial HBITMAP. For saving, an OS-created temporary HGLOBAL IStream holds the completed PNG/BMP encoding. OpenATL copies it in 8 KiB chunks to the caller's stream, rejecting short S_OK writes and propagating failing HRESULTs; partial caller-stream output can remain on failure, but there is no claim of transactional rollback. The image codec consumer explicitly links `gdiplus`; `ole32` is supplied by `OpenATL::ATL`. GDI+ is not a transitive `OpenATL::ATL` or WTL dependency and does not initialize a COM apartment. A failed decode never replaces an existing bitmap; invalid save formats are rejected before writing.
 
 The WTL10 vcpkg overlay preserves Win32 dialogs, in-memory dialog resources,
 MRU menus with optional HKCU persistence, file finding and message loops.
@@ -34,7 +37,8 @@ without COM initialization. Registry writes occur only when explicitly
 using application settings or MRU persistence; they require `advapi32` at
 link time, not a COM Server or COM apartment. `CPath`, `CAtlFile`,
 `CString` and native Win32 synchronization live in `include/` and do not
-link COM Client libraries.
+initialize COM. All consumers use the same `OpenATL::ATL` target and its
+system link dependencies.
 
 The production header surface contains the real Win32 base and window
 modules (`_AtlBaseModule`, `_AtlWinModule`), optional `atlcomcli.h`
@@ -47,9 +51,9 @@ tests is the actual acceptance gate.
 
 **Excluded features:** legacy ATL server modules and object-map macros,
 RGS, EXE servers and ActiveX/OLE container implementations. The separate
-`OpenATL::COMServer` target supports nonaggregated in-process servers through
-explicit C++ class/interface descriptors; `OpenATL::COMRegistration` adds
-explicit CLSID/ProgID registration. It does not restore the legacy ATL server
+server API supports nonaggregated in-process servers through explicit C++
+class/interface descriptors, with explicit CLSID/ProgID registration. These
+headers use the same `OpenATL::ATL` target and do not restore legacy ATL server
 classes or macros. EXE servers, RGS and ActiveX remain excluded.
 
 The server neither initializes COM nor inherits the WTL UI module. A module

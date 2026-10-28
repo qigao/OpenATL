@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 project(OpenATL VERSION 0.1.0 LANGUAGES CXX)
 
 # Only Windows-targeting compilers: llvm-mingw on Windows/Linux/macOS,
-# or MSVC cl.exe on Windows. Server support is an explicit separate target.
+# or MSVC cl.exe on Windows. All APIs use the OpenATL::ATL target.
 if(NOT WIN32)
   message(FATAL_ERROR "OpenATL targets Windows; cross-compile with llvm-mingw")
 endif()
@@ -46,22 +46,12 @@ target_compile_features(openatl_atl INTERFACE cxx_std_17)
 target_compile_definitions(openatl_atl INTERFACE
   UNICODE _UNICODE _WIN32_WINNT=0x0601 WINVER=0x0601 _WIN32_IE=0x0601)
 
-# Optional client-side COM convenience; not in the UI transitive link closure.
-# Consumers explicitly link OpenATL::COMClient and manage their own apartment.
-add_library(openatl_comclient INTERFACE)
-add_library(OpenATL::COMClient ALIAS openatl_comclient)
-target_link_libraries(openatl_comclient INTERFACE
-  OpenATL::ATL ole32 oleaut32 uuid)
+# One consumer target supplies the system dependencies for COM helpers and
+# explicit registration. Linking these imports does not initialize COM or
+# register any class; callers still opt into those operations explicitly.
+target_link_libraries(openatl_atl INTERFACE ole32 oleaut32 uuid advapi32)
 
-# Optional native COM server API; never pulled into UI/client targets.
-add_library(openatl_comserver INTERFACE)
-add_library(OpenATL::COMServer ALIAS openatl_comserver)
-target_link_libraries(openatl_comserver INTERFACE OpenATL::ATL ole32 uuid)
-add_library(openatl_comregistration INTERFACE)
-add_library(OpenATL::COMRegistration ALIAS openatl_comregistration)
-target_link_libraries(openatl_comregistration INTERFACE OpenATL::COMServer advapi32)
-
-option(OPENATL_BUILD_QUALIFICATION "Compile native UI, ATL utility and COM client tests" OFF)
+option(OPENATL_BUILD_QUALIFICATION "Compile native UI, ATL utility and COM client/server tests" OFF)
 if(OPENATL_BUILD_QUALIFICATION)
   # WTL is a vcpkg manifest dependency, not an OpenATL library or target.
   # Never fall back to system/MSVC ATL, downloaded WTL ZIPs or user paths.
@@ -233,7 +223,7 @@ if(OPENATL_BUILD_QUALIFICATION)
   add_test(NAME openatl.thunk_fault COMMAND openatl_thunk_fault)
 
   add_executable(openatl_com_client tests/atl_conformance/com_client.cpp)
-  target_link_libraries(openatl_com_client PRIVATE OpenATL::COMClient)
+  target_link_libraries(openatl_com_client PRIVATE OpenATL::ATL)
   add_test(NAME openatl.com_client COMMAND openatl_com_client)
   # Every mode is its own process: COM apartment state is thread-local,
   # never shared with WTL UI or another COM client mode.

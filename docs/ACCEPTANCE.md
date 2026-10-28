@@ -25,7 +25,8 @@ on the exact branch HEAD.
   `CoGetContextToken` reports `CO_E_NOTINITIALIZED` before and after
   window/dialog lifetime. This test links ole32 only for the assertion;
   WTL comes from vcpkg without introducing a COM apartment or a synthetic
-  `OpenATL::WTL` interface target. `OpenATL::ATL` has no COM-client link dependency.
+  `OpenATL::WTL` interface target. The unified `OpenATL::ATL` target supplies
+  COM/registry link dependencies without initializing an apartment.
 - A COM Client must initialize its own apartment, activate the Windows
   `CLSID_StdGlobalInterfaceTable` system component, query `IUnknown`,
   safely manage `CComPtr` ownership and release references before

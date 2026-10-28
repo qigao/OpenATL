@@ -22,8 +22,8 @@ Its supported scope is:
 The independent `OpenATL::COM` server API supplies explicit class/interface
 tables, `IClassFactory`, reference and module-lock accounting, and explicit
 CLSID/ProgID registration. Applications export their DLL entry points and
-opt into `OpenATL::COMServer` and `OpenATL::COMRegistration`; the UI and COM
-client targets do not acquire server dependencies. See [server contracts and
+link the single `OpenATL::ATL` target and include the server headers when
+needed. See [server contracts and
 usage](docs/COM_SERVER.md).
 
 **Not supported or present:** legacy ATL server compatibility,
@@ -38,19 +38,14 @@ No RATL provider, fallback or alternate ATL implementation.
 
 ## CMake consumer targets
 
-- `OpenATL::ATL`: clean-room ATL header subset for Win32 UI utilities.
+- `OpenATL::ATL`: the single consumer target for Win32 UI utilities, COM
+  client helpers, the explicit server API and registration. It supplies the
+  Windows `ole32`, `oleaut32`, `uuid` and `advapi32` link dependencies.
 - `wtl`: **third-party dependency managed by `vcpkg.json`** (WTL10
   `10.0.10320#10` overlay). WTL is header-only and has **no OpenATL
   namespaced target**; no dependency on Visual Studio's Microsoft ATL.
-- `OpenATL::COMClient`: **opt-in** ATL client helpers, depending on
-  `OpenATL::ATL`, Windows `ole32`, `oleaut32` and `uuid`.
-- `OpenATL::COMServer`: **opt-in** in-process server core in
-  `openatl/com_server.h`, depending on `OpenATL::ATL`, `ole32` and `uuid`.
-- `OpenATL::COMRegistration`: **opt-in** explicit registration in
-  `openatl/com_registration.h`, adding `advapi32` to `OpenATL::COMServer`.
-
-The `OpenATL::` targets are **permanently source-tree CMake INTERFACE
-targets**. OpenATL
+The `OpenATL::ATL` target is **permanently a source-tree CMake INTERFACE
+target**. OpenATL
 will not provide an Installed SDK, a package configuration, exported
 targets, or a `cmake --install` workflow. Consumers integrate the source
 repository directly via `add_subdirectory()` or `FetchContent`.
@@ -85,8 +80,10 @@ A GUI application links **`OpenATL::ATL`** and obtains WTL's
 When using a vcpkg toolchain, consumers can locate the header directory
 with `find_path(WTL_INCLUDE_DIR NAMES atlapp.h REQUIRED)` and add it to
 their own GUI target; there is deliberately no `OpenATL::WTL`.
-Consumers needing COM additionally link `OpenATL::COMClient` and manage
-their own `CoInitializeEx` / `CoUninitialize` lifecycle.
+Consumers needing COM use the same `OpenATL::ATL` target and manage their
+own `CoInitializeEx` / `CoUninitialize` lifecycle. Server and registration
+APIs are included explicitly from `openatl/com_server.h` and
+`openatl/com_registration.h`.
 A basic WTL window must not need to initialize COM.
 
 ## Expanded ATL API surface
@@ -120,7 +117,7 @@ is part of this repository (not a second ATL provider).
   and `Save` support BMP and PNG through the Windows GDI+ runtime,
   with full BGRA pixel copying and PNG alpha preservation. Codec state
   is scoped to each call and always shut down before returning. Consumers
-  invoking `CImage::Load/Save` must link Windows `gdiplus` and `ole32` explicitly;
+  invoking `CImage::Load/Save` must link Windows `gdiplus` explicitly; `ole32` is supplied by `OpenATL::ATL`;
   basic GDI and WTL UI targets do **not** link `gdiplus` transitively.
   A caller-owned `IStream*` can also be used for BMP/PNG `Load` and
   `Save` using an explicit `ImageFormatBMP` or `ImageFormatPNG` GUID.
@@ -150,8 +147,8 @@ is part of this repository (not a second ATL provider).
   not a limit on GDI+'s internal parsing allocations. Callers must account for the
   source stream's advanced position on failure.
   The image and stream ownership remain unchanged. Image stream codec
-  callers link both `gdiplus` and `ole32` explicitly; neither is a
-  transitive `OpenATL::ATL`/WTL dependency.
+  callers link `gdiplus` explicitly; `ole32` is supplied by `OpenATL::ATL`.
+  GDI+ remains outside the transitive `OpenATL::ATL`/WTL dependencies.
   File and stream paths share validated decoder, pixel copy, encoder
   selection and cleanup.
   GIF/JPEG/TIFF codecs, alpha compositing, GDI+ metadata, and the full
@@ -200,7 +197,7 @@ registration shim. Win32 CRegKey
 is confined to `include/atlreg.h`; native HKCU tests cover ownership,
 malformed strings, values, errors, access masks and cleanup without COM
 initialization. Applications using its registry methods explicitly link
-Windows `advapi32` (the UI target does not require it transitively).
+Windows `advapi32`, supplied by `OpenATL::ATL`.
 
 The former 14-file `scripts/` directory has been deleted. GitHub Actions now installs pinned WTL through `vcpkg.json`, invokes CMake and CTest directly, and validates Windows x64/ARM64 PE files. Real ARM64 SHA-256 and runtime checks are defined as acceptance tests in `tests/wtl10/native_arm64.py`. No standalone build wrapper or Installed SDK is provided.
 
