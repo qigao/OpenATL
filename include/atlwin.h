@@ -2046,12 +2046,22 @@ public:
 
         pThis->m_hWnd = hWnd;
         if (!pThis->m_thunk.Init((WNDPROC)pThis->GetDialogProc(), pThis)) {
+            pThis->m_hWnd = NULL;
             ::SetLastError(ERROR_OUTOFMEMORY);
             return FALSE;
         }
         DLGPROC pProc = (DLGPROC)pThis->m_thunk.GetWndProc();
-        ::SetWindowLongPtr(hWnd, DWLP_DLGPROC, (LONG_PTR)pProc);
-
+        ::SetLastError(ERROR_SUCCESS);
+        const LONG_PTR previous = CWndProcThunk::InstallWndProc(
+            hWnd, DWLP_DLGPROC, (LONG_PTR)pProc);
+        if (previous == 0 && ::GetLastError() != ERROR_SUCCESS) {
+            const DWORD error = ::GetLastError();
+            pThis->m_hWnd = NULL;
+            pThis->m_thunk.ReleaseCode();
+            (void)::DestroyWindow(hWnd);
+            ::SetLastError(error);
+            return FALSE;
+        }
         return pProc(hWnd, uMsg, wParam, lParam);
     }
 
@@ -2131,7 +2141,8 @@ public:
             return NULL;
         }
 
-        _AtlWinModule.AddCreateWndData(&this->m_thunk.cd, this);
+        _AtlCreateWndData* const pending = &this->m_thunk.cd;
+        _AtlWinModule.AddCreateWndData(pending, this);
 
 #ifdef _UNICODE
         HWND hWnd = ::CreateDialogParamW(_AtlBaseModule.GetResourceInstance(),
@@ -2142,7 +2153,12 @@ public:
             MAKEINTRESOURCEA(static_cast<T*>(this)->IDD), hWndParent,
             T::StartDialogProc, dwInitParam);
 #endif
-
+        const DWORD creationError = hWnd == NULL ? ::GetLastError() : ERROR_SUCCESS;
+        (void)_AtlWinModule.RemoveCreateWndData(pending);
+        if (hWnd == NULL) {
+            this->m_hWnd = NULL;
+            ::SetLastError(creationError);
+        }
         ATLASSERT((hWnd == NULL) || (this->m_hWnd == hWnd));
         return hWnd;
     }
@@ -2162,7 +2178,8 @@ public:
             return -1;
         }
 
-        _AtlWinModule.AddCreateWndData(&this->m_thunk.cd, this);
+        _AtlCreateWndData* const pending = &this->m_thunk.cd;
+        _AtlWinModule.AddCreateWndData(pending, this);
 
 #ifdef _UNICODE
         INT_PTR nRet = ::DialogBoxParamW(_AtlBaseModule.GetResourceInstance(),
@@ -2173,7 +2190,9 @@ public:
             MAKEINTRESOURCEA(static_cast<T*>(this)->IDD), hWndParent,
             T::StartDialogProc, dwInitParam);
 #endif
-
+        const DWORD creationError = nRet == -1 ? ::GetLastError() : ERROR_SUCCESS;
+        (void)_AtlWinModule.RemoveCreateWndData(pending);
+        if (nRet == -1) ::SetLastError(creationError);
         return nRet;
     }
 
