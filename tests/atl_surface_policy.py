@@ -27,6 +27,8 @@ REQUIRED = {
                              "class ClassFactory final"),
     "openatl/com_registration.h": ("ClassRegistration", "RegisterClass",
                                    "UnregisterClass"),
+    "openatl/rgs_parser.h": ("enum class Directive", "MaxNesting",
+                            "inline Error Parse", "inline Error ResolveModule"),
     "atlreg.h": ("class CRegKey", "RegGetValue", "RegCreateKeyEx"),
 }
 

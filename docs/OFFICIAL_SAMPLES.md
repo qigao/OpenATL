@@ -119,6 +119,18 @@ before claiming these remote/native ARM64 results.
 The table above records the expanded compilation coverage. Runtime coverage
 in this section remains limited to GuidGen and MemDlg.
 
+## Original ATL RGS grammar fixtures (not sample-build evidence)
+
+The exact, unchanged Chain/Outer, ArrayManager and MapCollection `.rgs`
+resources from the pinned Microsoft ATL tree are now separately admitted
+by a read-only, bounded RGS parser. Their original Git blob SHA-1 values
+and MIT license are recorded in
+[`tests/atl_rgs/README.md`](../tests/atl_rgs/README.md). Native Windows
+COM tests compile these samples as wide string resources and check grammar,
+key/value projection, `%MODULE%` substitution and fail-closed malformed
+documents. Parsing does not execute registry instructions or qualify
+the 37 original Microsoft pure-ATL applications.
+
 ## Microsoft's ATL samples
 
 The source audit uses `microsoft/VCSamples` commit

@@ -17,6 +17,7 @@ using namespace OpenATL::COM;
 
 bool RunAtlCompatibilityTests();
 bool RunAtlModuleTests();
+bool RunRgsParserTests();
 namespace {
 std::atomic<int> live{0};
 bool throwUnexpected = false;
@@ -471,7 +472,8 @@ int main(int argc, char** argv) {
     }
     if (std::strcmp(argv[1], "--core") == 0) {
         ULONG_PTR token = 0;
-        if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED || !core() || !registry() ||
+        if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED ||
+            !core() || !registry() || !RunRgsParserTests() ||
             ::CoGetContextToken(&token) != CO_E_NOTINITIALIZED) return 1;
         std::puts("OPENATL_COM_SERVER_CORE_OK identity=1 factory=1 locks=1 concurrent=1 rollback=1 registry=1 no_com=1");
         return 0;
