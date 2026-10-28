@@ -44,6 +44,18 @@ foreach(sample IN LISTS samples)
     set(resource "${sample}.rc")
   endif()
   add_executable(${target} WIN32 ${sources} "${source}/${resource}")
+  if(NOT CMAKE_HOST_WIN32 AND sample STREQUAL "GuidGen")
+    # llvm-rc opens resource filenames verbatim on POSIX, including the doubled
+    # backslash in the original .rc. Supply binary aliases without editing it.
+    set(resource_paths "${CMAKE_CURRENT_BINARY_DIR}/${name}-resources")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+      "${source}/res/GuidGen.ico")
+    execute_process(COMMAND "${Python3_EXECUTABLE}"
+      "${PROJECT_SOURCE_DIR}/cmake/ResourcePaths.py"
+      "${source}/res/GuidGen.ico" "res/GuidGen.ico" "${resource_paths}"
+      COMMAND_ERROR_IS_FATAL ANY)
+    target_include_directories(${target} PRIVATE "${resource_paths}")
+  endif()
   if(sample STREQUAL "MDIDocVw")
     set_target_properties(${target} PROPERTIES OPENATL_USE_WINMAIN TRUE)
   endif()

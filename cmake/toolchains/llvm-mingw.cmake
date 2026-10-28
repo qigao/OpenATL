@@ -44,6 +44,9 @@ set(CMAKE_CXX_COMPILER "${_openatl_bin}/${OPENATL_TARGET_ARCH}-w64-mingw32-clang
 if(NOT DEFINED CMAKE_RC_COMPILER)
   set(CMAKE_RC_COMPILER "${_openatl_bin}/${OPENATL_TARGET_ARCH}-w64-mingw32-windres${_exe}")
 endif()
+# Presets may receive a native SDK path from PowerShell. CMake serializes this
+# value into CMakeRCCompiler.cmake, where raw backslashes become invalid escapes.
+file(TO_CMAKE_PATH "${CMAKE_RC_COMPILER}" CMAKE_RC_COMPILER)
 # Microsoft RC can build the original TOOLBAR resources that llvm-rc rejects.
 # Use its own Windows SDK resource headers, without ATL or MFC search roots.
 if(CMAKE_HOST_WIN32 AND CMAKE_RC_COMPILER MATCHES "/rc\\.exe$")
