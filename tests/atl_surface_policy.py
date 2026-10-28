@@ -1,45 +1,33 @@
 #!/usr/bin/env python3
-"""Reject server, registration and false-success ATL APIs from OpenATL source.
+"""Reject obsolete modules/registrars and keep optional COM APIs isolated.
 
 This is a source-surface gate, separate from the real native WTL10 GUI
 and opt-in COM Client build/runtime gates. Ordinary registry key operations
-are isolated to atlreg.h; COM class factories and registration remain banned.
+are isolated to atlreg.h; explicit COM registration lives under openatl/.
 """
 from pathlib import Path
 import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-HEADERS = sorted((ROOT / "include").glob("*.h"))
-FORBIDDEN_FILES = ("atlcom.h", "statreg.h")
+HEADERS = sorted((ROOT / "include").rglob("*.h"))
+FORBIDDEN_FILES = ("statreg.h",)
 FORBIDDEN_TOKENS = (
     r"\bCRegObject\b",
     r"\bIRegistrarBase\b",
     r"\bCComModule\b",
-    r"\bCAtlModuleT\b",
     r"\bCAtlComModule\b",
-    r"\bCAtlModule\b",
-    r"\bCComObjectRootBase\b",
-    r"\bCComObjectRootEx\b",
     r"\bCComObjectCached\b",
-    r"\bCComObject\b",
     r"\bCComClassFactory\b",
-    r"\bCComCreator2?\b",
     r"\bIObjectWithSiteImpl\b",
-    r"\bAtlAxWinInit\b",
     r"\bAtlInternalQueryInterface\b",
     r"\bOBJECT_ENTRY_AUTO\b",
-    r"\bBEGIN_COM_MAP\b",
-    r"\bCOM_INTERFACE_ENTRY\w*\b",
     r"\b_ATL_OBJMAP_ENTRY\w*\b",
     r"\b_ATL_INTMAP_ENTRY\b",
     r"\b_ATL_COM_MODULE\w*\b",
     r"\b_ATL_REGMAP_ENTRY\b",
     r"\b_AtlComModule\b",
-    r"\b_pAtlModule\b",
     r"\b_pModule\b",
-    r"\bRegisterServer\s*\(",
-    r"\bUnregisterServer\s*\(",
     r"\bAddCommonRGSReplacements\s*\(",
 )
 REGISTRY_WRITE_TOKENS = (
@@ -54,10 +42,14 @@ BAD_REGISTRY = re.compile("|".join(REGISTRY_WRITE_TOKENS))
 EXPECTED = {
     "atlbase.h": ("class CAtlWinModule", "struct DLGTEMPLATEEX", '#include "atlreg.h"'),
     "atlcore.h": ("class CAtlBaseModule",),
+    "atlcom.h": ("class CComObjectRootEx", "class CComObject :", "class CComCoClass", "#define BEGIN_COM_MAP"),
     "atlcomcli.h": ("class CComPtr",),
     "atlwin.h": ("class ATL_NO_VTABLE CWindowImplBaseT",),
     "atldef.h": ("#define _ATL_NO_HOSTING 1",),
+    "openatl/atl_module.h": ("class CAtlModule", "class CAtlExeModuleT", "CoRegisterClassObject", "CoRevokeClassObject"),
     "atlreg.h": ("class CRegKey", "RegGetValue", "RegOpenKeyEx", "RegCreateKeyEx"),
+    "openatl/com_server.h": ("class Module final", "class ModuleReference final", "class ClassFactory final"),
+    "openatl/com_registration.h": ("ClassRegistration", "RegisterClass", "UnregisterClass"),
 }
 
 
@@ -71,10 +63,13 @@ def main() -> int:
         for match in BAD.finditer(data):
             line = data.count("\n", 0, match.start()) + 1
             failures.append(f"{path.relative_to(ROOT)}:{line}: {match.group(0)}")
-        if path.name != "atlreg.h":
+        relative = path.relative_to(ROOT / "include").as_posix()
+        if relative not in ("atlreg.h", "openatl/com_registration.h"):
             for match in BAD_REGISTRY.finditer(data):
                 line = data.count("\n", 0, match.start()) + 1
-                failures.append(f"{path.relative_to(ROOT)}:{line}: registry API outside atlreg.h: {match.group(0)}")
+                failures.append(f"{path.relative_to(ROOT)}:{line}: registry API outside its owning header: {match.group(0)}")
+        if "/" not in relative and relative != "atlcom.h" and re.search(r'#\s*include\s*[<"]openatl/com_', data):
+            failures.append(f"{relative}: UI/client headers must not include optional COM server APIs")
     for name, markers in EXPECTED.items():
         path = ROOT / "include" / name
         if not path.exists():
@@ -91,7 +86,7 @@ def main() -> int:
             print("OPENATL_UI_CLIENT_SURFACE_FAIL " + item, file=sys.stderr)
         return 1
     print(f"OPENATL_UI_CLIENT_SURFACE_OK headers={len(HEADERS)} "
-          "com_server=0 registry_owner=atlreg.h fake_activation=0 "
+          "com_server=explicit registry_owner=isolated fake_activation=0 "
           "win32_ui=1 com_client=1")
     return 0
 

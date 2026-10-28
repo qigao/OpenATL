@@ -1,8 +1,9 @@
 # Required UI-only and optional COM Client acceptance
 
-The only supported features are Win32/WTL UI **without COM initialization**
-and an independently opted-in COM **client**. Native tests must verify
-these paths separately on the exact branch HEAD.
+Supported paths are Win32/WTL UI **without COM initialization**, an
+independently opted-in COM **client**, and the separate explicit in-process
+COM **server/registration** API. Native tests verify these paths separately
+on the exact branch HEAD.
 
 | Gate | llvm-mingw Windows x64 | llvm-mingw Windows ARM64 | MSVC Windows x64 | MSVC Windows ARM64 | Linux/macOS |
 | --- | --- | --- | --- | --- | --- |
@@ -11,26 +12,33 @@ these paths separately on the exact branch HEAD.
 | Native `CRegKey` HKCU DWORD/REG_SZ/REG_EXPAND_SZ/binary, invalid type, malformed nonterminated strings, capacity bounds, handle ownership and cleanup; WTL MRU menu ordering/dedup/roundtrip | 5× native, **no COM apartment** | 5× real native, **no COM apartment** | 5× native CTest, **no COM apartment** | 5× real native, **no COM apartment** | llvm-mingw PE build |
 | In-tree file/string/sync utility tests | 5× native | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
 | In-tree Unicode `CPath` + Win32 file test | 5× native | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
+| Counted UTF-8/UTF-16/ACP, malformed/lossy input, embedded NULs, checked CString/BSTR assignment and UTF-8 ACP manifest | 5× native | 5× real native | 5× native | 5× real native | PE/resource build |
 | Source-owned ATL heap, FILETIME, typed array and linked-list (`POSITION`, swap, ownership, throwing copy) | 5× native, **no COM apartment** | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
 | Win32 `CAtlFileMapping`: unaligned offsets, file/writeback, duplicate section ownership, named shared memory | 5× native, **no COM apartment** | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
 | Win32 `CImage`: 24/32-bpp DIB, HBITMAP/DC lifecycle, BMP/PNG file and caller-owned IStream Save/Load, BGRA alpha, unsupported GIF, fail-closed short/zero IStream writes, failing reads on first/second chunk, unproven short S_OK reads, verified HGLOBAL-style EOF, premature EOF, rejected empty input, 64 MiB one-open file snapshot and IStream preflight, 128 MiB decoded budget including 24bpp row padding, exclusive handle-release checks | 5× native, **no COM apartment** | 5× real native | 5× native CTest | 5× real native | llvm-mingw PE build |
-| Full official WTL10 SDI + .rc | PE + `.rsrc` link | PE machine/link | PE + `.rsrc` link | PE machine/link | llvm-mingw PE/link |
-| COM Server, RGS, `OBJECT_ENTRY_AUTO`, `CRegObject`, `statreg.h`, COM printing callback, class factories and fake ActiveX init | **Source policy: absent** | Absent | Absent | Absent | Header scan + native WTL10 PE compile |
-| CFG/CET, DSO unload, interactive full SDI | Not qualified | Not qualified | Not qualified | Not qualified | N/A |
+| Community WTL10 SDI fixture + .rc | PE + `.rsrc` link | PE machine/link | PE + `.rsrc` link | PE machine/link | llvm-mingw PE/link |
+| Official WTL GuidGen | 5× native GUI behavior | 5× real native GUI behavior | 5× native GUI behavior | 5× real native GUI behavior | PE/resource build |
+| Official WTL MemDlg | Blocked: llvm-rc TOOLBAR syntax | Blocked: llvm-rc TOOLBAR syntax | 5× native resource/memory dialog behavior | 5× real native dialog behavior | Not admitted |
+| CAtlExeModuleT lifecycle, raw registry QueryValue and three unchanged RATL samples | 5× native module + sample behavior | Native module; sample PE build | 5× native module + sample behavior | Native module; sample PE build | Sample/module PE/resource build |
+| Optional explicit COM server: interface identity, class factories, module locks, constructor rollback, registry ownership/conflicts, real STA/MTA DLL activation and unregistration | 5× native | 5× real native | 5× native | 5× real native | server DLL/client PE build |
+| Obsolete ATL modules/auto object maps, RGS, `OBJECT_ENTRY_AUTO`, `CRegObject`, `statreg.h`, COM printing callback and fake ActiveX init | **Source policy: absent** | Absent | Absent | Absent | Header scan + native WTL10 PE compile |
+| CFG/CET, DSO unload, interactive full SDI | Image CFG/CET + native unload/SDI; HSP excluded on hosted workers | Native CFG/unload/SDI | Native CFG/HSP/unload/SDI | Native CFG/unload/SDI | PE/resource checks |
+| ATL-compatible nonaggregated object creation, COM maps, canonical identity, FinalConstruct/FinalRelease and explicit module pins | 5× native | 5× real native | 5× native | 5× real native | PE build |
 
 **Separation contracts**:
 - WTL must not call `CoInitializeEx`; UI test checks
   `CoGetContextToken` reports `CO_E_NOTINITIALIZED` before and after
   window/dialog lifetime. This test links ole32 only for the assertion;
-  WTL comes from vcpkg without introducing a COM apartment or a synthetic
-  `OpenATL::WTL` interface target. `OpenATL::ATL` has no COM-client link dependency.
+  WTL comes from CMake FetchContent without introducing a COM apartment or a synthetic
+  `OpenATL::WTL` interface target. The unified `OpenATL::ATL` target supplies
+  COM/registry link dependencies without initializing an apartment.
 - A COM Client must initialize its own apartment, activate the Windows
   `CLSID_StdGlobalInterfaceTable` system component, query `IUnknown`,
   safely manage `CComPtr` ownership and release references before
   `CoUninitialize`. No app-owned COM server is needed.
-- Official WTL headers must be installed by the pinned `vcpkg.json`
-  manifest and checked-in `ports/wtl` overlay, with no Microsoft `atl` port
-  or independently downloaded WTL ZIP fallback.
+- Official WTL headers must come from the checksum-pinned CMake dependency
+  and build-local adapter. UI targets inherit headers and link dependencies
+  from `OpenATL::ATL`; no consumer overlay, WTL install or sample patch.
 - The checked-in clean-room OpenATL header marker must be verified at
   CMake configuration and compile time. No external OpenATL checkout is used.
   MSVC's own ATL, WTL8 and RATL must never serve as fallbacks.
@@ -42,4 +50,4 @@ these paths separately on the exact branch HEAD.
 
 **Permanent exclusion:** no OpenATL Installed SDK, OpenATL `install()`/
 `export()` CMake rules, OpenATL package metadata, or post-install consumers.
-vcpkg-installed external WTL headers are a dependency, not an OpenATL SDK.
+CMake-managed external WTL headers are a dependency, not an OpenATL SDK.

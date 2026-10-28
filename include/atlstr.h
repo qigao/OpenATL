@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <vector>
 #include <cstdarg>
+#include <exception>
 
 namespace ATL {
 
@@ -38,18 +39,28 @@ public:
     // Construct from narrow string (ANSI -> UNICODE conversion)
     CString(const char* psz)
     {
-        if (psz != NULL) {
-            int len = ::MultiByteToWideChar(CP_ACP, 0, psz, -1, NULL, 0);
-            if (len > 0) {
-                // Conversion includes a final NUL: allocate *len* chars.
-                std::vector<wchar_t> output(static_cast<size_t>(len));
-                if (::MultiByteToWideChar(CP_ACP, 0, psz, -1,
-                      output.data(), len) == len)
-                    m_str.assign(output.data(), static_cast<size_t>(len - 1));
+        if (psz != nullptr) {
+            const HRESULT hr = AssignAnsi(psz);
+            if (FAILED(hr)) {
+#ifdef _ATL_NO_EXCEPTIONS
+                std::terminate();
+#else
+                AtlThrow(hr);
+#endif
             }
         }
     }
 #endif
+
+    HRESULT AssignAnsi(std::string_view text) noexcept {
+        return OpenATL::Unicode::AnsiToUtf16(text, m_str);
+    }
+    HRESULT AssignUtf8(std::string_view text) noexcept {
+        return OpenATL::Unicode::Utf8ToUtf16(text, m_str);
+    }
+    HRESULT ToUtf8(std::string& output) const noexcept {
+        return OpenATL::Unicode::Utf16ToUtf8(m_str, output);
+    }
 
     CString(const CString& strSrc) : m_str(strSrc.m_str) {}
     CString(CString&& strSrc) noexcept : m_str(std::move(strSrc.m_str)) {}
@@ -193,6 +204,13 @@ public:
     {
         auto pos = m_str.rfind(ch);
         return pos == std::basic_string<TCHAR>::npos ? -1 : (int)pos;
+    }
+
+    int FindOneOf(LPCTSTR pszCharSet) const
+    {
+        if (!pszCharSet) return -1;
+        const auto pos = m_str.find_first_of(pszCharSet);
+        return pos == std::basic_string<TCHAR>::npos ? -1 : static_cast<int>(pos);
     }
 
     CString& MakeUpper() { for (auto& c : m_str) c = (TCHAR)_totupper(c); return *this; }

@@ -13,6 +13,8 @@
 #include <limits>
 #include <cwchar>
 #include <cstring>
+#include <exception>
+#include "openatl/text_encoding.h"
 
 namespace ATL {
 
@@ -232,6 +234,15 @@ public:
             lp->QueryInterface(*piid, (void**)&this->p);
     }
 
+    template<class Q>
+    CComQIPtr(const CComPtr<Q>& other) noexcept
+        : CComQIPtr(static_cast<IUnknown*>(other.p)) {}
+
+    template<class Q>
+    T* operator=(const CComPtr<Q>& other) noexcept {
+        return operator=(static_cast<IUnknown*>(other.p));
+    }
+
     T* operator=(T* lp) noexcept
     {
         return CComPtr<T>::operator=(lp);
@@ -254,20 +265,37 @@ public:
     }
 };
 
-// Specialization for IUnknown
-template <>
-class CComQIPtr<IUnknown, &IID_IUnknown> : public CComPtr<IUnknown> {
+// MinGW's __uuidof emulation need not return the address of IID_IUnknown.
+// Match the interface type so its default cannot instantiate duplicate
+// IUnknown*/T* overloads; still honor an explicitly selected IID.
+template <const IID* piid>
+class CComQIPtr<IUnknown, piid> : public CComPtr<IUnknown> {
 public:
     CComQIPtr() noexcept {}
-    CComQIPtr(IUnknown* lp) noexcept : CComPtr<IUnknown>(lp) {}
-    CComQIPtr(const CComQIPtr<IUnknown, &IID_IUnknown>& lp) noexcept : CComPtr<IUnknown>(lp.p) {}
+    CComQIPtr(IUnknown* lp) noexcept {
+        if (lp) lp->QueryInterface(*piid, reinterpret_cast<void**>(&this->p));
+    }
+    template<class Q>
+    CComQIPtr(const CComPtr<Q>& other) noexcept
+        : CComQIPtr(static_cast<IUnknown*>(other.p)) {}
+    CComQIPtr(const CComQIPtr<IUnknown, piid>& lp) noexcept : CComPtr<IUnknown>(lp.p) {}
 
     IUnknown* operator=(IUnknown* lp) noexcept
     {
-        return CComPtr<IUnknown>::operator=(lp);
+        IUnknown* resolved = nullptr;
+        if (lp) lp->QueryInterface(*piid, reinterpret_cast<void**>(&resolved));
+        IUnknown* previous = this->p;
+        this->p = resolved;
+        if (previous) previous->Release();
+        return this->p;
     }
 
-    IUnknown* operator=(const CComQIPtr<IUnknown, &IID_IUnknown>& lp) noexcept
+    template<class Q>
+    IUnknown* operator=(const CComPtr<Q>& other) noexcept {
+        return operator=(static_cast<IUnknown*>(other.p));
+    }
+
+    IUnknown* operator=(const CComQIPtr<IUnknown, piid>& lp) noexcept
     {
         return CComPtr<IUnknown>::operator=(lp.p);
     }
@@ -306,14 +334,23 @@ public:
 
     CComBSTR(LPCSTR pSrc) : m_str(NULL)
     {
-        if (pSrc != NULL) {
-            int nLen = ::MultiByteToWideChar(CP_ACP, 0, pSrc, -1, NULL, 0);
-            if (nLen > 0) {
-                m_str = ::SysAllocStringLen(NULL, nLen - 1);
-                if (m_str != NULL)
-                    ::MultiByteToWideChar(CP_ACP, 0, pSrc, -1, m_str, nLen);
+        if (pSrc != nullptr) {
+            const HRESULT hr = AssignAnsi(pSrc);
+            if (FAILED(hr)) {
+#ifdef _ATL_NO_EXCEPTIONS
+                std::terminate();
+#else
+                AtlThrow(hr);
+#endif
             }
         }
+    }
+
+    HRESULT AssignAnsi(std::string_view text) noexcept { return AssignEncoded(::GetACP(), text); }
+    HRESULT AssignUtf8(std::string_view text) noexcept { return AssignEncoded(CP_UTF8, text); }
+    HRESULT ToUtf8(std::string& output) const noexcept {
+        return OpenATL::Unicode::Utf16ToUtf8(
+            std::wstring_view(m_str ? m_str : L"", m_str ? ::SysStringLen(m_str) : 0), output);
     }
 
     ~CComBSTR()
@@ -485,6 +522,20 @@ public:
         const int result = std::wmemcmp(m_str, bstrSrc.m_str, common);
         return result < 0 || (result == 0 && a < b);
     }
+private:
+    HRESULT AssignEncoded(UINT codePage, std::string_view text) noexcept {
+        std::wstring converted;
+        HRESULT hr = OpenATL::Unicode::CodePageToUtf16(codePage, text, converted);
+        if (FAILED(hr)) return hr;
+        const size_t maximum = ((std::numeric_limits<UINT>::max)() - sizeof(UINT)) / sizeof(OLECHAR) - 1;
+        if (converted.size() > maximum) return HRESULT_FROM_WIN32(ERROR_ARITHMETIC_OVERFLOW);
+        BSTR staged = ::SysAllocStringLen(converted.data(), static_cast<UINT>(converted.size()));
+        if (!staged) return E_OUTOFMEMORY;
+        ::SysFreeString(m_str);
+        m_str = staged;
+        return S_OK;
+    }
+
 };
 
 ///////////////////////////////////////////////////////////////////////////////

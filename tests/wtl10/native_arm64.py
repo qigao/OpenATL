@@ -18,6 +18,8 @@ TARGETS = (
     "openatl_gui_runtime",
     "openatl_atl_core",
     "openatl_atl_path",
+    "openatl_unicode",
+    "openatl_unicode_utf8",
     "openatl_atl_extensions",
     "openatl_atl_mapping",
     "openatl_atl_image",
@@ -26,13 +28,20 @@ TARGETS = (
     "openatl_unload_runner",
     "openatl_unload_native",
     "openatl_com_client",
+    "openatl_com_server_tests",
+    "openatl_activex",
     "openatl_wtl10_sdi",
 )
 
 CASES = (
-    ("openatl_gui_runtime", (), "WTL10 GUI runtime PASS: no COM apartment, W^X thunk x64/ARM64, message maps, resource dialog, NCDESTROY, OnFinalMessage, MRU"),
+    ("openatl_gui_runtime", (), "WTL10 GUI runtime PASS: no COM apartment, W^X thunk, message maps, resource dialog, NCDESTROY, OnFinalMessage, MRU"),
+    ("openatl_activex", ("events",), "ACTIVEX_OK"),
+    ("openatl_activex", ("browser",), "ACTIVEX_OK"),
+    ("openatl_activex", ("lifecycle",), "ACTIVEX_OK"),
     ("openatl_atl_core", (), "ATL_CORE_OK file=1 string=1 sync=1 registry=1 no_com=1"),
     ("openatl_atl_path", (), "ATL_PATH_OK unicode=1 file=1 relative=1 root=1"),
+    ("openatl_unicode", (), "OPENATL_UNICODE_OK utf8=1 utf16=1 acp=1 ownership=1 salts=0"),
+    ("openatl_unicode_utf8", ("--utf8-acp",), "OPENATL_UNICODE_OK utf8=1 utf16=1 acp=1 ownership=1 salts=0"),
     ("openatl_atl_extensions", (), "ATL_EXTENSIONS_OK heap=1 filetime=1 array=1 list=1 no_com=1"),
     ("openatl_atl_mapping", (), "ATL_MAPPING_OK file=1 offset=1 copy=1 shared=1 cleanup=1 no_com=1"),
     ("openatl_atl_image", (), "ATL_IMAGE_OK dib=1 attach=1 draw=1 orientation=1 codec=1 stream=1 shortwrite=1 shortread=1 budget=1 alpha=1 cleanup=1 no_com=1"),
@@ -40,6 +49,10 @@ CASES = (
     ("openatl_mitigation_runtime", (), "OPENATL_MITIGATION_OK cfg=1 rx=1 indirect=1 deny=1"),
     ("openatl_unload_runner", (), "OPENATL_UNLOAD_OK rounds=12 events=1 lease=1 held=1 blocked=1 callers_joined=1 caller_leases=1 lease_bounds=1 thunk_freed=1 class_unregistered=1 dll_unmapped=1 no_com=1"),
     ("openatl_unload_native", (), "OPENATL_UNLOAD_OK cycles=8 blocked=1 busy=1 retire=1 free=1 no_com=1"),
+    ("openatl_com_server_tests", ("--module",), "ATL_MODULE_OK locks=1 termination=1 com_balance=1 class_objects=1 loop=1"),
+    ("openatl_com_server_tests", ("--core",), "OPENATL_COM_SERVER_CORE_OK identity=1 factory=1 locks=1 concurrent=1 rollback=1 registry=1 no_com=1"),
+    ("openatl_com_server_tests", ("--sta",), "OPENATL_COM_SERVER_NATIVE_OK mode=sta activation=1 identity=1 locks=1 unregister=1 unload=1"),
+    ("openatl_com_server_tests", ("--mta",), "OPENATL_COM_SERVER_NATIVE_OK mode=mta activation=1 identity=1 locks=1 unregister=1 unload=1"),
     ("openatl_com_client", (), "ATL_COM_CLIENT_OK activate=1 qi=1 comptr=1 bstr=1 variant=1 unregister=0"),
     ("openatl_com_client", ("--sta",), "ATL_COM_CLIENT_MODE_OK mode=sta apartment=1 activation=1 balance=1 changed=0"),
     ("openatl_com_client", ("--mta",), "ATL_COM_CLIENT_MODE_OK mode=mta apartment=1 activation=1 balance=1 changed=0"),
@@ -49,14 +62,16 @@ CASES = (
 )
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        raise SystemExit("Usage: python tests/wtl10/native_arm64.py ARTIFACT_DIR")
+    if len(sys.argv) != 3 or sys.argv[2] not in ("llvm", "msvc"):
+        raise SystemExit("Usage: python tests/wtl10/native_arm64.py ARTIFACT_DIR llvm|msvc")
     if os.name != "nt" or platform.machine().lower() not in ("arm64", "aarch64"):
         raise SystemExit("Refuse non-native Windows ARM64 acceptance")
     root = Path(sys.argv[1]).resolve(strict=True)
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8-sig"))
-    required = {name + ".exe" for name in TARGETS} | {
-        "openatl_unload_fixture.dll", "openatl_unload_probe.dll"}
+    samples = ("guidgen", "memdlg") if sys.argv[2] == "msvc" else ("guidgen",)
+    targets = (*TARGETS, *("openatl_official_" + name for name in samples))
+    required = {name + ".exe" for name in targets} | {
+        "openatl_unload_fixture.dll", "openatl_unload_probe.dll", "openatl_com_server_fixture.dll"}
     if set(manifest) != required:
         raise SystemExit(f"ARM64 provenance set mismatch: missing={required-set(manifest)}, unexpected={set(manifest)-required}")
     pe_validator = Path(__file__).with_name("verify_pe_machine.py")
@@ -66,7 +81,7 @@ def main() -> int:
         if actual != manifest[filename].lower():
             raise SystemExit(f"ARM64 SHA256 mismatch for {filename}")
         arguments = [sys.executable, str(pe_validator), str(executable), "aarch64"]
-        if filename in ("openatl_gui_runtime.exe", "openatl_wtl10_sdi.exe"):
+        if filename in ("openatl_gui_runtime.exe", "openatl_unicode_utf8.exe", "openatl_wtl10_sdi.exe") or filename.startswith("openatl_official_"):
             arguments.append("--require-resources")
         subprocess.run(arguments, check=True, timeout=20)
     sdi_ui = Path(__file__).with_name("sdi_interactive.py")
@@ -92,7 +107,16 @@ def main() -> int:
                 f"Native ARM64 real SDI UI repeat {attempt} "
                 f"exit={sdi.returncode} stdout={sdi.stdout!r} "
                 f"stderr={sdi.stderr!r}")
-    print("OPENATL_NATIVE_ARM64_OK files=14 tests=17 repeats=5 "
+        official_ui = Path(__file__).parents[1] / "official_samples" / "wtl_interactive.py"
+        for sample in samples:
+            official = subprocess.run([sys.executable, str(official_ui), sample,
+                str(root / ("openatl_official_" + sample + ".exe"))],
+                capture_output=True, text=True, errors="replace", timeout=35, check=False)
+            expected = f"OFFICIAL_WTL_OK sample={sample} behavior=1 resources=1 clean_exit=1"
+            if official.returncode != 0 or official.stderr.strip() or official.stdout.strip() != expected:
+                raise SystemExit(f"Native ARM64 official {sample} repeat {attempt} "
+                    f"exit={official.returncode} stdout={official.stdout!r} stderr={official.stderr!r}")
+    print(f"OPENATL_NATIVE_ARM64_OK files={len(required)} tests={len(CASES) + 1 + len(samples)} repeats=5 "
           "sha256=1 pe=1 resources=1")
     return 0
 

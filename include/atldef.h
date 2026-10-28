@@ -10,18 +10,7 @@
 // Compile-time source provenance for CI; never defined by an external ATL.
 #define OPENATL_REPOSITORY_HEADERS 0x4F41544CUL
 
-// Ensure Windows 7 minimum
-#ifndef WINVER
-#define WINVER 0x0601
-#endif
-
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0601
-#endif
-
-#ifndef _WIN32_IE
-#define _WIN32_IE 0x0800
-#endif
+#include "openatl/platform.h"
 
 // _MSC_VER compatibility shim for MinGW
 // WTL checks _MSC_VER >= 1400; define as VS2015 (1900) if not set
@@ -42,9 +31,9 @@
 #endif
 #endif
 
-// OpenATL is Win32 UI + optional COM Client only. Never compile
-// WTL ActiveX-hosting property pages or fabricate COM UI stubs.
-// This is a single enforced product scope, not a provider fallback.
+// Implicit resource-based ActiveX dialogs/property pages are still pending.
+// Explicit windowed containment is implemented separately in atlhost.h;
+// ordinary UI headers never initialize a COM apartment or a hosted control.
 #ifndef _ATL_NO_HOSTING
 #define _ATL_NO_HOSTING 1
 #endif

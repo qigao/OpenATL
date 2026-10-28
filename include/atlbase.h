@@ -10,16 +10,7 @@
 #error ATL requires C++ compilation
 #endif
 
-// Minimum Windows 7
-#ifndef WINVER
-#define WINVER 0x0601
-#endif
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0601
-#endif
-#ifndef _WIN32_IE
-#define _WIN32_IE 0x0800
-#endif
+#include "openatl/platform.h"
 
 #include <windows.h>
 #include <ole2.h>
@@ -39,7 +30,20 @@
 #include <commctrl.h>
 #include <shlwapi.h>
 
+#if defined(__MINGW32__)
+#include <type_traits>
+#endif
+
 namespace ATL {
+
+#if defined(__MINGW32__)
+// libc++ removes Win32's min/max macros. Preserve ordinary ATL sample calls,
+// including mixed int/LONG operands, without restoring macros over the STL.
+template<class A, class B>
+constexpr std::common_type_t<A, B> (min)(A a, B b) { return b < a ? b : a; }
+template<class A, class B>
+constexpr std::common_type_t<A, B> (max)(A a, B b) { return a < b ? b : a; }
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // ATL::Checked namespace - secure CRT wrappers
@@ -489,6 +493,12 @@ __declspec(selectany) CAtlWinModule _AtlWinModule;
 HRESULT AtlGetCommCtrlVersion(LPDWORD pdwMajor, LPDWORD pdwMinor);
 
 } // namespace ATL
+
+#include "openatl/atl_module.h"
+
+#ifndef _ATL_NO_AUTOMATIC_NAMESPACE
+using namespace ATL;
+#endif
 
 // For headers that use the ATL:: prefix
 using ATL::_AtlBaseModule;

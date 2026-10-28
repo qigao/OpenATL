@@ -49,6 +49,11 @@
 #define LM_GETIDEALSIZE (WM_USER + 0x301)
 #endif
 
+// windowsx.h's two-argument helper collides with ATL's member API.
+#ifdef SubclassWindow
+#undef SubclassWindow
+#endif
+
 namespace ATL {
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -371,6 +376,17 @@ public:
 
     operator HWND() const noexcept { return m_hWnd; }
 
+    static LRESULT SendMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam) noexcept
+    {
+        return ::SendMessage(window, message, wParam, lParam);
+    }
+
+    BOOL IsDialogMessage(LPMSG lpMsg) noexcept
+    {
+        ATLASSERT(::IsWindow(m_hWnd));
+        return ::IsDialogMessage(m_hWnd, lpMsg);
+    }
+
     static LPCTSTR GetWndClassName() noexcept
     {
         return NULL;
@@ -490,6 +506,8 @@ public:
         return ::SetWindowLong(m_hWnd, nIndex, dwNewLong);
     }
 
+    // Win32 SDK maps the Ptr names to Get/SetWindowLong on 32-bit targets.
+#ifdef _WIN64
     LONG_PTR GetWindowLongPtr(int nIndex) const noexcept
     {
         ATLASSERT(::IsWindow(m_hWnd));
@@ -501,6 +519,7 @@ public:
         ATLASSERT(::IsWindow(m_hWnd));
         return ::SetWindowLongPtr(m_hWnd, nIndex, dwNewLong);
     }
+#endif
 
     WORD GetWindowWord(int nIndex) const noexcept
     {
@@ -955,6 +974,12 @@ public:
     }
 
     // Scrolling
+    BOOL ShowScrollBar(UINT nBar, BOOL bShow = TRUE) noexcept
+    {
+        ATLASSERT(::IsWindow(m_hWnd));
+        return ::ShowScrollBar(m_hWnd, nBar, bShow);
+    }
+
     int GetScrollPos(int nBar) const noexcept
     {
         ATLASSERT(::IsWindow(m_hWnd));
@@ -2319,26 +2344,39 @@ typedef CWindowImplBaseT<CWindow> CWindowImplBase;
 typedef CDialogImplBaseT<CWindow> CDialogImplBase;
 
 ///////////////////////////////////////////////////////////////////////////////
-// CAxWindow2 - stub for ActiveX hosting (not supported, provides interface only)
-
-class CAxWindow2 : public CWindow {
+// A resource-backed modal dialog with the standard button command behavior.
+template <WORD t_wDlgTemplateID, BOOL t_bCenter = TRUE>
+class CSimpleDialog : public CDialogImpl<CSimpleDialog<t_wDlgTemplateID, t_bCenter>> {
 public:
-    CAxWindow2(HWND hWnd = NULL) noexcept : CWindow(hWnd) {}
+    enum { IDD = t_wDlgTemplateID };
+    typedef CSimpleDialog<t_wDlgTemplateID, t_bCenter> thisClass;
 
-    HWND Create(HWND hWndParent, _U_RECT rect = NULL, LPCTSTR szWindowName = NULL,
-        DWORD dwStyle = 0, DWORD dwExStyle = 0, _U_MENUorID MenuOrID = 0U, LPVOID lpCreateParam = NULL) noexcept
+    INT_PTR DoModal(HWND hWndParent = ::GetActiveWindow())
     {
-        (void)hWndParent; (void)rect; (void)szWindowName;
-        (void)dwStyle; (void)dwExStyle; (void)MenuOrID; (void)lpCreateParam;
-        return NULL;
+        return CDialogImpl<thisClass>::DoModal(hWndParent);
     }
 
-    HRESULT CreateControlLic(LPCOLESTR /*lpszName*/, IStream* /*pStream*/ = NULL,
-        IUnknown** /*ppUnkContainer*/ = NULL, BSTR /*bstrLicKey*/ = NULL) noexcept
+    LRESULT OnInitDialog(UINT, WPARAM, LPARAM, BOOL&)
     {
-        return E_NOTIMPL;
+        if (t_bCenter) this->CenterWindow(this->GetParent());
+        return TRUE;
     }
+
+    LRESULT OnCloseCmd(WORD, WORD wID, HWND, BOOL&)
+    {
+        this->EndDialog(wID);
+        return 0;
+    }
+
+    BEGIN_MSG_MAP(thisClass)
+        MESSAGE_HANDLER(WM_INITDIALOG, OnInitDialog)
+        COMMAND_RANGE_HANDLER(IDOK, IDNO, OnCloseCmd)
+    END_MSG_MAP()
 };
+
+// Control-hosting definitions are supplied by atlhost.h.
+template<class TBase> class CAxWindow2T;
+using CAxWindow2 = CAxWindow2T<CWindow>;
 
 } // namespace ATL
 

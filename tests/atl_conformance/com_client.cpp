@@ -25,7 +25,6 @@
 #if defined(__RATL__)
 #error "COM client must use pinned clean-room OpenATL headers"
 #endif
-static_assert(sizeof(void*) == 8, "Windows x64/ARM64 COM ABI required");
 
 static int failure(int code, const char* step, HRESULT hr) {
     std::fprintf(stderr, "ATL_COM_CLIENT_FAIL code=%d step=%s hr=0x%08lx\n",

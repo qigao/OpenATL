@@ -1,0 +1,6 @@
+LIBRARY openatl_com_server_fixture
+EXPORTS
+    DllGetClassObject
+    DllCanUnloadNow
+    DllRegisterServer
+    DllUnregisterServer

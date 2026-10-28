@@ -970,7 +970,6 @@ static int decoder_failure_injection() {
 }
 
 int main() {
-    static_assert(sizeof(void*) == 8, "Only Windows x64 and ARM64 qualified");
     ULONG_PTR token = 0;
     if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED)
         return fail(1, "Unexpected_initial_COM_apartment");

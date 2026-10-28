@@ -422,7 +422,6 @@ static int test_heap_pointer_ownership() {
 }
 
 int main() {
-    static_assert(sizeof(void*) == 8, "Only Windows x64 and ARM64 qualified");
     ULONG_PTR token = 0;
     if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED)
         return fail(1, "initial_com_apartment");

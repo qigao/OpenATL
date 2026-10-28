@@ -1,0 +1,54 @@
+# Windowed OLE control hosting
+
+`atlhost.h` provides windowed containment and `atlcom.h` provides typed
+Automation event sinks. Neither inclusion nor `AtlAxWinInit` initializes COM.
+The application initializes OLE/COM on its UI thread and keeps it initialized
+until controls, host windows, sinks and retained interfaces have been released.
+No MFC or Microsoft ATL implementation is used.
+
+Each host window owns one host reference and at most one control. Successful
+attachment retains `IOleObject` and installs the host as its client site.
+Creation holds a single transaction across factory activation, persistence and
+in-place activation. A control requesting `OLEMISC_SETCLIENTSITEFIRST` receives
+its site before `InitNew`/`Load`; other controls receive it afterwards. Reentrant
+creation/attachment is rejected until that transaction finishes. Every external
+initialization step checks whether the window/control was retired; failure
+detaches only that transaction's control. Forwarding an accelerator retains the
+active object through its call, even if a callback replaces it or destroys the
+host window. The same creation protocol applies to licensed factories.
+Creation/attachment failure closes and detaches the partial control. Destroying
+the window removes the subclass/property, closes the control, clears its client
+site, releases the active object and drops the window reference. A retained host
+interface can outlive the HWND; subsequent control queries return
+`CO_E_OBJNOTCONNECTED`. COM callbacks retain the host while executing. All
+window/control mutation belongs to the window's creating thread. Host discovery
+and control queries from another thread return `RPC_E_WRONG_THREAD`.
+An active `CAtlModule` is pinned through final host destruction, including
+retained interfaces after HWND destruction. DLL owners must destroy host
+windows, release retained interfaces and call `AtlAxWinTerm` before unloading
+their hosting module; registered window classes are not an automatic DLL
+unload protocol.
+
+The typed sink retains its connection point after a successful Advise. Duplicate
+Advise fails. Unadvise checks the source's COM identity, disconnects the exact
+cookie and releases that connection point; destruction also disconnects a
+remaining connection. As with ATL's simple sink, the containing C++ object owns
+the sink: AddRef/Release do not delete a stack object or window. The UI owner
+must unadvise and finish synchronous callbacks before destroying that C++ object.
+Invoke borrows incoming arguments only for the call and converts value arguments
+into local owning VARIANTs. It validates counts, reverses Automation argument
+order, preserves by-reference parameters and releases conversions on every exit.
+By-reference floating-point metadata must match the C++ pointee width; a
+four-byte float may not be exposed as a writable eight-byte double.
+It invokes typed member functions directly rather than interpreting the
+compiler-specific member-pointer layout. Maps support up to eight arguments.
+
+Windowless drawing/input, OLE document storage, menu merging, and type-library
+driven sinks are not yet implemented. Windowless activation is explicitly
+declined through QueryInterface and its property setter. Returning S_FALSE from
+host UI methods requests the control's standard UI; it does not fabricate an
+implemented feature. Full official Microsoft ATL compatibility remains pending.
+`SetExternalUIHandler` currently requires an object also exposing native
+`IDocHostUIHandler`; a dispatch-only UI handler adapter is still pending.
+Simple sink handlers currently return void or HRESULT; the complete Automation
+return-value surface is not yet implemented.

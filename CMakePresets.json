@@ -1,0 +1,39 @@
+{
+  "version": 5,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "qualification",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "OPENATL_BUILD_QUALIFICATION": "ON"
+      }
+    },
+    {
+      "name": "llvm",
+      "hidden": true,
+      "inherits": "qualification",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/llvm-mingw.cmake",
+      "environment": {
+        "OPENATL_LLVM_MINGW_BIN": "$penv{OPENATL_LLVM_MINGW_BIN}"
+      },
+      "cacheVariables": {
+        "OPENATL_REQUIRE_CET_RUNTIME": "OFF"
+      }
+    },
+    {
+      "name": "msvc",
+      "hidden": true,
+      "inherits": "qualification",
+      "cacheVariables": {
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded"
+      }
+    }
+  ]
+}
