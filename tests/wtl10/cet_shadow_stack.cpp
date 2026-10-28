@@ -377,9 +377,35 @@ int main(int argc, char** argv) {
         // No assumption about the hosted runner's default HSP policy:
         // explicitly launch the ACTUAL test under ALWAYS_ON at creation.
         DWORD exitCode = ~0u;
-        if (!spawn(L"--enforced-child", &exitCode))
+        if (!spawn(L"--enforced-child", &exitCode)) {
+            std::fprintf(stderr,
+                "OPENATL_CET_FAIL stage=mandatory_HSP_process_creation\n");
             return 94;
-        return static_cast<int>(exitCode);
+        }
+        if (exitCode != 0) {
+            // Distinguish an OS/CPU without HSP from a silent process
+            // mitigation default. This query is purely informational:
+            // the child must still enable HSP and pass the actual death test.
+            int available = -1;
+            if (HMODULE kernel = ::GetModuleHandleW(L"kernel32.dll")) {
+                using Available = BOOL(WINAPI*)(DWORD);
+                auto fn = reinterpret_cast<Available>(
+                    ::GetProcAddress(kernel, "IsUserCetAvailableInEnvironment"));
+                if (fn != nullptr)
+                    available = fn(0 /* WIN32_PROCESS */) ? 1 : 0;
+            }
+            const ShadowPolicy parent = shadow_policy();
+            std::fprintf(stderr,
+                "OPENATL_CET_FAIL stage=mandatory_HSP_child "
+                "exit=0x%08lx parent_query=%d parent_enabled=%d "
+                "parent_audit=%d environment_available=%d\n",
+                static_cast<unsigned long>(exitCode),
+                parent.queried ? 1 : 0, parent.enabled() ? 1 : 0,
+                parent.audit() ? 1 : 0, available);
+            return static_cast<int>(exitCode);
+        }
+        std::puts("OPENATL_CET_HSP_CHILD_OK enforcement=1");
+        return 0;
     }
     if (std::strcmp(argv[1], "--enforced-child") == 0)
         return qualify(true);
