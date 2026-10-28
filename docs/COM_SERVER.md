@@ -5,8 +5,8 @@ existing source-owned server core under `OpenATL::COM` complements
 `atlcom.h` and provides
 nonaggregated COM objects, explicit interface/class tables, class factories,
 module lifetime accounting, and explicit registry registration. Complete
-standard ATL DLL modules, automatic object maps, RGS, EXE registration,
-Automation/type-library
+standard ATL DLL modules and static `OBJECT_ENTRY_AUTO` class discovery.
+RGS, automatic registry registration, EXE registration and Automation/type-library
 implementation, custom proxy/stub generator or ActiveX host is supplied.
 
 For conventional ATL object declarations, `atlcom.h` supplies the
