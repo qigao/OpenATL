@@ -424,6 +424,26 @@ public:
         }
     }
 
+    // Remove a stack-local pending creation record even when Win32 fails
+    // before invoking StartWindowProc. A stale entry would otherwise be
+    // consumed by a subsequent unrelated window on this thread.
+    bool RemoveCreateWndData(_AtlCreateWndData* pending) noexcept
+    {
+        if (pending == NULL) return false;
+        CComCritSecLock<CComCriticalSection> lock(m_csWindowCreate, false);
+        if (FAILED(lock.Lock())) return false;
+        _AtlCreateWndData** link = &m_pCreateWndList;
+        while (*link != NULL) {
+            if (*link == pending) {
+                *link = pending->m_pNext;
+                pending->m_pNext = NULL;
+                return true;
+            }
+            link = &(*link)->m_pNext;
+        }
+        return false;
+    }
+
     void* ExtractCreateWndData() noexcept
     {
         CComCritSecLock<CComCriticalSection> lock(m_csWindowCreate, false);
