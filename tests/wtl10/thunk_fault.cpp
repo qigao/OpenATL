@@ -171,6 +171,59 @@ static int fault_window_or_dialog(int stage,bool dialog) {
     return 0;
 }
 
+
+// A CreateWindowEx/CreateDialogParam failure may happen before Win32 ever
+// invokes the Start*Proc. Those stack-local pending records must be revoked
+// before a later window can consume them as an unrelated stale owner.
+static int check_failed_creation_retirement() {
+    if (ATL::_AtlWinModule.m_pCreateWndList != nullptr)
+        return reject(90, "pending_creation_precondition");
+    Thunk::TestFailNext(0);
+    {
+        FailedDialog missingResource;
+        if (missingResource.Create(nullptr) != nullptr ||
+            missingResource.m_hWnd != nullptr ||
+            ATL::_AtlWinModule.m_pCreateWndList != nullptr)
+            return reject(91, "missing_dialog_left_pending_create");
+        if (missingResource.DoModal(nullptr) != -1 ||
+            ATL::_AtlWinModule.m_pCreateWndList != nullptr)
+            return reject(92, "missing_modal_left_pending_create");
+    }
+    const int stages[] = {5, 6};
+    for (int stage : stages) {
+        Thunk::TestFailNext(stage);
+        {
+            FailedWindow owner;
+            RECT area{0, 0, 80, 40};
+            HWND hwnd = owner.Create(nullptr, area, L"DeniedThunkWindow",
+                                     WS_POPUP, 0);
+            if (hwnd != nullptr || owner.m_hWnd != nullptr ||
+                ATL::_AtlWinModule.m_pCreateWndList != nullptr ||
+                Thunk::testFailureStage != 0 ||
+                Thunk::testInjectedCount != 1)
+                return reject(stage == 5 ? 93 : 94,
+                              "failed_window_retained_owner_or_pending_data");
+        }
+        if (Thunk::testLivePages != 0)
+            return reject(95, "failed_create_retained_exec_memory");
+    }
+    // Ensure no stale create stack node is accidentally consumed by a later
+    // unrelated object after all early-failure modes.
+    Thunk::TestFailNext(0);
+    {
+        FailedWindow fresh;
+        RECT area{0,0,80,40};
+        HWND hwnd=fresh.Create(nullptr,area,L"FreshOwner",WS_POPUP,0);
+        if (!hwnd || !::IsWindow(hwnd) ||
+            ATL::_AtlWinModule.m_pCreateWndList != nullptr ||
+            !::DestroyWindow(hwnd) || ::IsWindow(hwnd))
+            return reject(96, "new_window_consumed_stale_create_owner");
+    }
+    if (Thunk::testLivePages != 0)
+        return reject(97, "fresh_window_page_not_released");
+    return 0;
+}
+
 int main() {
     for(int i=0;i<24;++i) {
         int status=fault_new(1,10); if(status)return status;
@@ -185,6 +238,7 @@ int main() {
         status=fault_window_or_dialog(3,true); if(status)return status;
         status=fault_window_or_dialog(4,true); if(status)return status;
     }
+    if (int rc=check_failed_creation_retirement()) return rc;
     std::puts("THUNK_FAULT_OK alloc=1 rx=1 flush=1 reinit_rw=1 free=1 recovery=1 no_rwx=1 window_denied=1 dialog_denied=1");
     return 0;
 }
