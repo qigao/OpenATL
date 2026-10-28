@@ -6,7 +6,9 @@ thread and optional explicit class-factory registrations.
 `CAtlDllModuleT<T>` now supports the real DLL class-factory/unload exports
 through the same `OpenATL::COM::Module` engine. Standard static
 `OBJECT_ENTRY_AUTO` class discovery is implemented; automatic registry
-registration and expanded ATL map entry variants remain compatibility work. `CComModule` is absent today, not banned from future
+registration from class-defined `UpdateRegistry(BOOL)` callbacks is now
+supported; resource-driven RGS and expanded ATL map variants remain
+compatibility work. `CComModule` is absent today, not banned from future
 consideration.
 
 One application module may be alive per binary image. Construction publishes
@@ -92,11 +94,15 @@ This is a cooperative unload contract: it cannot make arbitrary
 quiesce every caller before unloading.
 
 `DllMain` performs no COM activation, registry writes, or class registration
-under the OS loader lock. Registration forwards to a derived
-`T::RegisterServer(BOOL, const CLSID*)` /
-`T::UnregisterServer(BOOL, const CLSID*)` implementation. The inherited
-default is **`E_NOTIMPL`**, not fake success, until concrete registrar and
-type-library semantics are supplied by that server.
+under the OS loader lock. Registration forwards through
+`T::RegisterServer(BOOL, const CLSID*)` and
+`T::UnregisterServer(BOOL, const CLSID*)`. A derived module can override
+these methods; the inherited default now uses only the class-defined
+`UpdateRegistry(BOOL)` methods attached to `OBJECT_ENTRY_AUTO` entries.
+A missing class callback is **`E_NOTIMPL`**, not fake success.
+`DECLARE_NO_REGISTRY()` deliberately opts a class out and explicitly
+returns `S_OK` without installing keys. Type library and RGS resource
+registration are still unimplemented.
 
 The existing `tests/com_server/fixture.cpp` now routes its actual COM DLL
 exports through `CAtlDllModuleT` and preserves real HKCU class registration,
@@ -122,9 +128,27 @@ test covers lookup, failure paths, duplicated CLSIDs and live
 remains supported for existing applications; it does not create a
 second COM backend.
 
-**Not yet complete:** `CAtlComModule`, standard extended object-map
-variants, RGS, automatic persistent registry registration, type libraries,
-aggregated classes, and complete EXE/service COM Server behavior remain
-separate compatibility milestones. Class auto-discovery is not the same
-as installation/registration in Windows. Complete Microsoft ATL source
-compatibility is not yet claimed.
+**Class-directed registration milestone:** `OBJECT_ENTRY_AUTO` records an
+optional static class `UpdateRegistry(BOOL)` callback. The DLL module takes
+the same one-time class-map snapshot used for factories, sorts its classes
+by CLSID for deterministic installation, and invokes real callbacks in that
+order. Missing hooks fail preflight before *any* class is installed. Later
+registration failure invokes inverse callbacks for earlier successes in
+reverse order, returning the first rollback error in preference to the
+original failure. Unregistration also proceeds in reverse order. A
+`RegisterServer(FALSE, &CLSID)` call restricts the operation to one class;
+unknown CLSIDs return `CLASS_E_CLASSNOTAVAILABLE`.
+
+The real two-class COM fixture uses per-class `UpdateRegistry(BOOL)` methods
+calling the existing owner-verified HKCU registrar, with STA/MTA activation
+and a foreign second-class ProgID to force rollback of the first. This is
+not automatic inference of ProgIDs/paths, and **not** an atomic registry
+transaction: callbacks must clean up their own partial failure and callers
+must serialize installer writes. The existing explicit `BindServer` table
+remains usable, but its default class registration is `E_NOTIMPL`; the
+owning application can provide a derived registrar.
+
+**Not yet complete:** `CAtlComModule`, extended object-map variants,
+resource-based RGS registration, type libraries, aggregated classes, and
+complete EXE/service COM Server behavior remain separate compatibility
+milestones. Complete Microsoft ATL source compatibility is not yet claimed.

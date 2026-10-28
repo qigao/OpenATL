@@ -20,8 +20,9 @@ target. Missing standard headers and APIs remain compatibility gaps; see the
 | `atlhost.h`, `atliface.h` | Windowed OLE containment, `CAxWindow`/`CAxWindow2`, site/ambient interfaces and explicit control creation; see [ownership contract](ACTIVEX_HOST.md) |
 | `atlcom.h` / `atlctl.h` | `AtlAdvise`/`AtlUnadvise`, `IDispEventSimpleImpl`, typed `SINK_ENTRY_INFO` maps |
 | `atlbase.h`: `CAtlModule`, `CAtlModuleT`, `CAtlExeModuleT` | Module locks, termination callbacks, balanced COM startup and explicit class-factory registration; see [module protocol](ATL_MODULE.md) |
-| `atlbase.h`: `CAtlDllModuleT<T>` | Real DLL exports and class-factory/unload forwarding through the existing `OpenATL::COM::Module` engine. Supports explicit bound tables or static `OBJECT_ENTRY_AUTO` discovery; custom derived registration hooks are supported. RGS/automatic persistent class registration remain pending. |
-| `OBJECT_ENTRY_AUTO(clsid, type)` | Static per-image class map, bounded duplicate/invalid CLSID rejection, real `IClassFactory`/object/module-lock ownership, native STA/MTA activation. No COM or heap allocation in its static registrar. |
+| `atlbase.h`: `CAtlDllModuleT<T>` | Real DLL exports and one `OpenATL::COM::Module` engine. Supports bound tables and static `OBJECT_ENTRY_AUTO` discovery, plus class-directed `UpdateRegistry(BOOL)` callbacks with ordered rollback; RGS resource scripts and automatic ProgID inference remain pending. |
+| `OBJECT_ENTRY_AUTO(clsid, type)` | Static per-image class map and optional typed `UpdateRegistry(BOOL)` callback, bounded duplicate/invalid CLSID rejection, real `IClassFactory`/object/module-lock ownership and native STA/MTA activation. No COM, registry I/O or heap allocation in static constructor. |
+| `DECLARE_NO_REGISTRY()` | Explicit ATL class opt-out of persistent registration; absent `UpdateRegistry` without this opt-out fails `E_NOTIMPL`. |
 | `atlcom.h`: `CComObjectRootBase`, `CComObjectRootEx`, `CComObjectRoot` | Nonaggregated reference counting, thread-model critical section, construction/release hooks |
 | `CComObject<T>` | Concrete IUnknown, raw creation with initial reference count **zero**, typed QI, last-release destruction |
 | `CComCoClass<T, &CLSID>`, `CComCreator<Object>` | Local nonaggregated creation, CLSID accessor, aggregation rejection |
@@ -70,7 +71,7 @@ DLL module reference; a DLL must use the module-aware creator or independently
 retain its module across locally created objects and external callers.
 
 **Tracked compatibility gaps:** expanded ATL object-map entry variants,
-chained interface maps, aggregation and tear-offs, automatic persistent
+chained interface maps, aggregation and tear-offs, RGS-driven persistent
 class registration, `IDispatchImpl`/type libraries,
 connection-point server templates, RGS, SAFEARRAY wrappers, windowless
 hosting, resource-based ActiveX dialogs and complete control/server support.
