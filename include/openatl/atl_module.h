@@ -137,18 +137,28 @@ public:
         if (!output) return E_POINTER;
         *output = nullptr;
         if (this->IsTerminated()) return E_UNEXPECTED;
-        auto* server = server_.load();
-        if (!server) return CLASS_E_CLASSNOTAVAILABLE;
-        // Pin this image module during the synchronous factory lookup. Any
-        // factory returned by the explicit server owns its own ModuleReference.
+        // Match ATL's CRTP hook: the DLL export delegates to T::GetClassObject,
+        // allowing a derived module to provide a standard object-map lookup.
+        // Pin the image throughout this synchronous callback.
         this->Lock();
-        const HRESULT result = server->GetClassObject(clsid, iid, output);
+        HRESULT result = E_UNEXPECTED;
+        try {
+            result = static_cast<T*>(this)->GetClassObject(clsid, iid, output);
+        } catch (...) {
+            result = detail::AtlModuleException();
+        }
+        if (FAILED(result)) *output = nullptr;
         this->Unlock();
         return result;
     }
 
     HRESULT GetClassObject(REFCLSID clsid, REFIID iid, LPVOID* output) noexcept {
-        return DllGetClassObject(clsid, iid, output);
+        if (!output) return E_POINTER;
+        *output = nullptr;
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        auto* server = server_.load();
+        return server ? server->GetClassObject(clsid, iid, output)
+                      : CLASS_E_CLASSNOTAVAILABLE;
     }
 
     // Default registration remains E_NOTIMPL until a derived module supplies
