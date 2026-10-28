@@ -27,7 +27,10 @@ jobs:
 
   windows-llvm:
     name: llvm-mingw x64 native + ARM64 PE build
-    runs-on: windows-2022
+    # Pilot CET-capable Windows Server 2025 image. Native HSP remains
+    # mandatory: the image label alone is not a guarantee and a worker
+    # without shadow-stack availability will fail openatl.cet_hardware_required.
+    runs-on: windows-2025
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -136,7 +139,10 @@ jobs:
 
   msvc-windows:
     name: MSVC ${{ matrix.target }} native/build qualification
-    runs-on: windows-2022
+    # Pilot CET-capable Windows Server 2025 image. Native HSP remains
+    # mandatory: the image label alone is not a guarantee and a worker
+    # without shadow-stack availability will fail openatl.cet_hardware_required.
+    runs-on: windows-2025
     timeout-minutes: 45
     strategy:
       fail-fast: false
