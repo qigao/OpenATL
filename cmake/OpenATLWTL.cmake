@@ -9,6 +9,7 @@ function(_openatl_prepare_wtl)
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     TLS_VERIFY TRUE)
   FetchContent_MakeAvailable(openatl_wtl_source)
+  set(_openatl_wtl_samples "${openatl_wtl_source_SOURCE_DIR}/Samples" PARENT_SCOPE)
 
   set(_wtl_headers "${CMAKE_CURRENT_BINARY_DIR}/wtl/include")
   set(_wtl_adapter "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/wtl/PrepareWtl.cmake")

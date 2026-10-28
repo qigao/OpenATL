@@ -1,6 +1,7 @@
 // Strict counted Windows encoding boundaries. ACP and UTF-8 are explicit.
 #ifndef OPENATL_TEXT_ENCODING_H
 #define OPENATL_TEXT_ENCODING_H
+#include "platform.h"
 #include <windows.h>
 #include <limits>
 #include <new>

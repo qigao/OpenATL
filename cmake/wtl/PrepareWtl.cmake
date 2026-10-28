@@ -114,14 +114,9 @@ _openatl_replace_between(
     "typedef ATL::CRegKey CRegKeyEx;"
     ""
     "COM Server class and legacy registration block")
-_openatl_replace_once(
-    "typedef ATL::CRegKey CRegKeyEx;"
-    ""
-    "retired CRegKeyEx alias")
 if(NOT _wtl_ui_text MATCHES "HRESULT Init\\(HINSTANCE hInstance\\)" OR
    _wtl_ui_text MATCHES "class CAppModule : public ATL::CComModule" OR
    _wtl_ui_text MATCHES "class CServerAppModule" OR
-   _wtl_ui_text MATCHES "typedef ATL::CRegKey CRegKeyEx" OR
    _wtl_ui_text MATCHES "ATL::_pAtlModule")
     message(FATAL_ERROR "WTL UI-only source still exposes COM Server")
 endif()
@@ -205,3 +200,16 @@ file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
 
 unset(_wtl_ui_header)
 unset(_wtl_ui_text)
+
+# Express CRTP enum bounds through the type: pT->enum is not a constant
+# expression for Clang when it appears in an initialized array declaration.
+set(_wtl_ui_header "${_wtl_headers}/atlctrlw.h")
+file(READ "${_wtl_ui_header}" _wtl_ui_text)
+string(REGEX MATCHALL "szString\\[pT->_nMaxMenuItemTextLength\\]" _wtl_bounds "${_wtl_ui_text}")
+list(LENGTH _wtl_bounds _wtl_bound_count)
+if(NOT _wtl_bound_count EQUAL 3)
+  message(FATAL_ERROR "WTL command-bar constant-bound source changed")
+endif()
+string(REPLACE "szString[pT->_nMaxMenuItemTextLength]" "szString[T::_nMaxMenuItemTextLength]"
+  _wtl_ui_text "${_wtl_ui_text}")
+file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")

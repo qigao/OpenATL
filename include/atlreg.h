@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "openatl/platform.h"
 #include <windows.h>
 #include <tchar.h>
 #include <limits.h>

@@ -57,13 +57,15 @@ CASES = (
 )
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        raise SystemExit("Usage: python tests/wtl10/native_arm64.py ARTIFACT_DIR")
+    if len(sys.argv) != 3 or sys.argv[2] not in ("llvm", "msvc"):
+        raise SystemExit("Usage: python tests/wtl10/native_arm64.py ARTIFACT_DIR llvm|msvc")
     if os.name != "nt" or platform.machine().lower() not in ("arm64", "aarch64"):
         raise SystemExit("Refuse non-native Windows ARM64 acceptance")
     root = Path(sys.argv[1]).resolve(strict=True)
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8-sig"))
-    required = {name + ".exe" for name in TARGETS} | {
+    samples = ("guidgen", "memdlg") if sys.argv[2] == "msvc" else ("guidgen",)
+    targets = (*TARGETS, *("openatl_official_" + name for name in samples))
+    required = {name + ".exe" for name in targets} | {
         "openatl_unload_fixture.dll", "openatl_unload_probe.dll", "openatl_com_server_fixture.dll"}
     if set(manifest) != required:
         raise SystemExit(f"ARM64 provenance set mismatch: missing={required-set(manifest)}, unexpected={set(manifest)-required}")
@@ -74,7 +76,7 @@ def main() -> int:
         if actual != manifest[filename].lower():
             raise SystemExit(f"ARM64 SHA256 mismatch for {filename}")
         arguments = [sys.executable, str(pe_validator), str(executable), "aarch64"]
-        if filename in ("openatl_gui_runtime.exe", "openatl_unicode_utf8.exe", "openatl_wtl10_sdi.exe"):
+        if filename in ("openatl_gui_runtime.exe", "openatl_unicode_utf8.exe", "openatl_wtl10_sdi.exe") or filename.startswith("openatl_official_"):
             arguments.append("--require-resources")
         subprocess.run(arguments, check=True, timeout=20)
     sdi_ui = Path(__file__).with_name("sdi_interactive.py")
@@ -100,7 +102,16 @@ def main() -> int:
                 f"Native ARM64 real SDI UI repeat {attempt} "
                 f"exit={sdi.returncode} stdout={sdi.stdout!r} "
                 f"stderr={sdi.stderr!r}")
-    print(f"OPENATL_NATIVE_ARM64_OK files={len(required)} tests={len(CASES) + 1} repeats=5 "
+        official_ui = Path(__file__).parents[1] / "official_samples" / "wtl_interactive.py"
+        for sample in samples:
+            official = subprocess.run([sys.executable, str(official_ui), sample,
+                str(root / ("openatl_official_" + sample + ".exe"))],
+                capture_output=True, text=True, errors="replace", timeout=35, check=False)
+            expected = f"OFFICIAL_WTL_OK sample={sample} behavior=1 resources=1 clean_exit=1"
+            if official.returncode != 0 or official.stderr.strip() or official.stdout.strip() != expected:
+                raise SystemExit(f"Native ARM64 official {sample} repeat {attempt} "
+                    f"exit={official.returncode} stdout={official.stdout!r} stderr={official.stderr!r}")
+    print(f"OPENATL_NATIVE_ARM64_OK files={len(required)} tests={len(CASES) + 1 + len(samples)} repeats=5 "
           "sha256=1 pe=1 resources=1")
     return 0
 

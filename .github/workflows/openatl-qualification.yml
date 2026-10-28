@@ -69,7 +69,7 @@ jobs:
           }
           $env:OPENATL_LLVM_MINGW_BIN=$env:OPENATL_LLVM_BIN
           $sample=(Resolve-Path tools/wtl10-test).Path
-          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_wtl10_sdi')
+          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_wtl10_sdi','openatl_official_guidgen')
           foreach($arch in @('x86_64','aarch64')) {
             $build="build-llvm-$arch"
             Run cmake @('--preset',"llvm-$arch","-DOPENATL_WTL_DEMO_DIR=$sample")
@@ -85,7 +85,7 @@ jobs:
             foreach($target in $targets) {
               $file="$build/$target.exe"
               $args_=@('tests/wtl10/verify_pe_machine.py',$file,$arch)
-              if($target -in @('openatl_gui_runtime','openatl_unicode_utf8','openatl_wtl10_sdi')) { $args_+='--require-resources' }
+              if($target -in @('openatl_gui_runtime','openatl_unicode_utf8','openatl_wtl10_sdi','openatl_official_guidgen','openatl_official_memdlg')) { $args_+='--require-resources' }
               Run python $args_
               $manifest["$target.exe"]=(Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
             }
@@ -172,12 +172,12 @@ jobs:
           if(!$identity -or !(Select-String -Path $identity.FullName -Pattern 'CMAKE_CXX_COMPILER_ID "MSVC"' -Quiet)) {
             throw 'MSVC cl.exe was not the actual compiler'
           }
-          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_wtl10_sdi')
+          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_wtl10_sdi','openatl_official_guidgen','openatl_official_memdlg')
           $manifest=@{}
           foreach($target in $targets) {
             $file="$build/$target.exe"
             $args_=@('tests/wtl10/verify_pe_machine.py',$file,$machine)
-            if($target -in @('openatl_gui_runtime','openatl_unicode_utf8','openatl_wtl10_sdi')) { $args_+='--require-resources' }
+            if($target -in @('openatl_gui_runtime','openatl_unicode_utf8','openatl_wtl10_sdi','openatl_official_guidgen','openatl_official_memdlg')) { $args_+='--require-resources' }
             Run python $args_
             $manifest["$target.exe"]=(Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
           }
@@ -236,7 +236,7 @@ jobs:
           name: openatl-llvm-arm64
           path: llvm-arm64
       - name: Verify SHA256, ARM64 PE, real SDI, CET and unload tests x5
-        run: python tests/wtl10/native_arm64.py llvm-arm64
+        run: python tests/wtl10/native_arm64.py llvm-arm64 llvm
 
   windows-arm64-msvc:
     name: Real Windows ARM64 MSVC CTest equivalents
@@ -250,7 +250,7 @@ jobs:
           name: openatl-msvc-arm64
           path: msvc-arm64
       - name: Verify SHA256, ARM64 PE, real SDI, CET and unload tests x5
-        run: python tests/wtl10/native_arm64.py msvc-arm64
+        run: python tests/wtl10/native_arm64.py msvc-arm64 msvc
 
   linux-macos-cross:
     name: ${{ matrix.host }} Windows x64/ARM64 cross CMake
@@ -308,8 +308,8 @@ jobs:
             else
               python3 tests/wtl10/verify_pe_mitigations.py "$build/openatl_mitigation_runtime.exe" "$arch" --require-cfg
             fi
-            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_unicode openatl_unicode_utf8 openatl_atl_extensions openatl_atl_mapping openatl_atl_image openatl_thunk_fault openatl_mitigation_runtime openatl_unload_runner openatl_unload_native openatl_com_client openatl_com_server_tests openatl_wtl10_sdi; do
-              if [ "$target" = openatl_gui_runtime ] || [ "$target" = openatl_unicode_utf8 ] || [ "$target" = openatl_wtl10_sdi ]; then
+            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_unicode openatl_unicode_utf8 openatl_atl_extensions openatl_atl_mapping openatl_atl_image openatl_thunk_fault openatl_mitigation_runtime openatl_unload_runner openatl_unload_native openatl_com_client openatl_com_server_tests openatl_wtl10_sdi openatl_official_guidgen; do
+              if [ "$target" = openatl_gui_runtime ] || [ "$target" = openatl_unicode_utf8 ] || [ "$target" = openatl_wtl10_sdi ] || [ "$target" = openatl_official_guidgen ]; then
                 python3 tests/wtl10/verify_pe_machine.py "$build/$target.exe" "$arch" --require-resources
               else
                 python3 tests/wtl10/verify_pe_machine.py "$build/$target.exe" "$arch"

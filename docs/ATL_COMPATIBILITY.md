@@ -64,8 +64,11 @@ implemented. No claim of arbitrary ATL application compatibility is made.
 Existing native COM core tests cover zero-ref creation, typed/IID queries,
 multiple inheritance, canonical identity, construction failure and cleanup,
 threaded references, single-thread policy, and explicit module pin retirement.
-The full pinned WTL SDI sample builds and runs without source patches, including
+The pinned community WTL SDI fixture builds and runs without source patches, including
 its existing `<atlcom.h>` include and `Init(nullptr, hInstance)` call.
+It is not an official sample. [Official sample coverage](OFFICIAL_SAMPLES.md)
+records separate WTL GuidGen/MemDlg tests and the gaps observed in Microsoft's
+COMMap, ATLCollections and ATLSafeArray sources.
 
 Public behavior references:
 

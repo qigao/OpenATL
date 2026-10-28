@@ -10,18 +10,7 @@
 // Compile-time source provenance for CI; never defined by an external ATL.
 #define OPENATL_REPOSITORY_HEADERS 0x4F41544CUL
 
-// Ensure Windows 7 minimum
-#ifndef WINVER
-#define WINVER 0x0601
-#endif
-
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0601
-#endif
-
-#ifndef _WIN32_IE
-#define _WIN32_IE 0x0800
-#endif
+#include "openatl/platform.h"
 
 // _MSC_VER compatibility shim for MinGW
 // WTL checks _MSC_VER >= 1400; define as VS2015 (1900) if not set

@@ -10,16 +10,7 @@
 #error ATL requires C++ compilation
 #endif
 
-// Minimum Windows 7
-#ifndef WINVER
-#define WINVER 0x0601
-#endif
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0601
-#endif
-#ifndef _WIN32_IE
-#define _WIN32_IE 0x0800
-#endif
+#include "openatl/platform.h"
 
 #include <windows.h>
 #include <ole2.h>
@@ -489,6 +480,10 @@ __declspec(selectany) CAtlWinModule _AtlWinModule;
 HRESULT AtlGetCommCtrlVersion(LPDWORD pdwMajor, LPDWORD pdwMinor);
 
 } // namespace ATL
+
+#ifndef _ATL_NO_AUTOMATIC_NAMESPACE
+using namespace ATL;
+#endif
 
 // For headers that use the ATL:: prefix
 using ATL::_AtlBaseModule;
