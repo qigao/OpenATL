@@ -1,10 +1,12 @@
-# Optional in-process COM server
+# ATL COM Server — implementation and compatibility roadmap
 
-OpenATL's server core is a source-owned C++17 API under `OpenATL::COM`,
-separate from the existing ATL-compatible UI/client headers. It provides
+COM Server and COM Client are both mandatory OpenATL capabilities. The
+existing source-owned server core under `OpenATL::COM` complements
+`atlcom.h` and provides
 nonaggregated COM objects, explicit interface/class tables, class factories,
-module lifetime accounting, and explicit registry registration. No deprecated
-ATL module facade, RGS interpreter, EXE server, Automation/type-library
+module lifetime accounting, and explicit registry registration. Complete
+standard ATL DLL modules, automatic object maps, RGS, EXE registration,
+Automation/type-library
 implementation, custom proxy/stub generator or ActiveX host is supplied.
 
 For conventional ATL object declarations, `atlcom.h` supplies the
