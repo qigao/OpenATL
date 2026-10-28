@@ -215,8 +215,15 @@ public: \
     namespace { \
         ATL::detail::AutoObjectEntry _OPENATL_AUTO_CAT(_openatlAutoEntry_, __COUNTER__)( \
             (clsid), static_cast<OpenATL::COM::Creator>( \
-                &ATL::CComObject<type>::CreateInstance)); \
+                &ATL::CComObject<type>::CreateInstance), \
+            ATL::detail::AutoRegistryMethod<type>::callback); \
     }
+
+// ATL's deliberate declaration that this class performs no persistent
+// registration. This is opt-in, unlike a missing/unsupported registrar.
+#define DECLARE_NO_REGISTRY() \
+public: \
+    static HRESULT WINAPI UpdateRegistry(BOOL) noexcept { return S_OK; }
 
 #define DECLARE_NOT_AGGREGATABLE(x) \
     using _CreatorClass = ATL::CComCreator<ATL::CComObject<x>>;

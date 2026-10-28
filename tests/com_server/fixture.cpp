@@ -1,13 +1,29 @@
 #include <atlcom.h>
-#include <openatl/com_server.h>
 #include <openatl/com_registration.h>
 #include "interfaces.h"
 
 namespace {
 using namespace OpenATL::COM;
-// The actual DLL exported class is declared with standard ATL source
-// syntax. Its IClassFactory and module references still come exclusively
-// from OpenATL::COM::Module, composed from the static object map on demand.
+
+HMODULE image = nullptr;
+HRESULT registerClass(bool installing, REFCLSID clsid, LPCWSTR progId) noexcept {
+    wchar_t path[32768]{};
+    const DWORD length = ::GetModuleFileNameW(image, path, 32768);
+    if (!length) return HRESULT_FROM_WIN32(::GetLastError());
+    if (length >= 32768) return HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER);
+    ATL::CRegKey root;
+    const LSTATUS status = ::RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Classes",
+                                          0, KEY_READ | KEY_WRITE, &root.m_hKey);
+    if (status != ERROR_SUCCESS) return HRESULT_FROM_WIN32(status);
+    const ClassRegistration entry{clsid, path, progId,
+        L"OpenATL native COM class", ThreadingModel::Both};
+    return installing ? RegisterClass(root.m_hKey, entry)
+                      : UnregisterClass(root.m_hKey, entry);
+}
+
+// The DLL contains two classes declared with genuine ATL OBJECT_ENTRY_AUTO.
+// CAtlDllModuleT invokes each class's real UpdateRegistry callback and
+// continues to use the same OpenATL::COM::Module factory/owner engine.
 class Value : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>,
               public ATL::CComCoClass<Value, &CLSID_OpenATLValue>,
               public IOpenATLDerived, public IOpenATLSecond {
@@ -17,6 +33,9 @@ public:
         COM_INTERFACE_ENTRY2_IID(IID_OpenATLValue, IOpenATLValue, IOpenATLDerived)
         COM_INTERFACE_ENTRY_IID(IID_OpenATLSecond, IOpenATLSecond)
     END_COM_MAP()
+    static HRESULT WINAPI UpdateRegistry(BOOL install) noexcept {
+        return registerClass(install != FALSE, CLSID_OpenATLValue, OpenATLTestProgId);
+    }
     HRESULT STDMETHODCALLTYPE GetValue(LONG* value) noexcept override {
         if (!value) return E_POINTER;
         *value = 42;
@@ -35,37 +54,26 @@ public:
 };
 OBJECT_ENTRY_AUTO(CLSID_OpenATLValue, Value)
 
-HMODULE image = nullptr;
-
-HRESULT registration(bool install) noexcept {
-    wchar_t path[32768]{};
-    DWORD length = ::GetModuleFileNameW(image, path, 32768);
-    if (!length) return HRESULT_FROM_WIN32(::GetLastError());
-    if (length >= 32768) return HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER);
-    ATL::CRegKey root;
-    LSTATUS status = ::RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Classes", 0,
-                                    KEY_READ | KEY_WRITE, &root.m_hKey);
-    if (status != ERROR_SUCCESS) return HRESULT_FROM_WIN32(status);
-    ClassRegistration entry{CLSID_OpenATLValue, path, OpenATLTestProgId,
-                             L"OpenATL native COM fixture", ThreadingModel::Both};
-    return install ? RegisterClass(root.m_hKey, entry) : UnregisterClass(root.m_hKey, entry);
-}
-// Standard ATL DLL module and automatic class map share the same real
-// OpenATL::COM factory/registration engine. The fixture has no type library;
-// derived registration hooks install/revoke this concrete class.
-class FixtureAtlModule : public ATL::CAtlDllModuleT<FixtureAtlModule> {
+class AuxValue : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>,
+                 public ATL::CComCoClass<AuxValue, &CLSID_OpenATLAuxValue>,
+                 public IOpenATLValue {
 public:
-    HRESULT RegisterServer(BOOL, const CLSID* selected = nullptr) noexcept {
-        if (selected && !IsEqualCLSID(*selected, CLSID_OpenATLValue))
-            return CLASS_E_CLASSNOTAVAILABLE;
-        return registration(true);
+    BEGIN_COM_MAP(AuxValue)
+        COM_INTERFACE_ENTRY_IID(IID_OpenATLValue, IOpenATLValue)
+    END_COM_MAP()
+    static HRESULT WINAPI UpdateRegistry(BOOL install) noexcept {
+        return registerClass(install != FALSE, CLSID_OpenATLAuxValue, OpenATLAuxProgId);
     }
-    HRESULT UnregisterServer(BOOL, const CLSID* selected = nullptr) noexcept {
-        if (selected && !IsEqualCLSID(*selected, CLSID_OpenATLValue))
-            return CLASS_E_CLASSNOTAVAILABLE;
-        return registration(false);
+    HRESULT STDMETHODCALLTYPE GetValue(LONG* value) noexcept override {
+        if (!value) return E_POINTER;
+        *value = 84;
+        return S_OK;
     }
 };
+OBJECT_ENTRY_AUTO(CLSID_OpenATLAuxValue, AuxValue)
+
+// No application-specific registration override or manual BindServer.
+class FixtureAtlModule : public ATL::CAtlDllModuleT<FixtureAtlModule> {};
 FixtureAtlModule dllModule;
 } // namespace
 

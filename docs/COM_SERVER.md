@@ -4,10 +4,12 @@ COM Server and COM Client are both mandatory OpenATL capabilities. The
 existing source-owned server core under `OpenATL::COM` complements
 `atlcom.h` and provides
 nonaggregated COM objects, explicit interface/class tables, class factories,
-module lifetime accounting, and explicit registry registration. Complete
-standard ATL DLL modules and static `OBJECT_ENTRY_AUTO` class discovery.
-RGS, automatic registry registration, EXE registration and Automation/type-library
-implementation, custom proxy/stub generator or ActiveX host is supplied.
+module lifetime accounting, and explicit registry registration. Standard ATL
+DLL module exports and `OBJECT_ENTRY_AUTO` class discovery exist. A class
+can now supply its own real `UpdateRegistry(BOOL)` callback to participate
+in deterministic automatic DLL registration; the callback is not inferred
+from the CLSID. RGS resources, type-library registration, aggregation and
+the full ATL COM Server API remain compatibility gaps.
 
 For conventional ATL object declarations, `atlcom.h` supplies the
 [nonaggregated object and COM-map compatibility subset](ATL_COMPATIBILITY.md).
@@ -89,6 +91,42 @@ registration metadata from `OBJECT_ENTRY_AUTO` alone: that macro currently
 selects class factories, not RGS/Windows installation semantics. The
 standard ATL class-directed registrar and resource scripts remain upcoming
 compatibility milestones.
+
+## Class-directed ATL `UpdateRegistry` milestone
+
+A class declared with `OBJECT_ENTRY_AUTO(clsid, Class)` may implement
+`static HRESULT WINAPI UpdateRegistry(BOOL install)` using its actual
+CLSID, ProgID, path, registry root and threading model. The header stores
+a non-owning typed callback in each static object-map node, alongside the
+factory creator. The DLL module invokes the callbacks only on explicit
+`RegisterServer`/`UnregisterServer` requests; no registry operation
+happens in `DllMain` or during simple factory lookup.
+
+Entries are sorted deterministically by CLSID after a bounded validation
+pass. All selected class callbacks must exist before any registry mutation;
+otherwise registration fails with `E_NOTIMPL`. Successful calls register
+in that order. If a later class fails, the DLL module invokes earlier
+completed registrations' inverse callbacks in reverse order. Unregistration
+also uses reverse order. A derived DLL module may supply its own registrar.
+An explicitly bound manual factory table remains supported and does not
+silently borrow unrelated auto-map registration callbacks.
+
+For intentional classes requiring no Windows registration,
+`DECLARE_NO_REGISTRY()` implements the deliberate `UpdateRegistry` no-op.
+Without such an explicit decision, absent callbacks are **errors**.
+
+The formal DLL fixture registers two distinct classes to
+`HKCU\\Software\\Classes`, tests actual STA/MTA `CoCreateInstance`,
+and injects a foreign second ProgID to prove first-class rollback.
+All installation metadata remains class/application owned, with no implicit
+HKLM registration or elevation. Callback-based rollback cannot prevent
+concurrent external registry writes; use the strict owner-verified
+`RegisterClasses`/`UnregisterClasses` APIs when a shared descriptor
+batch and complete preflight are needed.
+
+**Still missing:** resource-driven `DECLARE_REGISTRY_RESOURCEID`/RGS execution,
+ATL's complete class registry/type-library APIs, and broad Microsoft ATL
+sample compatibility. The callbacks are not an RGS interpreter.
 
 ## Integration and validation
 

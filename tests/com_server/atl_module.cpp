@@ -18,6 +18,7 @@ void WINAPI countCallback(DWORD_PTR value) { ++*reinterpret_cast<std::atomic<int
 bool pinnedInDestructor = true;
 inline constexpr CLSID classId = {0xd19b8862, 0xa881, 0x47f6, {0x9c, 0x71, 0x91, 0xb2, 0xaf, 0x43, 0xe1, 0x03}};
 inline constexpr CLSID autoClassId = {0xd19b8863, 0xa881, 0x47f6, {0x9c, 0x71, 0x91, 0xb2, 0xaf, 0x43, 0xe1, 0x03}};
+inline constexpr CLSID noRegistryClassId = {0xd19b8864, 0xa881, 0x47f6, {0x9c, 0x71, 0x91, 0xb2, 0xaf, 0x43, 0xe1, 0x03}};
 std::atomic<int> autoLive{0}, autoFinalRelease{0};
 
 class Value : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>, public IPersist {
@@ -52,6 +53,24 @@ public:
     }
 };
 OBJECT_ENTRY_AUTO(autoClassId, AutoValue)
+
+// An explicit DECLARE_NO_REGISTRY is the sole intentional no-op registrar.
+// A class without UpdateRegistry must instead fail with E_NOTIMPL.
+class NoRegistryValue : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>,
+                        public ATL::CComCoClass<NoRegistryValue, &noRegistryClassId>,
+                        public IPersist {
+public:
+    DECLARE_NO_REGISTRY()
+    BEGIN_COM_MAP(NoRegistryValue)
+        COM_INTERFACE_ENTRY(IPersist)
+    END_COM_MAP()
+    HRESULT STDMETHODCALLTYPE GetClassID(CLSID* output) override {
+        if (!output) return E_POINTER;
+        *output = noRegistryClassId;
+        return S_OK;
+    }
+};
+OBJECT_ENTRY_AUTO(noRegistryClassId, NoRegistryValue)
 
 class Factory : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>, public IClassFactory {
 public:
@@ -363,6 +382,13 @@ bool auto_object_map() {
     {
         Library dll;
         CHECK(dll.DllCanUnloadNow() == S_OK);
+        CHECK(dll.RegisterServer(FALSE, &autoClassId) == E_NOTIMPL);
+        CHECK(dll.UnregisterServer(FALSE, &autoClassId) == E_NOTIMPL);
+        CHECK(dll.RegisterServer(FALSE, nullptr) == E_NOTIMPL);
+        CHECK(dll.RegisterServer(FALSE, &CLSID_NULL) == CLASS_E_CLASSNOTAVAILABLE);
+        CHECK(dll.RegisterServer(FALSE, &noRegistryClassId) == S_OK);
+        CHECK(dll.UnregisterServer(FALSE, &noRegistryClassId) == S_OK);
+        CHECK(noCom() && dll.DllCanUnloadNow() == S_OK);
         ATL::CComPtr<IClassFactory> factory;
         CHECK(dll.DllGetClassObject(autoClassId, IID_IClassFactory,
             reinterpret_cast<void**>(&factory.p)) == S_OK && factory.p);

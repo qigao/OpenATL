@@ -33,8 +33,12 @@ table; applications still export their own DLL entry points. This is an
 implemented server milestone. Standard `OBJECT_ENTRY_AUTO(clsid, class)`
 now discovers static COM class entries automatically, composes the **same**
 class-factory engine and supports native STA/MTA DLL activation without
-manually calling `BindServer`. This does **not** yet implement automatic
-registry registration, RGS, type libraries or all ATL object-map operations.
+manually calling `BindServer`. A class-defined
+`static HRESULT WINAPI UpdateRegistry(BOOL)` now drives real DLL registration
+in CLSID order, with inverse callback rollback on failure. Missing class
+registration hooks fail `E_NOTIMPL`; `DECLARE_NO_REGISTRY()` is an explicit
+opt-out. This does **not** yet implement RGS resource parsing, automatic
+ProgID/path inference, type libraries or all ATL object-map operations.
 See [server contracts](docs/COM_SERVER.md) and
 [DLL module lifetime](docs/ATL_MODULE.md).
 
@@ -44,8 +48,9 @@ and COM maps: `CComObjectRootEx`, `CComObject`, `CComCoClass`, `CComCreator`,
 See the [ATL compatibility matrix](docs/ATL_COMPATIBILITY.md) for supported
 semantics and limits. `CAtlDllModuleT` is implemented for explicit class
 tables; static `OBJECT_ENTRY_AUTO` factory discovery is supported.
-Automatic registration, chained/aggregated COM maps, RGS, type libraries
-and aggregation remain compatibility work. `CComModule`
+Class-directed `UpdateRegistry` registration is implemented; resource-based
+RGS, expanded COM maps, type libraries and aggregation remain compatibility
+work. `CComModule`
 is currently absent and will be evaluated against actual ATL consumers. Windowed ActiveX
 containment and typed Automation event sinks are described in
 [the hosting contract](docs/ACTIVEX_HOST.md); resource-based ActiveX dialogs

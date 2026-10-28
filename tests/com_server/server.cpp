@@ -349,6 +349,43 @@ public:
     ~Dll() { Close(); }
 };
 
+// All test-induced foreign registry content is owned under a newly-created
+// exact ProgID. No preexisting user entry is overwritten or deleted.
+struct ForeignAuxProgId {
+    HKEY key = nullptr;
+    bool owned = false;
+    static constexpr LPCWSTR path = L"Software\\Classes\\OpenATL.Conformance.Aux.1";
+    bool Create() noexcept {
+        DWORD disposition = 0;
+        const LSTATUS state = ::RegCreateKeyExW(HKEY_CURRENT_USER, path, 0,
+            nullptr, 0, KEY_ALL_ACCESS, nullptr, &key, &disposition);
+        if (state != ERROR_SUCCESS) return false;
+        owned = disposition == REG_CREATED_NEW_KEY;
+        return owned && ::RegSetValueExW(key, nullptr, 0, REG_SZ,
+            reinterpret_cast<const BYTE*>(L"Foreign application"),
+            sizeof(L"Foreign application")) == ERROR_SUCCESS;
+    }
+    bool Check() const noexcept {
+        if (!key || !owned) return false;
+        wchar_t value[64]{};
+        DWORD type = 0, bytes = sizeof(value);
+        return ::RegQueryValueExW(key, nullptr, nullptr, &type,
+                   reinterpret_cast<BYTE*>(value), &bytes) == ERROR_SUCCESS &&
+               type == REG_SZ && ::lstrcmpW(value, L"Foreign application") == 0;
+    }
+    bool Remove() noexcept {
+        if (key) { ::RegCloseKey(key); key = nullptr; }
+        if (!owned) return false;
+        if (::RegDeleteKeyW(HKEY_CURRENT_USER, path) != ERROR_SUCCESS) return false;
+        owned = false;
+        return true;
+    }
+    ~ForeignAuxProgId() {
+        if (key) ::RegCloseKey(key);
+        if (owned) (void)::RegDeleteKeyW(HKEY_CURRENT_USER, path);
+    }
+};
+
 bool native(DWORD apartment) {
     Dll dll;
     REQUIRE(dll.Open());
@@ -369,6 +406,20 @@ bool native(DWORD apartment) {
     REQUIRE(factory->LockServer(FALSE) == E_UNEXPECTED);
     factory.Release();
     REQUIRE(dll.unload() == S_OK);
+    // First class is ordered before the auxiliary class by CLSID. A foreign
+    // second ProgID forces failure after first-class installation, which
+    // must be rolled back without modifying the foreign key.
+    {
+        ForeignAuxProgId foreign;
+        REQUIRE(foreign.Create());
+        REQUIRE(dll.install() == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS));
+        REQUIRE(foreign.Check());
+        wchar_t guid[40]{};
+        REQUIRE(::StringFromGUID2(CLSID_OpenATLValue, guid, 40));
+        const std::wstring firstKey = std::wstring(L"Software\\Classes\\CLSID\\") + guid;
+        REQUIRE(!exists(HKEY_CURRENT_USER, firstKey.c_str()));
+        REQUIRE(foreign.Remove());
+    }
     REQUIRE(dll.install() == S_OK);
     dll.installed = true;
     REQUIRE(::CoGetContextToken(&token) == CO_E_NOTINITIALIZED);
@@ -380,13 +431,20 @@ bool native(DWORD apartment) {
     CLSID resolved{};
     REQUIRE(::CLSIDFromProgID(OpenATLTestProgId, &resolved) == S_OK &&
              IsEqualCLSID(resolved, CLSID_OpenATLValue));
+    REQUIRE(::CLSIDFromProgID(OpenATLAuxProgId, &resolved) == S_OK &&
+             IsEqualCLSID(resolved, CLSID_OpenATLAuxValue));
     ATL::CComPtr<IOpenATLValue> object;
     REQUIRE(::CoCreateInstance(CLSID_OpenATLValue, nullptr, CLSCTX_INPROC_SERVER,
                                 IID_OpenATLValue, reinterpret_cast<void**>(&object)) == S_OK);
     LONG value = 0;
     REQUIRE(object->GetValue(&value) == S_OK && value == 42 && identities(object));
+    ATL::CComPtr<IOpenATLValue> secondObject;
+    REQUIRE(::CoCreateInstance(CLSID_OpenATLAuxValue, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_OpenATLValue, reinterpret_cast<void**>(&secondObject)) == S_OK);
+    REQUIRE(secondObject->GetValue(&value) == S_OK && value == 84);
     REQUIRE(dll.unload() == S_FALSE);
     object.Release();
+    secondObject.Release();
     // COM may cache a class factory until unused libraries are collected.
     ::CoFreeUnusedLibrariesEx(0, 0);
     REQUIRE(dll.unload() == S_OK);
@@ -394,6 +452,9 @@ bool native(DWORD apartment) {
     dll.installed = false;
     void* missing = reinterpret_cast<void*>(1);
     REQUIRE(::CoCreateInstance(CLSID_OpenATLValue, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_OpenATLValue, &missing) == REGDB_E_CLASSNOTREG && !missing);
+    missing = reinterpret_cast<void*>(1);
+    REQUIRE(::CoCreateInstance(CLSID_OpenATLAuxValue, nullptr, CLSCTX_INPROC_SERVER,
                                 IID_OpenATLValue, &missing) == REGDB_E_CLASSNOTREG && !missing);
     REQUIRE(dll.Close());
     REQUIRE(::GetModuleHandleW(L"openatl_com_server_fixture.dll") == nullptr);

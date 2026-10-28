@@ -4,9 +4,11 @@
 #include "../atlbase.h"
 #include "com_server.h"
 #include <atomic>
+#include <algorithm>
 #include <mutex>
 #include <optional>
 #include <memory>
+#include <type_traits>
 #include <vector>
 #include <limits>
 #include <shellapi.h>
@@ -100,18 +102,37 @@ inline HRESULT AtlModuleException() noexcept {
 }
 
 // One registered object-map entry per OBJECT_ENTRY_AUTO expansion, owned by
-// its binary image. Constructors only link already-allocated static nodes;
+// its binary image. A class may provide static HRESULT UpdateRegistry(BOOL).
+// Missing registration callbacks are errors, not implicit success.
+// Constructors only link already-allocated static nodes;
 // they neither allocate nor call COM while the loader lock is held.
 // Registration completes before the first external class-object request.
+using AutoRegistryCallback = HRESULT (*)(BOOL) noexcept;
+template<class Class, class = void>
+struct AutoRegistryMethod {
+    static constexpr AutoRegistryCallback callback = nullptr;
+};
+template<class Class>
+struct AutoRegistryMethod<Class,
+    std::void_t<decltype(Class::UpdateRegistry(TRUE))>> {
+    static HRESULT Invoke(BOOL install) noexcept {
+        try { return static_cast<HRESULT>(Class::UpdateRegistry(install)); }
+        catch (...) { return AtlModuleException(); }
+    }
+    static constexpr AutoRegistryCallback callback = &Invoke;
+};
+
 struct AutoObjectEntry;
 inline std::atomic<AutoObjectEntry*> autoObjectEntries{nullptr};
 struct AutoObjectEntry {
     const CLSID clsid;
     const OpenATL::COM::Creator creator;
+    const AutoRegistryCallback registrar;
     AutoObjectEntry* next = nullptr;
 
-    AutoObjectEntry(REFCLSID id, OpenATL::COM::Creator function) noexcept
-        : clsid(id), creator(function) {
+    AutoObjectEntry(REFCLSID id, OpenATL::COM::Creator function,
+                    AutoRegistryCallback registry = nullptr) noexcept
+        : clsid(id), creator(function), registrar(registry) {
         AutoObjectEntry* head = autoObjectEntries.load(std::memory_order_relaxed);
         do {
             next = head;
@@ -199,8 +220,17 @@ public:
                       : CLASS_E_CLASSNOTAVAILABLE;
     }
 
-    // Default registration remains E_NOTIMPL until a derived module supplies
-    // real registry/type-library semantics. Do not report fake S_OK.
+    // ATL-compatible class-directed registration: each OBJECT_ENTRY_AUTO
+    // class must expose a real static UpdateRegistry(BOOL), or explicitly
+    // opt out with DECLARE_NO_REGISTRY. This path never derives ProgIDs or
+    // installer privileges from the CLSID and never implements RGS silently.
+    HRESULT RegisterServer(BOOL = FALSE, const CLSID* selected = nullptr) noexcept {
+        return ApplyAutoRegistry(TRUE, selected);
+    }
+    HRESULT UnregisterServer(BOOL = FALSE, const CLSID* selected = nullptr) noexcept {
+        return ApplyAutoRegistry(FALSE, selected);
+    }
+
     // Pin active registration exports against a cooperative DLL unload.
     HRESULT DllRegisterServer(BOOL registerTypeLib = TRUE) noexcept {
         if (this->IsTerminated()) return E_UNEXPECTED;
@@ -228,10 +258,68 @@ public:
     }
 
 private:
+    struct RegistryEntry {
+        CLSID clsid;
+        detail::AutoRegistryCallback callback;
+    };
+    static bool BeforeClsid(REFCLSID a, REFCLSID b) noexcept {
+        if (a.Data1 != b.Data1) return a.Data1 < b.Data1;
+        if (a.Data2 != b.Data2) return a.Data2 < b.Data2;
+        if (a.Data3 != b.Data3) return a.Data3 < b.Data3;
+        for (size_t i = 0; i < 8; ++i)
+            if (a.Data4[i] != b.Data4[i]) return a.Data4[i] < b.Data4[i];
+        return false;
+    }
+    // All callbacks are immutable after the first successful class lookup.
+    // Registration order is CLSID-sorted, not dependent on loader/link order.
+    HRESULT ApplyAutoRegistry(BOOL installing, const CLSID* selected) noexcept {
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        if (server_.load(std::memory_order_acquire)) return E_NOTIMPL;
+        HRESULT result = InitializeAutoMapOnce();
+        if (FAILED(result)) return result;
+        size_t matched = 0;
+        for (const auto& item : autoRegistrars_) {
+            if (selected && !IsEqualCLSID(*selected, item.clsid)) continue;
+            ++matched;
+            if (!item.callback) return E_NOTIMPL; // Preflight *all* callbacks.
+        }
+        if (!matched) return selected ? CLASS_E_CLASSNOTAVAILABLE : S_FALSE;
+
+        if (installing) {
+            for (size_t i = 0; i < autoRegistrars_.size(); ++i) {
+                const auto& item = autoRegistrars_[i];
+                if (selected && !IsEqualCLSID(*selected, item.clsid)) continue;
+                result = item.callback(TRUE);
+                if (FAILED(result)) {
+                    HRESULT rollback = S_OK;
+                    while (i != 0) {
+                        --i;
+                        const auto& previous = autoRegistrars_[i];
+                        if (selected && !IsEqualCLSID(*selected, previous.clsid))
+                            continue;
+                        const HRESULT undone = previous.callback(FALSE);
+                        if (FAILED(undone) && SUCCEEDED(rollback))
+                            rollback = undone;
+                    }
+                    return FAILED(rollback) ? rollback : result;
+                }
+            }
+            return S_OK;
+        }
+        for (size_t i = autoRegistrars_.size(); i-- != 0;) {
+            const auto& item = autoRegistrars_[i];
+            if (selected && !IsEqualCLSID(*selected, item.clsid)) continue;
+            result = item.callback(FALSE);
+            if (FAILED(result)) return result;
+        }
+        return S_OK;
+    }
+
     HRESULT InitializeAutoMapOnce() noexcept {
         try {
             std::call_once(autoOnce_, [this]() noexcept {
                 try {
+                    std::vector<const detail::AutoObjectEntry*> entries;
                     for (const detail::AutoObjectEntry* entry =
                              detail::autoObjectEntries.load(std::memory_order_acquire);
                          entry; entry = entry->next) {
@@ -239,20 +327,29 @@ private:
                             autoStatus_ = E_INVALIDARG;
                             return;
                         }
-                        if (autoEntries_.size() == 1024) {
+                        if (entries.size() == 1024) {
                             autoStatus_ = HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW);
                             return;
                         }
-                        for (const auto& existing : autoEntries_)
-                            if (IsEqualCLSID(entry->clsid, existing.clsid)) {
+                        for (const auto* existing : entries)
+                            if (IsEqualCLSID(entry->clsid, existing->clsid)) {
                                 autoStatus_ = E_INVALIDARG;
                                 return;
                             }
-                        autoEntries_.push_back({entry->clsid, entry->creator});
+                        entries.push_back(entry);
                     }
-                    if (autoEntries_.empty()) {
+                    if (entries.empty()) {
                         autoStatus_ = CLASS_E_CLASSNOTAVAILABLE;
                         return;
+                    }
+                    std::sort(entries.begin(), entries.end(),
+                        [](const detail::AutoObjectEntry* a,
+                           const detail::AutoObjectEntry* b) {
+                            return BeforeClsid(a->clsid, b->clsid);
+                        });
+                    for (const auto* entry : entries) {
+                        autoEntries_.push_back({entry->clsid, entry->creator});
+                        autoRegistrars_.push_back({entry->clsid, entry->registrar});
                     }
                     autoOwned_.reset(new (std::nothrow)
                         OpenATL::COM::Module(autoEntries_.data(), autoEntries_.size()));
@@ -278,6 +375,7 @@ private:
     std::once_flag autoOnce_;
     HRESULT autoStatus_ = CLASS_E_CLASSNOTAVAILABLE;
     std::vector<OpenATL::COM::ClassEntry> autoEntries_;
+    std::vector<RegistryEntry> autoRegistrars_;
     std::unique_ptr<OpenATL::COM::Module> autoOwned_;
     std::atomic<OpenATL::COM::Module*> autoServer_{nullptr};
 };
