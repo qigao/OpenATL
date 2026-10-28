@@ -16,6 +16,7 @@ Consumers link only `OpenATL::ATL`; it supplies both ATL and adapted WTL headers
 | `COM_INTERFACE_ENTRY`, `COM_INTERFACE_ENTRY_IID` | Interface type or explicit IID mapping |
 | `COM_INTERFACE_ENTRY2`, `COM_INTERFACE_ENTRY2_IID` | Select the inheritance branch for an ambiguous base interface |
 | `DECLARE_NOT_AGGREGATABLE` | Select the nonaggregated creator |
+| `DECLARE_PROTECT_FINAL_CONSTRUCT` | Retain/release the construction guard reference |
 | WTL `CAppModule::Init` | `Init(hInstance)` and ordinary `Init(nullptr, hInstance)`; nonempty object maps/type-library IDs fail explicitly |
 
 Reference-count and ownership semantics follow the corresponding ATL APIs.
