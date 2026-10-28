@@ -1,0 +1,161 @@
+name: OpenATL local build
+dotEnv: [.env]
+input_policy: strict
+inputs:
+  HOST:
+    type: string
+    default: windows
+    enum: [windows, unix]
+  PRESET:
+    type: string
+    default: msvc-x64
+    enum: [msvc-x64, msvc-arm64, msvc-salts, llvm-x86_64, llvm-aarch64]
+  TASK:
+    type: string
+    default: all
+    enum: [all, configure, refresh, build, test]
+  TARGET:
+    type: string
+    default: ''
+    description: Optional single CMake target for local builds
+  TEST_REGEX:
+    type: string
+    default: ''
+    description: Optional CTest test-name regular expression
+  TEST:
+    type: string
+    default: '1'
+    enum: ['0', '1']
+  FRESH:
+    type: string
+    default: '0'
+    enum: ['0', '1']
+
+tasks:
+  - name: cmake-windows-msvc
+    when: "$HOST == 'windows' && ($PRESET == 'msvc-x64' || $PRESET == 'msvc-arm64' || $PRESET == 'msvc-salts')"
+    uses: cmake/workflows/cmake-windows-msvc.yml
+    vars:
+      PRESET: '{{ PRESET }}'
+      TASK: '{{ TASK }}'
+      FRESH: '{{ FRESH }}'
+
+  - name: cmake-windows-llvm-mingw
+    when: "$HOST == 'windows' && ($PRESET == 'llvm-x86_64' || $PRESET == 'llvm-aarch64')"
+    uses: cmake/workflows/cmake-windows-llvm-mingw.yml
+    vars:
+      PRESET: '{{ PRESET }}'
+      TASK: '{{ TASK }}'
+      FRESH: '{{ FRESH }}'
+
+  - name: cmake-unix
+    when: "$HOST == 'unix'"
+    uses: cmake/workflows/cmake.yml
+    vars:
+      PRESET: '{{ PRESET }}'
+      TASK: '{{ TASK }}'
+      FRESH: '{{ FRESH }}'
+  - name: build-environment
+    depends_on: [cmake-windows-msvc, cmake-windows-llvm-mingw, cmake-unix]
+    when: "$TASK == 'all' || $TASK == 'build' || $TASK == 'test'"
+    vars:
+      INHERITED_PATH: '{{ env.PATH }}'
+      INHERITED_INCLUDE: '{{ env.INCLUDE }}'
+      INHERITED_LIB: '{{ env.LIB }}'
+      INHERITED_LIBPATH: '{{ env.LIBPATH }}'
+      INHERITED_VSINSTALLDIR: '{{ env.VSINSTALLDIR }}'
+      INHERITED_VCINSTALLDIR: '{{ env.VCINSTALLDIR }}'
+      INHERITED_VCToolsInstallDir: '{{ env.VCToolsInstallDir }}'
+      INHERITED_VCToolsVersion: '{{ env.VCToolsVersion }}'
+      INHERITED_WindowsSdkDir: '{{ env.WindowsSdkDir }}'
+      INHERITED_WindowsSDKVersion: '{{ env.WindowsSDKVersion }}'
+      INHERITED_WindowsSDKLibVersion: '{{ env.WindowsSDKLibVersion }}'
+      INHERITED_UniversalCRTSdkDir: '{{ env.UniversalCRTSdkDir }}'
+      INHERITED_UCRTVersion: '{{ env.UCRTVersion }}'
+      INHERITED_WindowsLibPath: '{{ env.WindowsLibPath }}'
+      INHERITED_FrameworkDir: '{{ env.FrameworkDir }}'
+      INHERITED_FrameworkVersion: '{{ env.FrameworkVersion }}'
+      INHERITED_DevEnvDir: '{{ env.DevEnvDir }}'
+      INHERITED_VSCMD_ARG_HOST_ARCH: '{{ env.VSCMD_ARG_HOST_ARCH }}'
+      INHERITED_VSCMD_ARG_TGT_ARCH: '{{ env.VSCMD_ARG_TGT_ARCH }}'
+    script: |
+      var environment = map{
+        PATH: ctx.get("INHERITED_PATH"),
+        INCLUDE: ctx.get("INHERITED_INCLUDE"),
+        LIB: ctx.get("INHERITED_LIB"),
+        LIBPATH: ctx.get("INHERITED_LIBPATH"),
+        VSINSTALLDIR: ctx.get("INHERITED_VSINSTALLDIR"),
+        VCINSTALLDIR: ctx.get("INHERITED_VCINSTALLDIR"),
+        VCToolsInstallDir: ctx.get("INHERITED_VCToolsInstallDir"),
+        VCToolsVersion: ctx.get("INHERITED_VCToolsVersion"),
+        WindowsSdkDir: ctx.get("INHERITED_WindowsSdkDir"),
+        WindowsSDKVersion: ctx.get("INHERITED_WindowsSDKVersion"),
+        WindowsSDKLibVersion: ctx.get("INHERITED_WindowsSDKLibVersion"),
+        UniversalCRTSdkDir: ctx.get("INHERITED_UniversalCRTSdkDir"),
+        UCRTVersion: ctx.get("INHERITED_UCRTVersion"),
+        WindowsLibPath: ctx.get("INHERITED_WindowsLibPath"),
+        FrameworkDir: ctx.get("INHERITED_FrameworkDir"),
+        FrameworkVersion: ctx.get("INHERITED_FrameworkVersion"),
+        DevEnvDir: ctx.get("INHERITED_DevEnvDir"),
+        VSCMD_ARG_HOST_ARCH: ctx.get("INHERITED_VSCMD_ARG_HOST_ARCH"),
+        VSCMD_ARG_TGT_ARCH: ctx.get("INHERITED_VSCMD_ARG_TGT_ARCH")
+      };
+      if (ctx.get("variables.HOST") == "windows" and index_of(ctx.get("variables.PRESET"), "msvc-") == 0) {
+        environment = ctx.get("tasks.cmake-windows-msvc.outputs.environment");
+      }
+      ctx.output("environment", environment);
+
+  - name: build
+    depends_on: [build-environment]
+    when: "(($TASK == 'all' || $TASK == 'build' || $TASK == 'test') && $TARGET == '')"
+    program: cmake
+    args: ['--build', '--preset', '{{ PRESET }}']
+    env: &build-environment
+      PATH: '{{ tasks.build-environment.outputs.environment.PATH }}'
+      INCLUDE: '{{ tasks.build-environment.outputs.environment.INCLUDE }}'
+      LIB: '{{ tasks.build-environment.outputs.environment.LIB }}'
+      LIBPATH: '{{ tasks.build-environment.outputs.environment.LIBPATH }}'
+      VSINSTALLDIR: '{{ tasks.build-environment.outputs.environment.VSINSTALLDIR }}'
+      VCINSTALLDIR: '{{ tasks.build-environment.outputs.environment.VCINSTALLDIR }}'
+      VCToolsInstallDir: '{{ tasks.build-environment.outputs.environment.VCToolsInstallDir }}'
+      VCToolsVersion: '{{ tasks.build-environment.outputs.environment.VCToolsVersion }}'
+      WindowsSdkDir: '{{ tasks.build-environment.outputs.environment.WindowsSdkDir }}'
+      WindowsSDKVersion: '{{ tasks.build-environment.outputs.environment.WindowsSDKVersion }}'
+      WindowsSDKLibVersion: '{{ tasks.build-environment.outputs.environment.WindowsSDKLibVersion }}'
+      UniversalCRTSdkDir: '{{ tasks.build-environment.outputs.environment.UniversalCRTSdkDir }}'
+      UCRTVersion: '{{ tasks.build-environment.outputs.environment.UCRTVersion }}'
+      WindowsLibPath: '{{ tasks.build-environment.outputs.environment.WindowsLibPath }}'
+      FrameworkDir: '{{ tasks.build-environment.outputs.environment.FrameworkDir }}'
+      FrameworkVersion: '{{ tasks.build-environment.outputs.environment.FrameworkVersion }}'
+      DevEnvDir: '{{ tasks.build-environment.outputs.environment.DevEnvDir }}'
+      VSCMD_ARG_HOST_ARCH: '{{ tasks.build-environment.outputs.environment.VSCMD_ARG_HOST_ARCH }}'
+      VSCMD_ARG_TGT_ARCH: '{{ tasks.build-environment.outputs.environment.VSCMD_ARG_TGT_ARCH }}'
+    working_dir: .
+    timeout: 10m
+
+  - name: build-target
+    depends_on: [build-environment]
+    when: "(($TASK == 'all' || $TASK == 'build' || $TASK == 'test') && $TARGET != '')"
+    program: cmake
+    args: ['--build', '--preset', '{{ PRESET }}', '--target', '{{ TARGET }}']
+    env: *build-environment
+    working_dir: .
+    timeout: 10m
+
+  - name: test
+    depends_on: [build, build-target]
+    when: "(($TASK == 'test' || ($TASK == 'all' && $TEST == '1')) && $TEST_REGEX == '')"
+    program: ctest
+    args: ['--preset', '{{ PRESET }}', '--no-tests=error']
+    env: *build-environment
+    working_dir: .
+    timeout: 5m
+
+  - name: test-selected
+    depends_on: [build, build-target]
+    when: "(($TASK == 'test' || ($TASK == 'all' && $TEST == '1')) && $TEST_REGEX != '')"
+    program: ctest
+    args: ['--preset', '{{ PRESET }}', '--no-tests=error', '-R', '{{ TEST_REGEX }}']
+    env: *build-environment
+    working_dir: .
+    timeout: 5m

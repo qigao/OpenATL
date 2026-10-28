@@ -1,4 +1,5 @@
 # Generated / external sources are never committed
+/.env
 /build/
 /build-*/
 /tools/

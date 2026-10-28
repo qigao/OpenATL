@@ -1,0 +1,78 @@
+name: OpenATL Windows MSVC configure pipeline
+variables:
+  PRESET: msvc-x64
+  TASK: all
+  FRESH: '0'
+
+tasks:
+  - name: prepare-windows
+    program: cmd.exe
+    args:
+      - /d
+      - /q
+      - /v:on
+    stdin: |
+      @echo off
+      set "OPENATL_VS_ARCH=x64"
+      if /i "%OPENATL_PRESET%"=="msvc-arm64" set "OPENATL_VS_ARCH=arm64"
+      set "OPENATL_VS_HOST_ARCH=x64"
+      if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "OPENATL_VS_HOST_ARCH=arm64"
+      call "%VSDEVCMD_BAT%" -arch=%OPENATL_VS_ARCH% -host_arch=%OPENATL_VS_HOST_ARCH% >nul
+      if errorlevel 1 exit %errorlevel%
+      prompt $S
+      (echo. & for %V in (PATH INCLUDE LIB LIBPATH VSINSTALLDIR VCINSTALLDIR VCToolsInstallDir VCToolsVersion WindowsSdkDir WindowsSDKVersion WindowsSDKLibVersion UniversalCRTSdkDir UCRTVersion WindowsLibPath FrameworkDir FrameworkVersion DevEnvDir VSCMD_ARG_HOST_ARCH VSCMD_ARG_TGT_ARCH) do @echo %V=!%V!)
+      exit %errorlevel%
+    env:
+      OPENATL_PRESET: '{{ PRESET }}'
+    silent: true
+    working_dir: ../..
+
+  - name: parse-windows-environment
+    depends_on: [prepare-windows]
+    sequence:
+      - set_variable: compiler_environment
+        value: '{ctx.tasks.prepare-windows.outputs.stdout}'
+      - parse_key_value:
+          input_key: compiler_environment
+          delimiter: '='
+          output_key: data
+    script: |
+      ctx.output("environment", ctx.get("tasks.parse-windows-environment.outputs.data"));
+
+  - name: configure
+    depends_on: [parse-windows-environment]
+    when: "($TASK != 'refresh' && $FRESH == '0')"
+    program: cmake
+    args: ['--preset', '{{ PRESET }}']
+    env: &vs-environment
+      PATH: '{{ tasks.parse-windows-environment.outputs.environment.PATH }}'
+      INCLUDE: '{{ tasks.parse-windows-environment.outputs.environment.INCLUDE }}'
+      LIB: '{{ tasks.parse-windows-environment.outputs.environment.LIB }}'
+      LIBPATH: '{{ tasks.parse-windows-environment.outputs.environment.LIBPATH }}'
+      VSINSTALLDIR: '{{ tasks.parse-windows-environment.outputs.environment.VSINSTALLDIR }}'
+      VCINSTALLDIR: '{{ tasks.parse-windows-environment.outputs.environment.VCINSTALLDIR }}'
+      VCToolsInstallDir: '{{ tasks.parse-windows-environment.outputs.environment.VCToolsInstallDir }}'
+      VCToolsVersion: '{{ tasks.parse-windows-environment.outputs.environment.VCToolsVersion }}'
+      WindowsSdkDir: '{{ tasks.parse-windows-environment.outputs.environment.WindowsSdkDir }}'
+      WindowsSDKVersion: '{{ tasks.parse-windows-environment.outputs.environment.WindowsSDKVersion }}'
+      WindowsSDKLibVersion: '{{ tasks.parse-windows-environment.outputs.environment.WindowsSDKLibVersion }}'
+      UniversalCRTSdkDir: '{{ tasks.parse-windows-environment.outputs.environment.UniversalCRTSdkDir }}'
+      UCRTVersion: '{{ tasks.parse-windows-environment.outputs.environment.UCRTVersion }}'
+      WindowsLibPath: '{{ tasks.parse-windows-environment.outputs.environment.WindowsLibPath }}'
+      FrameworkDir: '{{ tasks.parse-windows-environment.outputs.environment.FrameworkDir }}'
+      FrameworkVersion: '{{ tasks.parse-windows-environment.outputs.environment.FrameworkVersion }}'
+      DevEnvDir: '{{ tasks.parse-windows-environment.outputs.environment.DevEnvDir }}'
+      VSCMD_ARG_HOST_ARCH: '{{ tasks.parse-windows-environment.outputs.environment.VSCMD_ARG_HOST_ARCH }}'
+      VSCMD_ARG_TGT_ARCH: '{{ tasks.parse-windows-environment.outputs.environment.VSCMD_ARG_TGT_ARCH }}'
+    working_dir: ../..
+    timeout: 10m
+
+  - name: configure-fresh
+    depends_on: [parse-windows-environment]
+    when: "(($TASK == 'refresh' || $FRESH == '1'))"
+    program: cmake
+    args: ['--fresh', '--preset', '{{ PRESET }}']
+    env: *vs-environment
+    working_dir: ../..
+    timeout: 10m
+

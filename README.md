@@ -76,6 +76,46 @@ cmake --build --preset msvc-x64
 ctest --preset msvc-x64
 ```
 
+For local builds with automatic environment setup, copy [`.env.example`](.env.example)
+to `.env` and set `VSDEVCMD_BAT` for MSVC or `OPENATL_LLVM_MINGW_BIN` for LLVM-MinGW.
+Install Praktor, CMake and Ninja on the process `PATH`, then run:
+
+```sh
+praktor -f build.yml
+praktor -f build.yml -i PRESET=llvm-x86_64
+praktor -f build.yml -i TASK=refresh
+praktor -f build.yml -i TASK=build -i TARGET=openatl_unicode
+praktor -f build.yml -i TASK=test -i TEST_REGEX='^openatl[.]unicode'
+praktor -f build.yml -i PRESET=msvc-arm64 -i TASK=build
+```
+
+`build.yml` loads the ignored `.env` using Praktor's literal dotenv values.
+It selects `cmake/workflows/cmake-windows-msvc.yml` for Windows MSVC presets,
+`cmake-windows-llvm-mingw.yml` for Windows LLVM-MinGW presets, or `cmake.yml`
+for Unix hosts. These sub-workflows prepare the toolchain and configure CMake.
+The shared build and test tasks are defined once in the root `build.yml`.
+The MSVC preparation task calls `VsDevCmd.bat` once and captures
+its compiler/SDK environment. Praktor's `parse_key_value` parses the environment
+without PowerShell or a Unix shell.
+Praktor passes it to subsequent native
+`cmake` and `ctest` processes through task-level `env`; no command-shell wrappers
+are used for configure, build or test.
+The LLVM-MinGW configure pipeline runs CMake directly and does not call
+`VsDevCmd.bat` or require `VSDEVCMD_BAT`.
+Use absolute, forward-slash paths without quotes or variable expansion. Direct
+CMake commands require those variables in the parent environment. MSVC
+operations reuse the selected Visual Studio developer environment; `msvc-arm64`
+selects the ARM64 toolchain. The optional `msvc-salts` profile reads
+`SALTS_ROOT` from the environment and adds its `bin` directory to runtime `PATH`.
+`TASK=all` configures, builds and tests; `TEST=0` skips its test stage.
+`TASK=refresh` configures with `--fresh`; `FRESH=1` also works with other tasks.
+Cross builds use `TASK=build` or `TEST=0`; ARM64 tests require a native Windows
+ARM64 host. Linux/macOS LLVM cross builds select `HOST=unix`, for example:
+
+```sh
+praktor -f build.yml -i HOST=unix -i PRESET=llvm-aarch64 -i TASK=build
+```
+
 For llvm-mingw, set `OPENATL_LLVM_MINGW_BIN` to the compiler `bin` directory,
 then use `llvm-x86_64` or `llvm-aarch64`. MSVC ARM64 uses `msvc-arm64` from an
 ARM64-targeting VS developer shell. The optional full SDI sample is selected

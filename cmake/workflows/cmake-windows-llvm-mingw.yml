@@ -1,0 +1,20 @@
+name: OpenATL Windows LLVM-MinGW configure pipeline
+variables:
+  PRESET: llvm-x86_64
+  TASK: all
+  FRESH: '0'
+
+tasks:
+  - name: configure
+    when: "($TASK != 'refresh' && $FRESH == '0')"
+    program: cmake
+    args: ['--preset', '{{ PRESET }}']
+    working_dir: ../..
+    timeout: 10m
+
+  - name: configure-fresh
+    when: "(($TASK == 'refresh' || $FRESH == '1'))"
+    program: cmake
+    args: ['--fresh', '--preset', '{{ PRESET }}']
+    working_dir: ../..
+    timeout: 10m
