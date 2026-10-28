@@ -75,6 +75,29 @@ static int strings() {
 #endif
     return 0;
 }
+
+static int conversions() {
+    USES_CONVERSION;
+    const wchar_t* first = A2W("OpenATL alpha");
+    const wchar_t* second = A2CW("second");
+    const char* third = W2A(L"narrow alpha");
+    const char* fourth = CW2A(L"another");
+    if (!first || !second || !third || !fourth ||
+        wcscmp(first,L"OpenATL alpha")!=0 ||
+        wcscmp(second,L"second")!=0 ||
+        strcmp(third,"narrow alpha")!=0 ||
+        strcmp(fourth,"another")!=0)
+        return failure(81, "conversion_lexical_owners");
+    // These must remain alive when subsequent strings are converted.
+    if (T2A(L"hello")==nullptr || A2T("world")==nullptr ||
+        wcscmp(first,L"OpenATL alpha")!=0 ||
+        strcmp(third,"narrow alpha")!=0)
+        return failure(82, "conversion_scope_pointer_stability");
+    if (A2W(nullptr)!=nullptr || W2A(nullptr)!=nullptr ||
+        wcscmp(T2W(L"unicode"),L"unicode")!=0)
+        return failure(83, "conversion_null_or_unicode_identity");
+    return 0;
+}
 struct TemporaryFile {
     wchar_t path[MAX_PATH] = {};
     bool create() {
@@ -365,6 +388,7 @@ static int registry() {
 int main() {
     if(!no_com())return failure(1,"COM_apartment_unexpected");
     int result=strings();
+    if(!result)result=conversions();
     if(!result)result=files();
     if(!result)result=synchronization();
     if(!result)result=registry();
