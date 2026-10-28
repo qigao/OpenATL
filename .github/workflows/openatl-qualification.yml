@@ -16,14 +16,14 @@ concurrency:
 
 jobs:
   source-tree-only:
-    name: Source-only and vcpkg WTL policy
+    name: Source-only and managed WTL policy
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - run: python3 tests/source_tree_policy.py
       - run: python3 tests/atl_surface_policy.py
-      - run: python3 tests/wtl_vcpkg_policy.py
+      - run: python3 tests/wtl_dependency_policy.py
 
   windows-llvm:
     name: llvm-mingw x64 native + ARM64 PE build
@@ -47,7 +47,7 @@ jobs:
           $compiler=Get-ChildItem tools/llvm -Recurse -Filter x86_64-w64-mingw32-clang++.exe | Select-Object -First 1
           if(!$compiler) { throw 'Missing pinned llvm-mingw compiler' }
           "OPENATL_LLVM_BIN=$($compiler.Directory.FullName)" | Out-File $env:GITHUB_ENV -Append
-      - name: vcpkg WTL manifest and pinned SDI sample
+      - name: Fetch pinned SDI sample
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
@@ -55,28 +55,10 @@ jobs:
             & $tool @argv
             if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
           }
-          $pin='3037cbe976a6872e56e8b07152e19a8344360491'
-          Run git @('init','--quiet','tools/vcpkg')
-          Run git @('-C','tools/vcpkg','fetch','--depth','1','https://github.com/microsoft/vcpkg.git',$pin)
-          Run git @('-C','tools/vcpkg','checkout','--quiet','--detach','FETCH_HEAD')
-          if((git -C tools/vcpkg rev-parse HEAD).Trim() -ne $pin) { throw 'vcpkg pin mismatch' }
-          Run (Join-Path $PWD 'tools/vcpkg/bootstrap-vcpkg.bat') @('-disableMetrics')
-          $vcpkg=(Resolve-Path tools/vcpkg/vcpkg.exe).Path
-          $overlay=(Resolve-Path cmake/vcpkg-triplets).Path
-          $env:OPENATL_LLVM_MINGW_BIN=$env:OPENATL_LLVM_BIN
-          foreach($triplet in @('x64-openatl-mingw','arm64-openatl-mingw')) {
-            $root=Join-Path $PWD "vcpkg_installed/$triplet"
-            Run $vcpkg @('install',"--triplet=$triplet","--overlay-triplets=$overlay","--x-install-root=$root")
-            if(!(Test-Path "$root/$triplet/include/atlapp.h")) { throw "Missing WTL: $triplet" }
-            if(Test-Path "$root/$triplet/share/atl") { throw "Microsoft ATL selected: $triplet" }
-          }
           $sample='63ba6a992cb3d79d56be66cd283f6615c6646b3d'
           Run git @('clone','--quiet','https://github.com/kkhaike/wtltest.git','tools/wtl10-test')
           Run git @('-C','tools/wtl10-test','checkout','--quiet','--detach',$sample)
           if((git -C tools/wtl10-test rev-parse HEAD).Trim() -ne $sample) { throw 'SDI sample SHA mismatch' }
-          $uiPatch=(Resolve-Path tests/wtl10/wtltest-ui-only.patch).Path
-          Run git @('-C','tools/wtl10-test','apply','--check',$uiPatch)
-          Run git @('-C','tools/wtl10-test','apply',$uiPatch)
       - name: CMake native x64 and cross ARM64, PE/resources, CTest x5
         shell: pwsh
         run: |
@@ -85,18 +67,13 @@ jobs:
             & $tool @argv
             if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
           }
-          $toolchain=(Resolve-Path cmake/toolchains/llvm-mingw.cmake).Path
+          $env:OPENATL_LLVM_MINGW_BIN=$env:OPENATL_LLVM_BIN
           $sample=(Resolve-Path tools/wtl10-test).Path
           $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_wtl10_sdi')
           foreach($arch in @('x86_64','aarch64')) {
-            $triplet=if($arch -eq 'x86_64'){'x64-openatl-mingw'}else{'arm64-openatl-mingw'}
             $build="build-llvm-$arch"
-            Run cmake @('-S','.','-B',$build,'-G','Ninja',"-DCMAKE_TOOLCHAIN_FILE=$toolchain",
-              "-DOPENATL_LLVM_MINGW_BIN=$env:OPENATL_LLVM_BIN","-DOPENATL_TARGET_ARCH=$arch",
-              "-DVCPKG_TARGET_TRIPLET=$triplet","-DOPENATL_WTL_DEMO_DIR=$sample",
-              '-DCMAKE_BUILD_TYPE=Release','-DOPENATL_BUILD_QUALIFICATION=ON',
-              '-DOPENATL_REQUIRE_CET_RUNTIME=OFF')
-            Run cmake @('--build',$build,'--parallel','2')
+            Run cmake @('--preset',"llvm-$arch","-DOPENATL_WTL_DEMO_DIR=$sample")
+            Run cmake @('--build','--preset',"llvm-$arch",'--parallel','2')
             $peCheck=@('tests/wtl10/verify_pe_mitigations.py',"$build/openatl_mitigation_runtime.exe",$arch,'--require-cfg')
             if($arch -eq 'x86_64') { $peCheck+='--require-cet' }
             Run python $peCheck
@@ -120,8 +97,7 @@ jobs:
             if($arch -eq 'x86_64') {
               # Inventory also executes the HSP death test when the parent is
               # protected. Exclude all CET runtime cases on hosted LLVM jobs.
-              Run ctest @('--test-dir',$build,'--output-on-failure','--repeat','until-fail:5',
-                '--exclude-regex','^openatl[.]cet_')
+              Run ctest @('--preset',"llvm-$arch",'--repeat','until-fail:5')
             } else {
               $manifest | ConvertTo-Json -Depth 3 | Set-Content "$build/manifest.json" -Encoding utf8
             }
@@ -156,7 +132,7 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
         with:
           arch: ${{ matrix.vc_arch }}
-      - name: Install manifest WTL and clone pinned sample
+      - name: Fetch pinned SDI sample
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
@@ -166,24 +142,10 @@ jobs:
           }
           if(!(Get-Command cl.exe -ErrorAction SilentlyContinue) -or
              !(Get-Command rc.exe -ErrorAction SilentlyContinue)) { throw 'MSVC and Windows rc.exe required' }
-          $pin='3037cbe976a6872e56e8b07152e19a8344360491'
-          Run git @('init','--quiet','tools/vcpkg')
-          Run git @('-C','tools/vcpkg','fetch','--depth','1','https://github.com/microsoft/vcpkg.git',$pin)
-          Run git @('-C','tools/vcpkg','checkout','--quiet','--detach','FETCH_HEAD')
-          if((git -C tools/vcpkg rev-parse HEAD).Trim() -ne $pin) { throw 'vcpkg pin mismatch' }
-          Run (Join-Path $PWD 'tools/vcpkg/bootstrap-vcpkg.bat') @('-disableMetrics')
-          $triplet="${{ matrix.target }}-windows-static"
-          $root=Join-Path $PWD "vcpkg_installed/$triplet"
-          Run (Join-Path $PWD 'tools/vcpkg/vcpkg.exe') @('install',"--triplet=$triplet","--x-install-root=$root")
-          if(!(Test-Path "$root/$triplet/include/atlapp.h")) { throw 'Missing vcpkg WTL' }
-          if(Test-Path "$root/$triplet/share/atl") { throw 'Microsoft ATL forbidden' }
           $sample='63ba6a992cb3d79d56be66cd283f6615c6646b3d'
           Run git @('clone','--quiet','https://github.com/kkhaike/wtltest.git','tools/wtl10-test')
           Run git @('-C','tools/wtl10-test','checkout','--quiet','--detach',$sample)
           if((git -C tools/wtl10-test rev-parse HEAD).Trim() -ne $sample) { throw 'SDI sample SHA mismatch' }
-          $uiPatch=(Resolve-Path tests/wtl10/wtltest-ui-only.patch).Path
-          Run git @('-C','tools/wtl10-test','apply','--check',$uiPatch)
-          Run git @('-C','tools/wtl10-test','apply',$uiPatch)
       - name: MSVC source-tree CMake, PE/resources and native CTest x5
         shell: pwsh
         run: |
@@ -194,17 +156,10 @@ jobs:
           }
           $arch='${{ matrix.target }}'
           $machine=if($arch -eq 'x64'){'x86_64'}else{'aarch64'}
-          $triplet="$arch-windows-static"
           $build="build-msvc-$arch"
-          # x64 CET Shadow Stack death test is mandatory on native Windows;
-          # ARM64 does not have the corresponding CET architecture.
-          $requireCET=if($arch -eq 'x64'){'ON'}else{'OFF'}
           $sample=(Resolve-Path tools/wtl10-test).Path
-          Run cmake @('-S','.','-B',$build,'-G','Ninja','-DCMAKE_BUILD_TYPE=Release',
-            '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',"-DVCPKG_TARGET_TRIPLET=$triplet",
-            "-DOPENATL_WTL_DEMO_DIR=$sample",'-DOPENATL_BUILD_QUALIFICATION=ON',
-            "-DOPENATL_REQUIRE_CET_RUNTIME=$requireCET")
-          Run cmake @('--build',$build,'--parallel','2')
+          Run cmake @('--preset',"msvc-$arch","-DOPENATL_WTL_DEMO_DIR=$sample")
+          Run cmake @('--build','--preset',"msvc-$arch",'--parallel','2')
           $peCheck=@('tests/wtl10/verify_pe_mitigations.py',"$build/openatl_mitigation_runtime.exe",$machine,'--require-cfg')
           if($machine -eq 'x86_64') { $peCheck+='--require-cet' }
           Run python $peCheck
@@ -232,7 +187,7 @@ jobs:
             $manifest[$dllName]=(Get-FileHash $dll -Algorithm SHA256).Hash.ToLowerInvariant()
           }
           if($arch -eq 'x64') {
-            Run ctest @('--test-dir',$build,'--output-on-failure','--repeat','until-fail:5')
+            Run ctest @('--preset',"msvc-$arch",'--repeat','until-fail:5')
           } else {
             $manifest | ConvertTo-Json -Depth 3 | Set-Content "$build/manifest.json" -Encoding utf8
           }
@@ -255,14 +210,9 @@ jobs:
           $env:SALTS_ROOT=(Resolve-Path tools/salts-sdk/sdk/windows-x64).Path.Replace('\','/')
           $env:PATH="$env:SALTS_ROOT/bin;$env:PATH"
           $sample=(Resolve-Path tools/wtl10-test).Path
-          Run cmake @('-S','.','-B','build-msvc-salts','-G','Ninja',
-            '-DCMAKE_BUILD_TYPE=Release','-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL',
-            '-DVCPKG_TARGET_TRIPLET=x64-windows-static','-DOPENATL_BUILD_QUALIFICATION=ON',
-            '-DOPENATL_USE_SALTS_UNICODE=ON','-DOPENATL_REQUIRE_CET_RUNTIME=OFF',
-            "-DOPENATL_WTL_DEMO_DIR=$sample")
-          Run cmake @('--build','build-msvc-salts','--parallel','2')
-          Run ctest @('--test-dir','build-msvc-salts','--output-on-failure',
-            '--repeat','until-fail:5','--exclude-regex','^openatl[.]cet_')
+          Run cmake @('--preset','msvc-salts',"-DOPENATL_WTL_DEMO_DIR=$sample")
+          Run cmake @('--build','--preset','msvc-salts','--parallel','2')
+          Run ctest @('--preset','msvc-salts','--repeat','until-fail:5')
       - uses: actions/upload-artifact@v4
         if: matrix.target == 'arm64'
         with:
@@ -336,48 +286,22 @@ jobs:
           bin="$(dirname "$driver")"
           echo "OPENATL_LLVM_MINGW_BIN=$bin" >> "$GITHUB_ENV"
           echo "$bin" >> "$GITHUB_PATH"
-      - name: Install WTL via vcpkg manifest and fetch pinned SDI sample
+      - name: Fetch pinned SDI sample
         shell: bash
         run: |
           set -euo pipefail
           export PATH="$OPENATL_LLVM_MINGW_BIN:$PATH"
-          git init -q tools/vcpkg
-          git -C tools/vcpkg fetch -q --depth 1 https://github.com/microsoft/vcpkg.git 3037cbe976a6872e56e8b07152e19a8344360491
-          git -C tools/vcpkg checkout -q --detach FETCH_HEAD
-          test "$(git -C tools/vcpkg rev-parse HEAD)" = 3037cbe976a6872e56e8b07152e19a8344360491
-          booted=0
-          for i in 1 2 3; do
-            if bash tools/vcpkg/bootstrap-vcpkg.sh -disableMetrics; then booted=1; break; fi
-            test "$i" -eq 3 || sleep $((i * 3))
-          done
-          test "$booted" = 1
-          for triplet in x64-openatl-mingw arm64-openatl-mingw; do
-            root="$PWD/vcpkg_installed/$triplet"
-            tools/vcpkg/vcpkg install "--triplet=$triplet" "--overlay-triplets=$PWD/cmake/vcpkg-triplets" "--x-install-root=$root"
-            test -s "$root/$triplet/include/atlapp.h"
-            test ! -d "$root/$triplet/share/atl"
-          done
           git clone -q https://github.com/kkhaike/wtltest.git tools/wtl10-test
           git -C tools/wtl10-test checkout -q --detach 63ba6a992cb3d79d56be66cd283f6615c6646b3d
           test "$(git -C tools/wtl10-test rev-parse HEAD)" = 63ba6a992cb3d79d56be66cd283f6615c6646b3d
-          git -C tools/wtl10-test apply --check "$PWD/tests/wtl10/wtltest-ui-only.patch"
-          git -C tools/wtl10-test apply "$PWD/tests/wtl10/wtltest-ui-only.patch"
       - name: CMake/WTL SDI and Windows PE resource qualification for both RIDs
         shell: bash
         run: |
           set -euo pipefail
-          generator="Unix Makefiles"
-          if command -v ninja >/dev/null 2>&1; then generator=Ninja; fi
           for arch in x86_64 aarch64; do
-            if [ "$arch" = x86_64 ]; then triplet=x64-openatl-mingw; else triplet=arm64-openatl-mingw; fi
-            build="build-cross-$arch"
-            cmake -S . -B "$build" -G "$generator" \
-              "-DCMAKE_TOOLCHAIN_FILE=$PWD/cmake/toolchains/llvm-mingw.cmake" \
-              "-DOPENATL_LLVM_MINGW_BIN=$OPENATL_LLVM_MINGW_BIN" \
-              "-DOPENATL_TARGET_ARCH=$arch" "-DVCPKG_TARGET_TRIPLET=$triplet" \
-              "-DOPENATL_WTL_DEMO_DIR=$PWD/tools/wtl10-test" \
-              -DCMAKE_BUILD_TYPE=Release -DOPENATL_BUILD_QUALIFICATION=ON
-            cmake --build "$build" --parallel 2
+            build="build-llvm-$arch"
+            cmake --preset "llvm-$arch" "-DOPENATL_WTL_DEMO_DIR=$PWD/tools/wtl10-test"
+            cmake --build --preset "llvm-$arch" --parallel 2
             if [ "$arch" = x86_64 ]; then
               python3 tests/wtl10/verify_pe_mitigations.py "$build/openatl_mitigation_runtime.exe" "$arch" --require-cfg --require-cet
               python3 tests/wtl10/verify_pe_mitigations.py "$build/openatl_cet_shadow_stack.exe" "$arch" --require-cfg --require-cet

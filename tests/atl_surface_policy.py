@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject legacy server compatibility and keep optional COM APIs isolated.
+"""Reject obsolete modules/registrars and keep optional COM APIs isolated.
 
 This is a source-surface gate, separate from the real native WTL10 GUI
 and opt-in COM Client build/runtime gates. Ordinary registry key operations
@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 HEADERS = sorted((ROOT / "include").rglob("*.h"))
-FORBIDDEN_FILES = ("atlcom.h", "statreg.h")
+FORBIDDEN_FILES = ("statreg.h",)
 FORBIDDEN_TOKENS = (
     r"\bCRegObject\b",
     r"\bIRegistrarBase\b",
@@ -19,18 +19,12 @@ FORBIDDEN_TOKENS = (
     r"\bCAtlModuleT\b",
     r"\bCAtlComModule\b",
     r"\bCAtlModule\b",
-    r"\bCComObjectRootBase\b",
-    r"\bCComObjectRootEx\b",
     r"\bCComObjectCached\b",
-    r"\bCComObject\b",
     r"\bCComClassFactory\b",
-    r"\bCComCreator2?\b",
     r"\bIObjectWithSiteImpl\b",
     r"\bAtlAxWinInit\b",
     r"\bAtlInternalQueryInterface\b",
     r"\bOBJECT_ENTRY_AUTO\b",
-    r"\bBEGIN_COM_MAP\b",
-    r"\bCOM_INTERFACE_ENTRY\w*\b",
     r"\b_ATL_OBJMAP_ENTRY\w*\b",
     r"\b_ATL_INTMAP_ENTRY\b",
     r"\b_ATL_COM_MODULE\w*\b",
@@ -54,6 +48,7 @@ BAD_REGISTRY = re.compile("|".join(REGISTRY_WRITE_TOKENS))
 EXPECTED = {
     "atlbase.h": ("class CAtlWinModule", "struct DLGTEMPLATEEX", '#include "atlreg.h"'),
     "atlcore.h": ("class CAtlBaseModule",),
+    "atlcom.h": ("class CComObjectRootEx", "class CComObject :", "class CComCoClass", "#define BEGIN_COM_MAP"),
     "atlcomcli.h": ("class CComPtr",),
     "atlwin.h": ("class ATL_NO_VTABLE CWindowImplBaseT",),
     "atldef.h": ("#define _ATL_NO_HOSTING 1",),
@@ -78,7 +73,7 @@ def main() -> int:
             for match in BAD_REGISTRY.finditer(data):
                 line = data.count("\n", 0, match.start()) + 1
                 failures.append(f"{path.relative_to(ROOT)}:{line}: registry API outside its owning header: {match.group(0)}")
-        if "/" not in relative and re.search(r'#\s*include\s*[<"]openatl/com_', data):
+        if "/" not in relative and relative != "atlcom.h" and re.search(r'#\s*include\s*[<"]openatl/com_', data):
             failures.append(f"{relative}: UI/client headers must not include optional COM server APIs")
     for name, markers in EXPECTED.items():
         path = ROOT / "include" / name

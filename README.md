@@ -26,65 +26,60 @@ link the single `OpenATL::ATL` target and include the server headers when
 needed. See [server contracts and
 usage](docs/COM_SERVER.md).
 
-**Not supported or present:** legacy ATL server compatibility,
-`OBJECT_ENTRY_AUTO`, RGS, EXE servers, Automation/type-library helpers,
-aggregation or ActiveX hosting. A separate source-owned Win32 CRegKey handles
-ordinary application settings. The former server-only `atlcom.h`, `CComModule`,
-`CAtlModuleT`, `CAtlComModule`, object maps and no-op
-`RegisterServer`/`AtlAxWinInit` stubs have been **deleted**, not replaced
-with compatibility shims. The real `_AtlBaseModule` and `_AtlWinModule`
-remain for Windows UI; `atlcomcli.h` remains only for the COM **client**.
-No RATL provider, fallback or alternate ATL implementation.
+The optional `atlcom.h` implements familiar nonaggregated ATL object templates
+and COM maps: `CComObjectRootEx`, `CComObject`, `CComCoClass`, `CComCreator`,
+`BEGIN_COM_MAP`, `COM_INTERFACE_ENTRY` and explicit-IID/branch variants.
+See the [ATL compatibility matrix](docs/ATL_COMPATIBILITY.md) for supported
+semantics and limits. `CComModule`, object-map auto-registration, RGS,
+Automation/type-library helpers, aggregation and ActiveX remain unsupported.
+There is one clean-room ATL implementation, with no Microsoft ATL fallback.
 
-## CMake consumer targets
+## CMake integration
 
-- `OpenATL::ATL`: the single consumer target for Win32 UI utilities, COM
-  client helpers, the explicit server API and registration. It supplies the
-  Windows `ole32`, `oleaut32`, `uuid` and `advapi32` link dependencies.
-- `wtl`: **third-party dependency managed by `vcpkg.json`** (WTL10
-  `10.0.10320#10` overlay). WTL is header-only and has **no OpenATL
-  namespaced target**; no dependency on Visual Studio's Microsoft ATL.
-The `OpenATL::ATL` target is **permanently a source-tree CMake INTERFACE
-target**. OpenATL
-will not provide an Installed SDK, a package configuration, exported
-targets, or a `cmake --install` workflow. Consumers integrate the source
-repository directly via `add_subdirectory()` or `FetchContent`.
-OpenATL always builds the headers checked into this repository's
-`include/`; no external ATL header root or fallback is accepted.
+Downstream applications need only the OpenATL source checkout and one target:
 
-Install WTL from the version-pinned vcpkg manifest in the repository root.
-The `ports/wtl` overlay retains the official vcpkg port's source checksum
-and maintenance patches, **removing only its dependency on the Microsoft
-ATL stub**. For example, on an MSVC Windows x64 host:
-
-```sh
-vcpkg install --triplet x64-windows-static \
-  --x-install-root=vcpkg_installed/x64-windows-static
-cmake -S . -B build -DOPENATL_BUILD_QUALIFICATION=ON \
-  -DVCPKG_TARGET_TRIPLET=x64-windows-static
-cmake --build build
-ctest --test-dir build --output-on-failure
+```cmake
+add_subdirectory(external/OpenATL)
+add_executable(my_app WIN32 main.cpp)
+target_link_libraries(my_app PRIVATE OpenATL::ATL)
 ```
 
-Windows llvm-mingw, Linux and macOS cross-host builds use the custom
-`cmake/vcpkg-triplets/{x64,arm64}-openatl-mingw.cmake` triplets.
-Their compilers use `cmake/toolchains/llvm-mingw.cmake`, and CI
-installs WTL through vcpkg before configuring OpenATL. The CI uses
-a separate manifest install root per triplet (at
-`vcpkg_installed/<triplet>/<triplet>/include`) so installing ARM64 does
-not remove previously installed x64 headers. Manually supplied
-`OPENATL_ATL_INCLUDE_DIR` and `OPENATL_WTL_INCLUDE_DIR` are rejected.
+`FetchContent` can bring in OpenATL instead of `add_subdirectory`; pin the
+OpenATL commit in the consuming project. `OpenATL::ATL` supplies ATL and WTL
+include paths, C++17/Unicode definitions, and common Windows UI/COM/registry
+link dependencies. Consumers can include `<atlbase.h>`, `<atlcom.h>`,
+`<atlapp.h>`, `<atlframe.h>`, etc. directly. No overlay ports, WTL install,
+manual header lookup, `OpenATL::WTL` target or Microsoft ATL installation is
+needed. Products using optional image codecs still link `gdiplus` explicitly.
 
-A GUI application links **`OpenATL::ATL`** and obtains WTL's
-`atlapp.h`, `atlctrls.h`, etc. from the vcpkg include directory.
-When using a vcpkg toolchain, consumers can locate the header directory
-with `find_path(WTL_INCLUDE_DIR NAMES atlapp.h REQUIRED)` and add it to
-their own GUI target; there is deliberately no `OpenATL::WTL`.
-Consumers needing COM use the same `OpenATL::ATL` target and manage their
-own `CoInitializeEx` / `CoUninitialize` lifecycle. Server and registration
-APIs are included explicitly from `openatl/com_server.h` and
-`openatl/com_registration.h`.
-A basic WTL window must not need to initialize COM.
+During the first CMake configuration, OpenATL fetches the official WTL
+`10.0.10320` release with a pinned SHA512, copies its headers into the build
+directory and applies the source-owned adapter. The upstream tree and consumer
+files are never patched. A fresh build needs access to SourceForge; populated
+builds reuse their FetchContent sources. Controlled offline builds can supply
+the exact unpacked release through CMake's standard
+`FETCHCONTENT_SOURCE_DIR_OPENATL_WTL_SOURCE` setting. Missing/invalid content
+fails configuration. vcpkg remains available for the application's other
+dependencies; OpenATL does not change the application's vcpkg configuration.
+OpenATL itself remains a source-tree CMake INTERFACE target with no
+install/export/package-config workflow.
+
+For repository qualification, use the versioned presets. From an x64 VS
+developer shell:
+
+```sh
+cmake --preset msvc-x64
+cmake --build --preset msvc-x64
+ctest --preset msvc-x64
+```
+
+For llvm-mingw, set `OPENATL_LLVM_MINGW_BIN` to the compiler `bin` directory,
+then use `llvm-x86_64` or `llvm-aarch64`. MSVC ARM64 uses `msvc-arm64` from an
+ARM64-targeting VS developer shell. The optional full SDI sample is selected
+with `OPENATL_WTL_DEMO_DIR`. CI builds the pinned sample without source edits.
+The hosted LLVM profile excludes hardware HSP execution; MSVC x64 retains its
+hardware admission test. `OPENATL_ATL_INCLUDE_DIR` and
+`OPENATL_WTL_INCLUDE_DIR` overrides are obsolete and rejected.
 
 ## Unicode text
 
@@ -186,8 +181,7 @@ clean-room ATL subset derived from
 [kkhaike/openatl](https://github.com/kkhaike/openatl):
 **MIT** (original revision `7b587f3e10f3f8d93a01522033de80007368bad5`);
 [official WTL10](https://sourceforge.net/projects/wtl/) version
-`10.0.10320` via vcpkg overlay revision `#10`: **MS-PL**; the
-`ports/wtl/portfile.cmake` upstream source archive has pinned SHA512
+`10.0.10320`: **MS-PL**; `cmake/OpenATLWTL.cmake` pins its source archive SHA512
 `086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309`.
 There is one ATL implementation: the files owned under `include/`.
 `qigao/tcc` separately owns TinyCC/C11/compiler portability.
@@ -196,13 +190,12 @@ The in-tree `atlwin.h` includes W^X thunk hardening and test-only
 fault injection. No external OpenATL checkout or runtime patch is used.
 CFG/CET and concurrency qualification is scoped to the native test fixtures;
 downstream products must validate their own lifetime and mitigation contracts.
-OpenATL installation is
-permanently out of scope; installing the external WTL dependency with
-vcpkg does not install OpenATL.
+OpenATL installation is permanently out of scope; managed WTL sources and
+adapted headers remain build dependencies.
 
 ## CI structure
 
-The pinned WTL UI overlay retains MRU menu helpers, CFindFile and ordinary
+The pinned WTL UI adapter retains MRU menu helpers, CFindFile and ordinary
 HKCU registry MRU persistence through source-owned CRegKey, with native menu,
 capacity, dedup, reorder and persistence tests. It still removes the separate
 CRegProperty serializer, Internet Explorer registry hyperlink colors and
@@ -213,7 +206,7 @@ malformed strings, values, errors, access masks and cleanup without COM
 initialization. Applications using its registry methods explicitly link
 Windows `advapi32`, supplied by `OpenATL::ATL`.
 
-The former 14-file `scripts/` directory has been deleted. GitHub Actions now installs pinned WTL through `vcpkg.json`, invokes CMake and CTest directly, and validates Windows x64/ARM64 PE files. Real ARM64 SHA-256 and runtime checks are defined as acceptance tests in `tests/wtl10/native_arm64.py`. No standalone build wrapper or Installed SDK is provided.
+The former 14-file `scripts/` directory has been deleted. GitHub Actions now obtains pinned WTL through CMake FetchContent and invokes CMake/CTest presets, and validates Windows x64/ARM64 PE files. Real ARM64 SHA-256 and runtime checks are defined as acceptance tests in `tests/wtl10/native_arm64.py`. No standalone build wrapper or Installed SDK is provided.
 
 ## Required CI
 
@@ -221,9 +214,8 @@ The former 14-file `scripts/` directory has been deleted. GitHub Actions now ins
   Windows x64+ARM64 cross compilation and real WTL10 SDI resource link.
 - **MSVC** x64 native and HostX64→ARM64 build plus real Windows ARM64,
   compiling the same pinned *clean-room* OpenATL (never Microsoft's ATL).
-- **WTL dependency provenance**: required `vcpkg.json` manifest,
-  local overlay `ports/wtl` (no Microsoft `atl` dependency), native and
-  cross-target installed header checks, and no manual ZIP fallback.
+- **WTL dependency provenance**: SHA512-pinned release, build-local adapter,
+  transitive includes/linkage and unmodified SDI, on native and cross hosts.
 - Separate native assertions: UI and the repository-owned file/string/sync
   utilities run **without COM initialization**; the standalone Unicode
   `CPath` test exercises actual Windows file creation and path handling.

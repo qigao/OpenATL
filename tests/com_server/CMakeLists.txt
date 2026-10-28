@@ -2,7 +2,7 @@ add_library(openatl_com_server_fixture SHARED fixture.cpp fixture.def interfaces
 set_target_properties(openatl_com_server_fixture PROPERTIES PREFIX "")
 target_link_libraries(openatl_com_server_fixture PRIVATE OpenATL::ATL)
 
-add_executable(openatl_com_server_tests server.cpp interfaces.h)
+add_executable(openatl_com_server_tests server.cpp atl_compat.cpp interfaces.h)
 target_link_libraries(openatl_com_server_tests PRIVATE OpenATL::ATL)
 add_dependencies(openatl_com_server_tests openatl_com_server_fixture)
 set_target_properties(openatl_com_server_fixture openatl_com_server_tests PROPERTIES

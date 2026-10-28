@@ -57,9 +57,10 @@ A process exit code alone is insufficient: generic stack cookie/CFG crashes
 also produce 0xC0000409. The parent uses DEBUG_ONLY_THIS_PROCESS solely
 for the isolated corrupted-return child and preserves the exception record.
 
-Build through normal manifest-installed WTL/OpenATL source-tree CMake with:
-
-    -DOPENATL_BUILD_QUALIFICATION=ON -DOPENATL_REQUIRE_CET_RUNTIME=ON
+Build through the source-tree `msvc-x64` preset (which enables the required
+hardware test), or explicitly select `OPENATL_REQUIRE_CET_RUNTIME=ON` in the
+`llvm-x86_64` preset on a qualified hardware host. CMake manages WTL itself;
+no ports installation is needed.
 
 That option adds a required native CTest only for x64 and fails CMake on
 ARM64. Wherever the hardware gate is explicitly enabled, missing user HSP

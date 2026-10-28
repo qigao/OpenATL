@@ -7,6 +7,12 @@ module lifetime accounting, and explicit registry registration. No deprecated
 ATL module facade, RGS interpreter, EXE server, Automation/type-library
 implementation, custom proxy/stub generator or ActiveX host is supplied.
 
+For conventional ATL object declarations, `atlcom.h` supplies the
+[nonaggregated object and COM-map compatibility subset](ATL_COMPATIBILITY.md).
+Its module-aware creator plugs into the same explicit class table. Local
+ATL-style creation retains standard zero-ref semantics without an implicit
+global module; DLL classes must use the explicit module-aware creation path.
+
 ## Ownership and concurrency protocol
 
 - The DLL owns one `Module` and an immutable `ClassEntry` table. Both remain

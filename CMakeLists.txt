@@ -23,13 +23,8 @@ if(NOT EXISTS "${_openatl_atl_include}/atlbase.h" OR
    NOT EXISTS "${_openatl_atl_include}/atlimage.h")
   message(FATAL_ERROR "Missing repository-owned OpenATL headers")
 endif()
-# Legacy ATL server compatibility is absent; the independent server API is
-# explicitly included from openatl/ and does not restore atlcom.h.
-if(EXISTS "${_openatl_atl_include}/atlcom.h")
-  message(FATAL_ERROR "COM Server atlcom.h is outside OpenATL UI/COM Client scope")
-endif()
 if(DEFINED OPENATL_WTL_INCLUDE_DIR)
-  message(FATAL_ERROR "Manual WTL header roots are forbidden; install WTL with vcpkg.json")
+  message(FATAL_ERROR "OPENATL_WTL_INCLUDE_DIR is obsolete; OpenATL manages its pinned WTL dependency")
 endif()
 file(READ "${_openatl_atl_include}/atlbase.h" _openatl_marker LIMIT 240)
 file(READ "${_openatl_atl_include}/atldef.h" _openatl_def_marker LIMIT 2048)
@@ -49,7 +44,27 @@ target_compile_definitions(openatl_atl INTERFACE
 # One consumer target supplies the system dependencies for COM helpers and
 # explicit registration. Linking these imports does not initialize COM or
 # register any class; callers still opt into those operations explicitly.
-target_link_libraries(openatl_atl INTERFACE ole32 oleaut32 uuid advapi32)
+target_link_libraries(openatl_atl INTERFACE
+  ole32 oleaut32 uuid advapi32 comctl32 gdi32 user32 shell32 shlwapi
+  comdlg32 uxtheme msimg32 dwmapi)
+if(MINGW)
+  # WTL's _tWinMain is wWinMain in this Unicode-only library. Apply the
+  # matching CRT entry only to GUI executables, leaving console tests alone.
+  target_link_options(openatl_atl INTERFACE
+    "$<$<BOOL:$<TARGET_PROPERTY:WIN32_EXECUTABLE>>:-municode>")
+endif()
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/OpenATLWTL.cmake")
+
+# Use the compiler target, never a vcpkg triplet or the build host's CPU.
+if(MSVC)
+  set(_openatl_target_arch "${CMAKE_CXX_COMPILER_ARCHITECTURE_ID}")
+else()
+  set(_openatl_target_arch "${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+set(_openatl_x64 FALSE)
+if(_openatl_target_arch MATCHES "^(x64|x86_64|AMD64|amd64)$")
+  set(_openatl_x64 TRUE)
+endif()
 
 option(OPENATL_USE_SALTS_UNICODE "Enable explicit Unicode 17 text processing with an installed Salts SDK" OFF)
 if(OPENATL_USE_SALTS_UNICODE)
@@ -78,66 +93,13 @@ endif()
 
 option(OPENATL_BUILD_QUALIFICATION "Compile native UI, ATL utility and COM client/server tests" OFF)
 if(OPENATL_BUILD_QUALIFICATION)
-  # WTL is a vcpkg manifest dependency, not an OpenATL library or target.
-  # Never fall back to system/MSVC ATL, downloaded WTL ZIPs or user paths.
-  if(NOT DEFINED VCPKG_TARGET_TRIPLET OR VCPKG_TARGET_TRIPLET STREQUAL "")
-    message(FATAL_ERROR "Set VCPKG_TARGET_TRIPLET after vcpkg manifest installation of wtl")
-  endif()
-  if(DEFINED VCPKG_INSTALLED_DIR AND NOT VCPKG_INSTALLED_DIR STREQUAL "")
-    set(_wtl_prefix "${VCPKG_INSTALLED_DIR}")
-  else()
-    # Each triplet is installed by vcpkg into an independent manifest root.
-    # This avoids vcpkg pruning x64 when the ARM64 manifest is installed.
-    set(_wtl_prefix "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}")
-  endif()
-  set(_wtl_headers "${_wtl_prefix}/${VCPKG_TARGET_TRIPLET}/include")
-  if(NOT EXISTS "${_wtl_headers}/atlapp.h")
-    message(FATAL_ERROR "Missing vcpkg-installed wtl: ${_wtl_headers}/atlapp.h")
-  endif()
-  if(EXISTS "${_wtl_prefix}/${VCPKG_TARGET_TRIPLET}/share/atl")
-    message(FATAL_ERROR "The Microsoft ATL vcpkg dependency is forbidden: use ports/wtl overlay")
-  endif()
-  file(READ "${_wtl_headers}/atlapp.h" _wtl_version_probe LIMIT 8192)
-  if(NOT _wtl_version_probe MATCHES "WTL version 10\\.0")
-    message(FATAL_ERROR "Unrecognized vcpkg WTL version; expected WTL10")
-  endif()
-  file(READ "${_wtl_headers}/atlapp.h" _wtl_scope)
-  if(NOT _wtl_scope MATCHES "OpenATL UI-only" OR
-     NOT _wtl_scope MATCHES "HRESULT Init\\(HINSTANCE hInstance\\)" OR
-     _wtl_scope MATCHES "class CServerAppModule" OR
-     _wtl_scope MATCHES "class CAppModule : public ATL::CComModule")
-    message(FATAL_ERROR "The pinned vcpkg WTL10 source must be UI-only with Init(HINSTANCE)")
-  endif()
-  file(READ "${_wtl_headers}/atlmisc.h" _wtl_mru_scope)
-  if(NOT _wtl_mru_scope MATCHES "ATL::CRegKey" OR
-     NOT _wtl_mru_scope MATCHES "ReadFromRegistry\\(" OR
-     NOT _wtl_mru_scope MATCHES "WriteToRegistry\\(" OR
-     _wtl_mru_scope MATCHES "class CRegProperty" OR
-     NOT _wtl_mru_scope MATCHES "CRecentDocumentListBase" OR
-     NOT _wtl_mru_scope MATCHES "class CFindFile" OR
-     NOT _wtl_mru_scope MATCHES "AtlGetStockPen")
-    message(FATAL_ERROR "WTL UI-only: missing MRU persistence/menu/file utilities or registry serializer returned")
-  endif()
-  file(READ "${_wtl_headers}/atlctrlx.h" _wtl_hyperlink_scope)
-  file(READ "${_wtl_headers}/atldlgs.h" _wtl_dialog_scope)
-  if(_wtl_hyperlink_scope MATCHES "ATL::CRegKey" OR
-     _wtl_hyperlink_scope MATCHES "_ParseColorString" OR
-     _wtl_dialog_scope MATCHES "#include <atlcom.h>" OR
-     _wtl_dialog_scope MATCHES "class ATL_NO_VTABLE CPrintDialogExImpl" OR
-     _wtl_dialog_scope MATCHES "public ATL::IObjectWithSiteImpl" OR
-     NOT _wtl_dialog_scope MATCHES "class CPageSetupDialog")
-    message(FATAL_ERROR "WTL UI-only: registry or COM printing callbacks still exposed")
-  endif()
   enable_language(RC)
   enable_testing()
 
   add_executable(openatl_gui_runtime
     tests/wtl10/gui_runtime.cpp tests/wtl10/gui_runtime.rc)
-  target_include_directories(openatl_gui_runtime PRIVATE tests/wtl10 "${_wtl_headers}")
-  target_link_libraries(openatl_gui_runtime PRIVATE OpenATL::ATL
-    # ole32 is used by the test ONLY to prove COM stays uninitialized.
-    ole32 comctl32 gdi32 user32 shell32 shlwapi
-    comdlg32 uxtheme msimg32 oleaut32 uuid advapi32)
+  target_include_directories(openatl_gui_runtime PRIVATE tests/wtl10)
+  target_link_libraries(openatl_gui_runtime PRIVATE OpenATL::ATL)
   add_test(NAME openatl.ui_no_com COMMAND openatl_gui_runtime)
 
   # Repository-owned ATL utilities (file/string/sync), independent of COM.
@@ -197,13 +159,13 @@ if(OPENATL_BUILD_QUALIFICATION)
   if(MSVC)
     target_compile_options(openatl_mitigation_runtime PRIVATE /guard:cf)
     target_link_options(openatl_mitigation_runtime PRIVATE /GUARD:CF /DYNAMICBASE /NXCOMPAT)
-    if(VCPKG_TARGET_TRIPLET MATCHES "^x64-")
+    if(_openatl_x64)
       target_link_options(openatl_mitigation_runtime PRIVATE /CETCOMPAT)
     endif()
   else()
     target_compile_options(openatl_mitigation_runtime PRIVATE -Xclang -cfguard)
     target_link_options(openatl_mitigation_runtime PRIVATE -Wl,-Xlink,-guard:cf)
-    if(VCPKG_TARGET_TRIPLET MATCHES "^x64-")
+    if(_openatl_x64)
       target_link_options(openatl_mitigation_runtime PRIVATE -Wl,-Xlink,-cetcompat)
     endif()
   endif()
@@ -212,7 +174,7 @@ if(OPENATL_BUILD_QUALIFICATION)
   # distinct. By default inventory is nonblocking and reports UNQUALIFIED
   # where the hosted Windows machine does not enforce HSP.
   option(OPENATL_REQUIRE_CET_RUNTIME "Require actual x64 user shadow-stack violation" OFF)
-  if(VCPKG_TARGET_TRIPLET MATCHES "^x64-")
+  if(_openatl_x64)
     add_executable(openatl_cet_shadow_stack tests/wtl10/cet_shadow_stack.cpp)
     target_link_libraries(openatl_cet_shadow_stack PRIVATE OpenATL::ATL)
     if(MSVC)
@@ -313,20 +275,18 @@ if(OPENATL_BUILD_QUALIFICATION)
               "${CMAKE_CURRENT_SOURCE_DIR}/tests/wtl10/sdi_interactive.py"
               "$<TARGET_FILE:openatl_wtl10_sdi>")
     set_tests_properties(openatl.wtl10_sdi_native_ui PROPERTIES TIMEOUT 35)
-    target_include_directories(openatl_wtl10_sdi PRIVATE "${OPENATL_WTL_DEMO_DIR}" "${_wtl_headers}")
-    target_link_libraries(openatl_wtl10_sdi PRIVATE OpenATL::ATL
-      ole32 oleaut32 uuid comctl32 msimg32 uxtheme gdi32 comdlg32
-      shell32 shlwapi dwmapi user32 advapi32)
+    target_include_directories(openatl_wtl10_sdi PRIVATE "${OPENATL_WTL_DEMO_DIR}")
+    target_link_libraries(openatl_wtl10_sdi PRIVATE OpenATL::ATL)
     if(MSVC)
       target_compile_options(openatl_wtl10_sdi PRIVATE /W3 /EHsc)
       target_link_options(openatl_wtl10_sdi PRIVATE /INCREMENTAL:NO /DYNAMICBASE /NXCOMPAT)
     else()
-      target_link_options(openatl_wtl10_sdi PRIVATE -municode -mwindows -static)
+      target_link_options(openatl_wtl10_sdi PRIVATE -static)
     endif()
   endif()
 endif()
 
-# No legacy ATL server/module compatibility, RGS or RATL provider.
+# Nonaggregated ATL object compatibility is explicit in atlcom.h; no obsolete module, RGS or RATL provider.
 # The clean-room MIT ATL implementation is owned here under include/.
 # No checkout patch or external ATL implementation is ever used.
 # Permanent source-tree-only API: no install(), export(), packaging, or

@@ -15,6 +15,7 @@ using namespace OpenATL::COM;
                  __LINE__, #condition, static_cast<unsigned long>(::GetLastError())); \
     return false; } } while (0)
 
+bool RunAtlCompatibilityTests();
 namespace {
 std::atomic<int> live{0};
 bool throwUnexpected = false;
@@ -68,6 +69,7 @@ bool identities(IOpenATLValue* object) {
 }
 
 bool core() {
+    REQUIRE(RunAtlCompatibilityTests());
     const ClassEntry entries[] = {{CLSID_OpenATLValue, &Value::CreateInstance},
                                   {CLSID_OpenATLThrow, &Throws::CreateInstance}};
     Module module(entries, 2);

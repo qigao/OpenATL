@@ -1,26 +1,6 @@
-# WTL 10.0.10320 overlay #10: SHA512-pinned SourceForge source is
-# transformed using unique structural anchors; no mirror patch or
-# registry/COM Server compatibility fallback.
-# Difference: our overlay removes the stock WTL -> atl dependency;
-# stock vcpkg's 'atl' port requires Microsoft Visual Studio ATL.
-# OpenATL's source-tree include/ is the ONLY ATL implementation.
-vcpkg_from_sourceforge(
-    OUT_SOURCE_PATH SOURCE_PATH
-    REPO wtl/WTL%2010
-    REF WTL%2010.0.10320%20Release
-    FILENAME "WTL10_10320_Release.zip"
-    NO_REMOVE_ONE_LEVEL
-    SHA512 086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309
-    PATCHES
-        appwizard_setup.js-vs2022.patch
-        atlmisc.h-bug329.patch
-        atlribbon.h-wtl66.patch
-)
-
-
 # Transform the SHA512-verified SourceForge WTL10 source itself.
 # Exact structural anchors: fail if source ownership changes.
-set(_wtl_ui_header "${SOURCE_PATH}/Include/atlapp.h")
+set(_wtl_ui_header "${_wtl_headers}/atlapp.h")
 file(READ "${_wtl_ui_header}" _wtl_ui_text)
 string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
 
@@ -99,6 +79,14 @@ public:
 		return S_OK;
 	}
 
+	// Source compatibility for WTL's ordinary empty object-map call.
+	HRESULT Init(void* objectMap, HINSTANCE hInstance, const GUID* libraryId = NULL)
+	{
+		if(objectMap != NULL || libraryId != NULL)
+			return E_NOTIMPL;
+		return Init(hInstance);
+	}
+
 	void Term()
 	{
 		if(m_pMsgLoopMap != NULL)
@@ -140,7 +128,7 @@ endif()
 file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
 
 # Legacy IE-registry color lookup adds no required UI capability.
-set(_wtl_ui_header "${SOURCE_PATH}/Include/atlctrlx.h")
+set(_wtl_ui_header "${_wtl_headers}/atlctrlx.h")
 file(READ "${_wtl_ui_header}" _wtl_ui_text)
 string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
 _openatl_replace_between(
@@ -156,7 +144,7 @@ file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
 
 # Preserve standard common printing, page setup and property sheets;
 # only the COM callback-based PrintDlgEx implementation requires atlcom.h.
-set(_wtl_ui_header "${SOURCE_PATH}/Include/atldlgs.h")
+set(_wtl_ui_header "${_wtl_headers}/atldlgs.h")
 file(READ "${_wtl_ui_header}" _wtl_ui_text)
 string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
 _openatl_replace_between(
@@ -174,7 +162,7 @@ file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
 
 # Preserve MRU menu operations and per-user registry persistence.
 # These are ordinary app settings via OpenATL::CRegKey, not COM registration.
-set(_wtl_ui_header "${SOURCE_PATH}/Include/atlmisc.h")
+set(_wtl_ui_header "${_wtl_headers}/atlmisc.h")
 file(READ "${_wtl_ui_header}" _wtl_ui_text)
 string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
 # This SourceForge release has a separate CRegProperty registry-backed
@@ -201,12 +189,19 @@ endif()
 if(NOT _wtl_ui_text MATCHES "AtlGetStockPen")
     message(FATAL_ERROR "WTL UI-only: stock Win32 GDI helper missing")
 endif()
+_openatl_replace_once(
+    "ATL::CString strResult(\"file://\");"
+    "ATL::CString strResult(_T(\"file://\"));"
+    "upstream WTL bug 329 Unicode file URI")
+file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+
+set(_wtl_ui_header "${_wtl_headers}/atlribbon.h")
+file(READ "${_wtl_ui_header}" _wtl_ui_text)
+string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
+foreach(_header IN ITEMS atlmisc.h atlframe.h atlctrls.h atlctrlw.h)
+  _openatl_replace_once("#include <${_header}>" "#include \"${_header}\"" "upstream WTL issue 66 ${_header}")
+endforeach()
 file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
 
 unset(_wtl_ui_header)
 unset(_wtl_ui_text)
-
-file(INSTALL "${SOURCE_PATH}/Include/" DESTINATION "${CURRENT_PACKAGES_DIR}/include" FILES_MATCHING PATTERN "*.h")
-file(COPY "${SOURCE_PATH}/Samples" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
-file(COPY "${SOURCE_PATH}/AppWizard" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
-file(INSTALL "${SOURCE_PATH}/MS-PL.txt" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

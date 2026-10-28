@@ -403,7 +403,7 @@ int main(void)
         fprintf(stderr, "WTL-only GUI must start with COM uninitialized\n");
         return 10;
     }
-    HRESULT init = _Module.Init(::GetModuleHandleW(NULL));
+    HRESULT init = _Module.Init(NULL, ::GetModuleHandleW(NULL));
     if (FAILED(init)) {
         fprintf(stderr, "WTL CAppModule init failed without COM\n");
         return 11;
