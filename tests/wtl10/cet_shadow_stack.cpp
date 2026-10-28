@@ -104,6 +104,62 @@ static int child(const char* option) {
     return 82;
 }
 
+// Create a fresh CETCOMPAT process with mandatory user HSP at process
+// creation, not after startup. This is the documented Windows process
+// creation mitigation policy2 0x1 << 28. It never requests always-off or
+// falls back to an unprotected process if HSP is unavailable.
+struct HspAttributeOwner {
+    SIZE_T size = 0;
+    PPROC_THREAD_ATTRIBUTE_LIST list = nullptr;
+    bool initialized = false;
+    // Keep values alive through CreateProcessW, not just UpdateProcThreadAttribute.
+    ULONG64 mitigation[2]{0, 1ULL << 28};
+    bool Prepare() {
+        (void)::InitializeProcThreadAttributeList(nullptr, 1, 0, &size);
+        if (size == 0) return false;
+        list = reinterpret_cast<PPROC_THREAD_ATTRIBUTE_LIST>(
+            ::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY, size));
+        if (!list) return false;
+        if (!::InitializeProcThreadAttributeList(list, 1, 0, &size))
+            return false;
+        initialized = true;
+        return ::UpdateProcThreadAttribute(
+            list, 0, PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY,
+            mitigation, sizeof(mitigation), nullptr, nullptr) != FALSE;
+    }
+    ~HspAttributeOwner() {
+        if (initialized) ::DeleteProcThreadAttributeList(list);
+        if (list) (void)::HeapFree(::GetProcessHeap(), 0, list);
+    }
+    HspAttributeOwner(const HspAttributeOwner&) = delete;
+    HspAttributeOwner& operator=(const HspAttributeOwner&) = delete;
+    HspAttributeOwner() = default;
+};
+
+static bool create_hsp_child(wchar_t* image, wchar_t* command,
+                             DWORD flags, PROCESS_INFORMATION* info) {
+    if (!image || !command || !info) return false;
+    HspAttributeOwner owner;
+    if (!owner.Prepare()) {
+        std::fprintf(stderr,
+            "OPENATL_CET_FAIL stage=mitigation_attribute error=%lu\n",
+            static_cast<unsigned long>(::GetLastError()));
+        return false;
+    }
+    STARTUPINFOEXW startup{};
+    startup.StartupInfo.cb = sizeof(startup);
+    startup.lpAttributeList = owner.list;
+    const BOOL created = ::CreateProcessW(
+        image, command, nullptr, nullptr, FALSE,
+        flags | EXTENDED_STARTUPINFO_PRESENT,
+        nullptr, nullptr, &startup.StartupInfo, info);
+    if (!created) {
+        std::fprintf(stderr, "OPENATL_CET_FAIL stage=HSP_CreateProcess error=%lu\n",
+                     static_cast<unsigned long>(::GetLastError()));
+    }
+    return created != FALSE;
+}
+
 static bool spawn(const wchar_t* option, DWORD* exitCode) {
     wchar_t executable[MAX_PATH] = {};
     const DWORD length = ::GetModuleFileNameW(nullptr, executable, MAX_PATH);
@@ -113,12 +169,10 @@ static bool spawn(const wchar_t* option, DWORD* exitCode) {
     args += executable;
     args += L"\" ";
     args += option;
-    STARTUPINFOW start{};
-    start.cb = sizeof(start);
     PROCESS_INFORMATION process{};
-    if (!::CreateProcessW(executable, &args[0], nullptr, nullptr, FALSE,
+    if (!create_hsp_child(executable, &args[0],
                           CREATE_NO_WINDOW | CREATE_DEFAULT_ERROR_MODE,
-                          nullptr, nullptr, &start, &process))
+                          &process))
         return false;
     (void)::CloseHandle(process.hThread);
     const DWORD wait = ::WaitForSingleObject(process.hProcess, 7000);
@@ -154,13 +208,11 @@ static bool spawn_debug_violation(CrashEvidence* evidence) {
     std::wstring command = L"\"";
     command += executable;
     command += L"\" --corrupt-return";
-    STARTUPINFOW start{};
-    start.cb = sizeof(start);
     PROCESS_INFORMATION childProcess{};
-    if (!::CreateProcessW(executable, &command[0], nullptr, nullptr, FALSE,
+    if (!create_hsp_child(executable, &command[0],
                           DEBUG_ONLY_THIS_PROCESS | CREATE_NO_WINDOW |
                               CREATE_DEFAULT_ERROR_MODE,
-                          nullptr, nullptr, &start, &childProcess))
+                          &childProcess))
         return false;
     (void)::CloseHandle(childProcess.hThread);
     const ULONGLONG deadline = ::GetTickCount64() + 7000;
@@ -321,7 +373,15 @@ int main(int argc, char** argv) {
         return 2;
     if (std::strcmp(argv[1], "--inventory") == 0)
         return qualify(false);
-    if (std::strcmp(argv[1], "--require-hardware") == 0)
+    if (std::strcmp(argv[1], "--require-hardware") == 0) {
+        // No assumption about the hosted runner's default HSP policy:
+        // explicitly launch the ACTUAL test under ALWAYS_ON at creation.
+        DWORD exitCode = ~0u;
+        if (!spawn(L"--enforced-child", &exitCode))
+            return 94;
+        return static_cast<int>(exitCode);
+    }
+    if (std::strcmp(argv[1], "--enforced-child") == 0)
         return qualify(true);
     if (std::strcmp(argv[1], "--control") == 0 ||
         std::strcmp(argv[1], "--corrupt-return") == 0)
