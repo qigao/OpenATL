@@ -2,6 +2,7 @@
 #ifndef OPENATL_ATL_MODULE_H
 #define OPENATL_ATL_MODULE_H
 #include "../atlbase.h"
+#include "com_server.h"
 #include <atomic>
 #include <mutex>
 #include <optional>
@@ -97,6 +98,81 @@ inline HRESULT AtlModuleException() noexcept {
     catch (...) { return E_UNEXPECTED; }
 }
 }
+
+// DLL module lifetime and standard ATL export forwarding.
+//
+// BindServer() is the current explicit-class-table bridge, not a claim that
+// OBJECT_ENTRY_AUTO, RGS or type-library registration is implemented. The
+// bound OpenATL::COM::Module and its static class table must outlive the DLL
+// module and every factory/object/server lock. Binding is one-time; callers
+// must coordinate DLL unload and configuration externally.
+template<class T>
+class ATL_NO_VTABLE CAtlDllModuleT : public CAtlModuleT<T> {
+public:
+    CAtlDllModuleT() noexcept = default;
+    CAtlDllModuleT(const CAtlDllModuleT&) = delete;
+    CAtlDllModuleT& operator=(const CAtlDllModuleT&) = delete;
+
+    HRESULT BindServer(OpenATL::COM::Module& module) noexcept {
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        const HRESULT status = module.Status();
+        if (FAILED(status)) return status;
+        OpenATL::COM::Module* expected = nullptr;
+        if (server_.compare_exchange_strong(expected, &module)) return S_OK;
+        return expected == &module ? S_OK : HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+    }
+
+    // No COM initialization/registry updates may run under the loader lock.
+    BOOL WINAPI DllMain(DWORD /*reason*/, LPVOID /*reserved*/) noexcept {
+        return TRUE;
+    }
+
+    HRESULT DllCanUnloadNow() const noexcept {
+        if (this->IsTerminated() || this->GetLockCount() != 0) return S_FALSE;
+        const auto* server = server_.load();
+        return server && server->CanUnloadNow() != S_OK ? S_FALSE : S_OK;
+    }
+
+    HRESULT DllGetClassObject(REFCLSID clsid, REFIID iid, LPVOID* output) noexcept {
+        if (!output) return E_POINTER;
+        *output = nullptr;
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        auto* server = server_.load();
+        if (!server) return CLASS_E_CLASSNOTAVAILABLE;
+        // Pin this image module during the synchronous factory lookup. Any
+        // factory returned by the explicit server owns its own ModuleReference.
+        this->Lock();
+        const HRESULT result = server->GetClassObject(clsid, iid, output);
+        this->Unlock();
+        return result;
+    }
+
+    HRESULT GetClassObject(REFCLSID clsid, REFIID iid, LPVOID* output) noexcept {
+        return DllGetClassObject(clsid, iid, output);
+    }
+
+    // Default registration remains E_NOTIMPL until a derived module supplies
+    // real registry/type-library semantics. Do not report fake S_OK.
+    HRESULT DllRegisterServer(BOOL registerTypeLib = TRUE) noexcept {
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        try {
+            return static_cast<T*>(this)->RegisterServer(registerTypeLib, nullptr);
+        } catch (...) {
+            return detail::AtlModuleException();
+        }
+    }
+    HRESULT DllUnregisterServer(BOOL unregisterTypeLib = TRUE) noexcept {
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        try {
+            return static_cast<T*>(this)->UnregisterServer(unregisterTypeLib, nullptr);
+        } catch (...) {
+            return detail::AtlModuleException();
+        }
+    }
+
+private:
+    std::atomic<OpenATL::COM::Module*> server_{nullptr};
+};
 
 template<class T>
 class CAtlExeModuleT : public CAtlModuleT<T> {
