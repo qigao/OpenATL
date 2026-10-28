@@ -153,21 +153,30 @@ public:
 
     // Default registration remains E_NOTIMPL until a derived module supplies
     // real registry/type-library semantics. Do not report fake S_OK.
+    // Pin active registration exports against a cooperative DLL unload.
     HRESULT DllRegisterServer(BOOL registerTypeLib = TRUE) noexcept {
         if (this->IsTerminated()) return E_UNEXPECTED;
+        this->Lock();
+        HRESULT result = E_UNEXPECTED;
         try {
-            return static_cast<T*>(this)->RegisterServer(registerTypeLib, nullptr);
+            result = static_cast<T*>(this)->RegisterServer(registerTypeLib, nullptr);
         } catch (...) {
-            return detail::AtlModuleException();
+            result = detail::AtlModuleException();
         }
+        this->Unlock();
+        return result;
     }
     HRESULT DllUnregisterServer(BOOL unregisterTypeLib = TRUE) noexcept {
         if (this->IsTerminated()) return E_UNEXPECTED;
+        this->Lock();
+        HRESULT result = E_UNEXPECTED;
         try {
-            return static_cast<T*>(this)->UnregisterServer(unregisterTypeLib, nullptr);
+            result = static_cast<T*>(this)->UnregisterServer(unregisterTypeLib, nullptr);
         } catch (...) {
-            return detail::AtlModuleException();
+            result = detail::AtlModuleException();
         }
+        this->Unlock();
+        return result;
     }
 
 private:
