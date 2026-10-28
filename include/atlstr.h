@@ -206,6 +206,13 @@ public:
         return pos == std::basic_string<TCHAR>::npos ? -1 : (int)pos;
     }
 
+    int FindOneOf(LPCTSTR pszCharSet) const
+    {
+        if (!pszCharSet) return -1;
+        const auto pos = m_str.find_first_of(pszCharSet);
+        return pos == std::basic_string<TCHAR>::npos ? -1 : static_cast<int>(pos);
+    }
+
     CString& MakeUpper() { for (auto& c : m_str) c = (TCHAR)_totupper(c); return *this; }
     CString& MakeLower() { for (auto& c : m_str) c = (TCHAR)_totlower(c); return *this; }
 

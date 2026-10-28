@@ -238,6 +238,11 @@ inline HINSTANCE AtlFindStringResourceInstance(UINT nID, WORD wLanguage = 0) noe
     return _AtlBaseModule.GetModuleInstance();
 }
 
+inline int AtlLoadString(UINT nID, LPTSTR lpBuffer, int nBufferMax) noexcept
+{
+    return ::LoadString(AtlFindStringResourceInstance(nID), nID, lpBuffer, nBufferMax);
+}
+
 } // namespace ATL
 
 #endif // __ATLCORE_H__

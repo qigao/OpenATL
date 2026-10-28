@@ -1,0 +1,8 @@
+EXPORTS
+    OpenATLStart
+    OpenATLWindow
+    OpenATLThunkAddress
+    OpenATLWaitEntered
+    OpenATLReleaseCallback
+    OpenATLCanUnload
+    OpenATLStop

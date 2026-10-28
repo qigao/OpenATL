@@ -234,6 +234,15 @@ public:
             lp->QueryInterface(*piid, (void**)&this->p);
     }
 
+    template<class Q>
+    CComQIPtr(const CComPtr<Q>& other) noexcept
+        : CComQIPtr(static_cast<IUnknown*>(other.p)) {}
+
+    template<class Q>
+    T* operator=(const CComPtr<Q>& other) noexcept {
+        return operator=(static_cast<IUnknown*>(other.p));
+    }
+
     T* operator=(T* lp) noexcept
     {
         return CComPtr<T>::operator=(lp);
@@ -256,20 +265,37 @@ public:
     }
 };
 
-// Specialization for IUnknown
-template <>
-class CComQIPtr<IUnknown, &IID_IUnknown> : public CComPtr<IUnknown> {
+// MinGW's __uuidof emulation need not return the address of IID_IUnknown.
+// Match the interface type so its default cannot instantiate duplicate
+// IUnknown*/T* overloads; still honor an explicitly selected IID.
+template <const IID* piid>
+class CComQIPtr<IUnknown, piid> : public CComPtr<IUnknown> {
 public:
     CComQIPtr() noexcept {}
-    CComQIPtr(IUnknown* lp) noexcept : CComPtr<IUnknown>(lp) {}
-    CComQIPtr(const CComQIPtr<IUnknown, &IID_IUnknown>& lp) noexcept : CComPtr<IUnknown>(lp.p) {}
+    CComQIPtr(IUnknown* lp) noexcept {
+        if (lp) lp->QueryInterface(*piid, reinterpret_cast<void**>(&this->p));
+    }
+    template<class Q>
+    CComQIPtr(const CComPtr<Q>& other) noexcept
+        : CComQIPtr(static_cast<IUnknown*>(other.p)) {}
+    CComQIPtr(const CComQIPtr<IUnknown, piid>& lp) noexcept : CComPtr<IUnknown>(lp.p) {}
 
     IUnknown* operator=(IUnknown* lp) noexcept
     {
-        return CComPtr<IUnknown>::operator=(lp);
+        IUnknown* resolved = nullptr;
+        if (lp) lp->QueryInterface(*piid, reinterpret_cast<void**>(&resolved));
+        IUnknown* previous = this->p;
+        this->p = resolved;
+        if (previous) previous->Release();
+        return this->p;
     }
 
-    IUnknown* operator=(const CComQIPtr<IUnknown, &IID_IUnknown>& lp) noexcept
+    template<class Q>
+    IUnknown* operator=(const CComPtr<Q>& other) noexcept {
+        return operator=(static_cast<IUnknown*>(other.p));
+    }
+
+    IUnknown* operator=(const CComQIPtr<IUnknown, piid>& lp) noexcept
     {
         return CComPtr<IUnknown>::operator=(lp.p);
     }

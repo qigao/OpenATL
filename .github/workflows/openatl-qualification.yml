@@ -26,7 +26,7 @@ jobs:
       - run: python3 tests/wtl_dependency_policy.py
 
   windows-llvm:
-    name: llvm-mingw x64 native + ARM64 PE build
+    name: llvm-mingw Win32 suite + x64 native + ARM64 PE build
     # Hosted workers do not guarantee hardware HSP (Issue #15). Keep CFG/CET
     # image checks here; use the dedicated hardware workflow for HSP runtime.
     runs-on: windows-2022
@@ -59,6 +59,28 @@ jobs:
           Run git @('clone','--quiet','https://github.com/kkhaike/wtltest.git','tools/wtl10-test')
           Run git @('-C','tools/wtl10-test','checkout','--quiet','--detach',$sample)
           if((git -C tools/wtl10-test rev-parse HEAD).Trim() -ne $sample) { throw 'SDI sample SHA mismatch' }
+      - name: Build unchanged Win32 official suite and run CTest x5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Run([string]$tool,[string[]]$argv) {
+            & $tool @argv
+            if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
+          }
+          $env:OPENATL_LLVM_MINGW_BIN=$env:OPENATL_LLVM_BIN
+          $sdkRoot=(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows Kits\Installed Roots').KitsRoot10
+          $sdkVersion=Get-ChildItem (Join-Path $sdkRoot 'bin') -Directory |
+            Where-Object Name -Match '^10\.0\.\d+\.\d+$' |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          if(!$sdkVersion) { throw 'A versioned Windows SDK is required for original TOOLBAR/Ribbon resources' }
+          $env:OPENATL_WINDOWS_SDK_BIN=Join-Path $sdkVersion.FullName 'x86'
+          foreach($tool in @('rc.exe','uicc.exe')) {
+            if(!(Test-Path (Join-Path $env:OPENATL_WINDOWS_SDK_BIN $tool))) { throw "Selected SDK is missing $tool" }
+          }
+          Write-Host "Windows SDK bin: $env:OPENATL_WINDOWS_SDK_BIN"
+          Run cmake @('--preset','llvm-i686')
+          Run cmake @('--build','--preset','llvm-i686','--parallel','2')
+          Run ctest @('--preset','llvm-i686','--repeat','until-fail:5')
       - name: CMake native x64 and cross ARM64, PE/resources, CTest x5
         shell: pwsh
         run: |
@@ -69,7 +91,7 @@ jobs:
           }
           $env:OPENATL_LLVM_MINGW_BIN=$env:OPENATL_LLVM_BIN
           $sample=(Resolve-Path tools/wtl10-test).Path
-          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_wtl10_sdi','openatl_official_guidgen')
+          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_activex','openatl_wtl10_sdi','openatl_official_guidgen')
           foreach($arch in @('x86_64','aarch64')) {
             $build="build-llvm-$arch"
             Run cmake @('--preset',"llvm-$arch","-DOPENATL_WTL_DEMO_DIR=$sample")
@@ -176,7 +198,7 @@ jobs:
           if(!$identity -or !(Select-String -Path $identity.FullName -Pattern 'CMAKE_CXX_COMPILER_ID "MSVC"' -Quiet)) {
             throw 'MSVC cl.exe was not the actual compiler'
           }
-          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_wtl10_sdi','openatl_official_guidgen','openatl_official_memdlg')
+          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_activex','openatl_wtl10_sdi','openatl_official_guidgen','openatl_official_memdlg')
           foreach($name in @('console','dialog','window')) {
             Run python @('tests/wtl10/verify_pe_machine.py',"$build/openatl_ratl_$name.exe",$machine,'--require-resources')
           }
@@ -316,7 +338,7 @@ jobs:
             else
               python3 tests/wtl10/verify_pe_mitigations.py "$build/openatl_mitigation_runtime.exe" "$arch" --require-cfg
             fi
-            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_unicode openatl_unicode_utf8 openatl_atl_extensions openatl_atl_mapping openatl_atl_image openatl_thunk_fault openatl_mitigation_runtime openatl_unload_runner openatl_unload_native openatl_com_client openatl_com_server_tests openatl_wtl10_sdi openatl_official_guidgen openatl_ratl_console openatl_ratl_dialog openatl_ratl_window; do
+            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_unicode openatl_unicode_utf8 openatl_atl_extensions openatl_atl_mapping openatl_atl_image openatl_thunk_fault openatl_mitigation_runtime openatl_unload_runner openatl_unload_native openatl_com_client openatl_com_server_tests openatl_activex openatl_wtl10_sdi openatl_official_guidgen openatl_ratl_console openatl_ratl_dialog openatl_ratl_window; do
               if [ "$target" = openatl_gui_runtime ] || [ "$target" = openatl_unicode_utf8 ] || [ "$target" = openatl_wtl10_sdi ] || [ "$target" = openatl_official_guidgen ] || [[ "$target" == openatl_ratl_* ]]; then
                 python3 tests/wtl10/verify_pe_machine.py "$build/$target.exe" "$arch" --require-resources
               else

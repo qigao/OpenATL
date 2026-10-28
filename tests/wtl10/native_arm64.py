@@ -29,11 +29,15 @@ TARGETS = (
     "openatl_unload_native",
     "openatl_com_client",
     "openatl_com_server_tests",
+    "openatl_activex",
     "openatl_wtl10_sdi",
 )
 
 CASES = (
-    ("openatl_gui_runtime", (), "WTL10 GUI runtime PASS: no COM apartment, W^X thunk x64/ARM64, message maps, resource dialog, NCDESTROY, OnFinalMessage, MRU"),
+    ("openatl_gui_runtime", (), "WTL10 GUI runtime PASS: no COM apartment, W^X thunk, message maps, resource dialog, NCDESTROY, OnFinalMessage, MRU"),
+    ("openatl_activex", ("events",), "ACTIVEX_OK"),
+    ("openatl_activex", ("browser",), "ACTIVEX_OK"),
+    ("openatl_activex", ("lifecycle",), "ACTIVEX_OK"),
     ("openatl_atl_core", (), "ATL_CORE_OK file=1 string=1 sync=1 registry=1 no_com=1"),
     ("openatl_atl_path", (), "ATL_PATH_OK unicode=1 file=1 relative=1 root=1"),
     ("openatl_unicode", (), "OPENATL_UNICODE_OK utf8=1 utf16=1 acp=1 ownership=1 salts=0"),

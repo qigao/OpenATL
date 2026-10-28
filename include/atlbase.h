@@ -30,7 +30,20 @@
 #include <commctrl.h>
 #include <shlwapi.h>
 
+#if defined(__MINGW32__)
+#include <type_traits>
+#endif
+
 namespace ATL {
+
+#if defined(__MINGW32__)
+// libc++ removes Win32's min/max macros. Preserve ordinary ATL sample calls,
+// including mixed int/LONG operands, without restoring macros over the STL.
+template<class A, class B>
+constexpr std::common_type_t<A, B> (min)(A a, B b) { return b < a ? b : a; }
+template<class A, class B>
+constexpr std::common_type_t<A, B> (max)(A a, B b) { return a < b ? b : a; }
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // ATL::Checked namespace - secure CRT wrappers

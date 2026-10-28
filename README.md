@@ -31,7 +31,10 @@ and COM maps: `CComObjectRootEx`, `CComObject`, `CComCoClass`, `CComCreator`,
 `BEGIN_COM_MAP`, `COM_INTERFACE_ENTRY` and explicit-IID/branch variants.
 See the [ATL compatibility matrix](docs/ATL_COMPATIBILITY.md) for supported
 semantics and limits. `CComModule`, object-map auto-registration, RGS,
-Automation/type-library helpers, aggregation and ActiveX remain unsupported.
+type-library helpers and aggregation remain unsupported. Windowed ActiveX
+containment and typed Automation event sinks are described in
+[the hosting contract](docs/ACTIVEX_HOST.md); resource-based ActiveX dialogs
+and windowless hosting remain pending. MFC is not a dependency.
 There is one clean-room ATL implementation, with no Microsoft ATL fallback.
 
 ## CMake integration

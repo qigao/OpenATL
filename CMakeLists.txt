@@ -55,6 +55,13 @@ if(MINGW)
 endif()
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/OpenATLWTL.cmake")
 
+# A selected native Windows SDK RC also supplies Ribbon declarations absent
+# from mingw-w64. Keep this transitive on the one public consumer target.
+if(MINGW AND CMAKE_HOST_WIN32 AND CMAKE_RC_COMPILER MATCHES "/rc\\.exe$")
+  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/OpenATLRibbon.cmake")
+  openatl_use_ribbon_sdk(openatl_atl)
+endif()
+
 # Use the compiler target, never a vcpkg triplet or the build host's CPU.
 if(MSVC)
   set(_openatl_target_arch "${CMAKE_CXX_COMPILER_ARCHITECTURE_ID}")
@@ -92,7 +99,25 @@ if(MSVC AND NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
 endif()
 
 option(OPENATL_BUILD_QUALIFICATION "Compile native UI, ATL utility and COM client/server tests" OFF)
+option(OPENATL_BUILD_OFFICIAL_SUITE "Build every unchanged WTL release sample (upstream Win32 ABI)" OFF)
+if(OPENATL_BUILD_OFFICIAL_SUITE AND NOT OPENATL_BUILD_QUALIFICATION)
+  message(FATAL_ERROR "The official suite requires OPENATL_BUILD_QUALIFICATION")
+endif()
+if(OPENATL_BUILD_OFFICIAL_SUITE AND NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
+  message(FATAL_ERROR "Use the official Win32 sample ABI: msvc-x86 or llvm-i686 preset")
+endif()
 if(OPENATL_BUILD_QUALIFICATION)
+  if(MSVC)
+    # A missing OpenATL header must fail, rather than pick up Microsoft's ATL
+    # or MFC through VsDevCmd's INCLUDE. Keep the compiler and Windows SDK.
+    file(TO_CMAKE_PATH "$ENV{INCLUDE}" _openatl_sdk_includes)
+    list(FILTER _openatl_sdk_includes EXCLUDE REGEX "[Aa][Tt][Ll][Mm][Ff][Cc](/|$)")
+    if(NOT _openatl_sdk_includes)
+      message(FATAL_ERROR "Initialize the MSVC developer environment before qualification")
+    endif()
+    set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES "${_openatl_sdk_includes}")
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/X>)
+  endif()
   enable_language(RC)
   enable_testing()
 
@@ -199,7 +224,7 @@ if(OPENATL_BUILD_QUALIFICATION)
 
   # Real test DLL, not a substitute for production plugin lifetime rules.
   # The host uses LoadLibrary/GetProcAddress, never a static import.
-  add_library(openatl_unload_fixture SHARED tests/wtl10/unload_fixture.cpp)
+  add_library(openatl_unload_fixture SHARED tests/wtl10/unload_fixture.cpp tests/wtl10/unload_fixture.def)
   target_link_libraries(openatl_unload_fixture PRIVATE OpenATL::ATL user32)
   set_target_properties(openatl_unload_fixture PROPERTIES
     PREFIX "" OUTPUT_NAME "openatl_unload_fixture")
@@ -211,7 +236,7 @@ if(OPENATL_BUILD_QUALIFICATION)
 
   # Independent blocked-callback probe from PR #9, alongside the queued-work
   # and caller-lease unload fixture above.
-  add_library(openatl_unload_probe SHARED tests/wtl10/unload_probe.cpp)
+  add_library(openatl_unload_probe SHARED tests/wtl10/unload_probe.cpp tests/wtl10/unload_probe.def)
   set_target_properties(openatl_unload_probe PROPERTIES PREFIX "")
   target_link_libraries(openatl_unload_probe PRIVATE OpenATL::ATL user32)
   add_executable(openatl_unload_native tests/wtl10/unload_native.cpp)
@@ -237,6 +262,7 @@ if(OPENATL_BUILD_QUALIFICATION)
 
   add_subdirectory(tests/com_server)
   add_subdirectory(tests/official_samples)
+  add_subdirectory(tests/atl_host)
   add_subdirectory(tests/ratl_samples)
 
   foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_unicode openatl_unicode_utf8 openatl_com_server_fixture openatl_com_server_tests openatl_thunk_fault openatl_mitigation_runtime openatl_unload_fixture openatl_unload_runner openatl_unload_probe openatl_unload_native openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)

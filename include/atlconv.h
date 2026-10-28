@@ -68,6 +68,7 @@ private:
 // UNICODE TCHAR, WCHAR and OLECHAR have identical representation.
 #define T2W(x)      (x)
 #define W2T(x)      (x)
+#define W2CT(x)     static_cast<LPCTSTR>(x)
 #define T2CW(x)     (x)
 #define CW2T(x)     (x)
 #define T2OLE(x)    (x)
@@ -87,7 +88,9 @@ private:
 #define A2CW(x)     _openatlConversionScope.ToWide(x)
 #define CW2A(x)     _openatlConversionScope.ToAnsi(x)
 #define T2A(x)      _openatlConversionScope.ToAnsi(x)
+#define T2CA(x)     static_cast<LPCSTR>(_openatlConversionScope.ToAnsi(x))
 #define A2T(x)      _openatlConversionScope.ToWide(x)
+#define A2CT(x)     static_cast<LPCTSTR>(_openatlConversionScope.ToWide(x))
 #define A2OLE(x)    _openatlConversionScope.ToWide(x)
 #define OLE2A(x)    _openatlConversionScope.ToAnsi(x)
 #define A2COLE(x)   _openatlConversionScope.ToWide(x)

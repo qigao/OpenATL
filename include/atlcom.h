@@ -209,4 +209,5 @@ public: \
 #define DECLARE_PROTECT_FINAL_CONSTRUCT() \
     void InternalFinalConstructAddRef() noexcept { this->InternalAddRef(); } \
     void InternalFinalConstructRelease() noexcept { this->InternalRelease(); }
+#include "openatl/atl_events.h"
 #endif

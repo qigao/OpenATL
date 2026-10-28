@@ -62,6 +62,9 @@ public:
     CRect(POINT point, SIZE size) noexcept { left = point.x; top = point.y; right = left + size.cx; bottom = top + size.cy; }
     CRect(POINT topLeft, POINT bottomRight) noexcept { left = topLeft.x; top = topLeft.y; right = bottomRight.x; bottom = bottomRight.y; }
 
+    operator LPRECT() noexcept { return this; }
+    operator LPCRECT() const noexcept { return this; }
+
     int Width() const noexcept { return right - left; }
     int Height() const noexcept { return bottom - top; }
     CSize Size() const noexcept { return CSize(right - left, bottom - top); }

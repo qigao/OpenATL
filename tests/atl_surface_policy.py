@@ -20,7 +20,6 @@ FORBIDDEN_TOKENS = (
     r"\bCComObjectCached\b",
     r"\bCComClassFactory\b",
     r"\bIObjectWithSiteImpl\b",
-    r"\bAtlAxWinInit\b",
     r"\bAtlInternalQueryInterface\b",
     r"\bOBJECT_ENTRY_AUTO\b",
     r"\b_ATL_OBJMAP_ENTRY\w*\b",

@@ -1,0 +1,13 @@
+EXPORTS
+    OpenATLUnloadStart
+    OpenATLUnloadSubmit
+    OpenATLUnloadHold
+    OpenATLUnloadWaitHeld
+    OpenATLUnloadReleaseHeld
+    OpenATLUnloadIsClosing
+    OpenATLUnloadStop
+    OpenATLUnloadAcquireCallerLease
+    OpenATLUnloadReleaseCallerLease
+    OpenATLUnloadRetireCallers
+    OpenATLUnloadCanUnload
+    OpenATLUnloadCount

@@ -1,0 +1,318 @@
+{
+  "repository": "https://github.com/microsoft/VCSamples",
+  "revision": "9e1d4475555b76a17a3568369867f1d7b6cc6126",
+  "root": "VC2010Samples/ATL",
+  "contract": "No MFC implementation, headers, or libraries. Every pure ATL project requires both MSVC and MinGW. Inventory is not build evidence.",
+  "projects": [
+    {
+      "project": "Advanced/ActiveDoc/ActiveDoc.vcxproj",
+      "scope": "excluded-mfc",
+      "mfc": [
+        "Static"
+      ],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/ActiveDoc/ActiveDoc/ActiveDoc.vcxproj",
+      "scope": "excluded-mfc",
+      "mfc": [
+        "Static"
+      ],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/ActiveDoc/CreateDocFile.vcxproj",
+      "scope": "excluded-mfc",
+      "mfc": [
+        "Static"
+      ],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/Async/async.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/AtlButton/atlbutn.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/ATLDuck/atlduck.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/ATLDuck/atlduck/atlduck.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/ATLDuck/atlduckPS.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/ATLDuck/duck/duck.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/ATLDuck/duck/duck/duck.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/ATLDuck/duck/DuckPS.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/ATLSecurity/ATLSecurity.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/ATLSecurity/Event/Event.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/AtlTraceTool/TraceTool.vcxproj",
+      "scope": "excluded-mfc",
+      "mfc": [
+        "Dynamic"
+      ],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/AtlTraceTool/TraceToolUI/TraceToolUI.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/connect/connect.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/connect/drive/drive.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/connect/mdrive/mdrive.vcxproj",
+      "scope": "excluded-mfc",
+      "mfc": [
+        "Dynamic"
+      ],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/CThreadPool/ThrdPool.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/DCOM/ATLDraw/ATLDraw.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/DCOM/DrawCtl/DrawCtl.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/DCOM/DrawServ/DrawServ.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Advanced/mfcatl/mfcatl.vcxproj",
+      "scope": "excluded-mfc",
+      "mfc": [
+        "Dynamic"
+      ],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Controls/ATLFire/ATLFire.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Controls/CDInfo/CDInfo.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Controls/circ/circ/circ.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Controls/circ/circprops.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Controls/Polygon/Polygon.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "Controls/SubEdit/SubEdit.vcxproj",
+      "scope": "excluded-mfc",
+      "mfc": [
+        "Dynamic"
+      ],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "General/ATLCollections/ATLCollections.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "General/ATLCollections/Client/Client.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "General/AtlCon/ATLCon.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "General/atlsafearray/AtlSafeArray.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "General/AutoThread/AutoClient/AutoClient.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "General/AutoThread/AutoServer/AutoServer.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "General/beeper/beeper.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "General/circcoll/circcoll.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "General/commap/aggreg/Aggreg.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "General/commap/COMMap.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "General/CustomString/CustomString.vcxproj",
+      "scope": "excluded-mfc",
+      "mfc": [
+        "Dynamic"
+      ],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "General/DispSink/DispClient/DispClient.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "General/DispSink/DispServer/DispServer.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "OLEDB/Consumer/catdb/CatDB.vcxproj",
+      "scope": "excluded-mfc",
+      "mfc": [
+        "Dynamic"
+      ],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "OLEDB/Consumer/dbviewer/Dbviewer.vcxproj",
+      "scope": "excluded-mfc",
+      "mfc": [
+        "Dynamic"
+      ],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "OLEDB/Consumer/DynamicConsumer/DynamicConsumer.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "OLEDB/Consumer/MultiRead/MultiRead.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "OLEDB/Provider/AdvancedPV/AdvancedPV.vcxproj",
+      "scope": "pure-atl",
+      "mfc": [],
+      "qualification": "not-qualified"
+    },
+    {
+      "project": "OLEDB/Provider/UPDATEPV/UpdatePv.vcxproj",
+      "scope": "excluded-mfc",
+      "mfc": [
+        "Dynamic"
+      ],
+      "qualification": "not-qualified"
+    }
+  ]
+}

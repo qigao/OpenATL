@@ -15,6 +15,7 @@
 #include <atlfile.h>
 #include <atlsync.h>
 #include <atlstr.h>
+#include <atltypes.h>
 
 #if !defined(OPENATL_REPOSITORY_HEADERS) || OPENATL_REPOSITORY_HEADERS != 0x4F41544CUL
 #error "This target must compile repository-owned OpenATL headers"
@@ -68,6 +69,9 @@ static int strings() {
     ATL::CString empty;
     if(empty.GetBuffer()==nullptr || !empty.IsEmpty())
         return failure(19,"empty_GetBuffer");
+    if (formatted.FindOneOf(L"ZAD") != 0 ||
+        formatted.FindOneOf(L"!") != -1 || empty.FindOneOf(L"A") != -1)
+        return failure(21,"FindOneOf_character_set");
 #ifdef UNICODE
     ATL::CString converted("ASCII-OK");
     if(converted.Compare(L"ASCII-OK")!=0)
@@ -90,17 +94,28 @@ static int conversions() {
         return failure(81, "conversion_lexical_owners");
     // These must remain alive when subsequent strings are converted.
     if (T2A(L"hello")==nullptr || A2T("world")==nullptr ||
+        !T2CA(L"constant") || strcmp(T2CA(L"constant"), "constant") != 0 ||
+        !A2CT("constant") || wcscmp(A2CT("constant"), L"constant") != 0 ||
         wcscmp(first,L"OpenATL alpha")!=0 ||
         strcmp(third,"narrow alpha")!=0)
         return failure(82, "conversion_scope_pointer_stability");
     if (A2W(nullptr)!=nullptr || W2A(nullptr)!=nullptr ||
-        wcscmp(T2W(L"unicode"),L"unicode")!=0)
+        wcscmp(T2W(L"unicode"),L"unicode")!=0 ||
+        wcscmp(W2CT(L"constant"),L"constant")!=0)
         return failure(83, "conversion_null_or_unicode_identity");
     // Surrogates cannot be represented by a valid Unicode scalar value.
     // Never quietly accept a replacement '?' as if conversion succeeded.
     const wchar_t invalidUnicode[] = {static_cast<wchar_t>(0xD800), 0};
     if (W2A(invalidUnicode)!=nullptr)
         return failure(85, "lossy_ansi_unicode_rejected");
+    return 0;
+}
+
+static int geometry() {
+    CRect rect(10, 20, 30, 40);
+    const CRect expected(8, 17, 32, 43);
+    if (!::InflateRect(rect, 2, 3) || !::EqualRect(rect, expected))
+        return failure(86, "CRect_Win32_pointer_interoperation");
     return 0;
 }
 struct TemporaryFile {
@@ -437,6 +452,7 @@ int main() {
     if(!no_com())return failure(1,"COM_apartment_unexpected");
     int result=strings();
     if(!result)result=conversions();
+    if(!result)result=geometry();
     if(!result)result=files();
     if(!result)result=synchronization();
     if(!result)result=registry();

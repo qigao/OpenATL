@@ -43,7 +43,6 @@ static_assert(sizeof(ATL::_DialogSplitHelper::DLGITEMTEMPLATEEX) == 24,
 #error "This target must compile repository-owned OpenATL headers"
 #endif
 
-static_assert(sizeof(void*) == 8, "WTL10 GUI native runtime expects x64/ARM64");
 static_assert(_WTL_VER >= 0x1000, "Official WTL10 headers required");
 
 WTL::CAppModule _Module;
@@ -221,7 +220,7 @@ static bool check_dialog()
     HINSTANCE executable = ::GetModuleHandleW(NULL);
     wchar_t resource_string[64] = {};
     if (::FindResourceW(executable, MAKEINTRESOURCEW(IDD_POC_DIALOG), RT_DIALOG) == NULL ||
-        ::LoadStringW(executable, IDS_POC_STRING, resource_string, 64) != 24 ||
+        ATL::AtlLoadString(IDS_POC_STRING, resource_string, 64) != 24 ||
         ::lstrcmpW(resource_string, L"WTL10_RESOURCE_NATIVE_OK") != 0)
         return false;
 
@@ -258,6 +257,37 @@ static bool check_dialog()
         }
     }
     return true;
+}
+
+// Exercise the public prebuilt modal dialog with real resources/messages.
+// A hook restricted to this test thread closes it without an interactive user.
+static int simple_dialog_activations = 0;
+static int simple_dialog_button = IDOK;
+static HHOOK simple_dialog_hook = NULL;
+static LRESULT CALLBACK close_simple_dialog(int code, WPARAM w, LPARAM l)
+{
+    if (code == HCBT_ACTIVATE && ::GetDlgItem(reinterpret_cast<HWND>(w), IDOK)) {
+        ++simple_dialog_activations;
+        ::PostMessageW(reinterpret_cast<HWND>(w), WM_COMMAND, 99, 0);
+        ::PostMessageW(reinterpret_cast<HWND>(w), WM_COMMAND, simple_dialog_button, 0);
+    }
+    return ::CallNextHookEx(simple_dialog_hook, code, w, l);
+}
+
+static bool check_simple_dialog()
+{
+    simple_dialog_hook = ::SetWindowsHookExW(WH_CBT, close_simple_dialog, NULL,
+                                             ::GetCurrentThreadId());
+    if (!simple_dialog_hook) return false;
+    ATL::CSimpleDialog<IDD_POC_DIALOG> centered;
+    const INT_PTR ok = centered.DoModal(NULL);
+    simple_dialog_button = IDNO;
+    ATL::CSimpleDialog<IDD_POC_DIALOG, FALSE> uncentered;
+    const INT_PTR no = uncentered.DoModal(NULL);
+    const BOOL removed = ::UnhookWindowsHookEx(simple_dialog_hook);
+    simple_dialog_hook = NULL;
+    return removed && ok == IDOK && no == IDNO && simple_dialog_activations == 2 &&
+           centered.m_hWnd == NULL && uncentered.m_hWnd == NULL;
 }
 
 
@@ -413,17 +443,18 @@ int main(void)
     const bool thunk_ok = check_thunk();
     const bool window_ok = thunk_ok && check_window();
     const bool dialog_ok = window_ok && check_dialog();
-    const bool mru_ok = dialog_ok && check_mru_registry_and_menu();
+    const bool simple_dialog_ok = dialog_ok && check_simple_dialog();
+    const bool mru_ok = simple_dialog_ok && check_mru_registry_and_menu();
 
     _Module.Term();
     const bool no_com = (::CoGetContextToken(&context_token) == CO_E_NOTINITIALIZED);
 
-    if (!thunk_ok || !window_ok || !dialog_ok || !mru_ok || !no_com) {
+    if (!thunk_ok || !window_ok || !dialog_ok || !simple_dialog_ok || !mru_ok || !no_com) {
         fprintf(stderr, "WTL10 GUI runtime FAILURE thunk=%d window=%d dialog=%d mru=%d no_com=%d err=%lu\n",
                 (int)thunk_ok, (int)window_ok, (int)dialog_ok, (int)mru_ok,
                 (int)no_com, (unsigned long)::GetLastError());
         return !thunk_ok ? 20 : (!window_ok ? 21 : (!dialog_ok ? 22 : (!mru_ok ? 24 : 23)));
     }
-    puts("WTL10 GUI runtime PASS: no COM apartment, W^X thunk x64/ARM64, message maps, resource dialog, NCDESTROY, OnFinalMessage, MRU");
+    puts("WTL10 GUI runtime PASS: no COM apartment, W^X thunk, message maps, resource dialog, NCDESTROY, OnFinalMessage, MRU");
     return 0;
 }

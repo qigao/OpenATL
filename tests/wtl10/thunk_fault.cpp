@@ -17,7 +17,6 @@
 #error "This target must compile repository-owned OpenATL headers"
 #endif
 
-static_assert(sizeof(void*)==8, "Native Windows x64/ARM64 required");
 using Thunk=ATL::CWndProcThunk;
 static int calls=0;
 static void* expected_state=nullptr;

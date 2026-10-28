@@ -5,10 +5,18 @@ repository-owned code. Compatibility is scoped to the documented source APIs;
 Microsoft ATL implementation-class binary layout is not part of this contract.
 Consumers link only `OpenATL::ATL`; it supplies both ATL and adapted WTL headers.
 
+The acceptance target is now all official WTL samples and all pure ATL
+Microsoft samples, unchanged on both MSVC and MinGW, with no MFC dependency.
+The implemented subset below is the current state, not a restriction on that
+target. Missing standard headers and APIs remain compatibility gaps; see the
+[full sample inventory and build results](OFFICIAL_SAMPLES.md).
+
 | Header/API | Supported contract |
 | --- | --- |
 | `atlbase.h`, `atlcomcli.h` | Existing Win32 modules, threading policies, COM smart pointers, BSTR/VARIANT helpers |
 | `atlwin.h`, `atlstr.h`, utility headers | Existing documented Windows/WTL subset; Unicode-only, C++17 |
+| `atlhost.h`, `atliface.h` | Windowed OLE containment, `CAxWindow`/`CAxWindow2`, site/ambient interfaces and explicit control creation; see [ownership contract](ACTIVEX_HOST.md) |
+| `atlcom.h` / `atlctl.h` | `AtlAdvise`/`AtlUnadvise`, `IDispEventSimpleImpl`, typed `SINK_ENTRY_INFO` maps |
 | `atlbase.h`: `CAtlModule`, `CAtlModuleT`, `CAtlExeModuleT` | Module locks, termination callbacks, balanced COM startup and explicit class-factory registration; see [module protocol](ATL_MODULE.md) |
 | `atlcom.h`: `CComObjectRootBase`, `CComObjectRootEx`, `CComObjectRoot` | Nonaggregated reference counting, thread-model critical section, construction/release hooks |
 | `CComObject<T>` | Concrete IUnknown, raw creation with initial reference count **zero**, typed QI, last-release destruction |
@@ -58,7 +66,9 @@ retain its module across locally created objects and external callers.
 
 The supported subset does not include `CComModule`, `CAtlDllModuleT`, automatic
 object maps, aggregation, tear-offs, dispatch/type-library implementation,
-connection points, RGS or ActiveX. Unsupported names remain undefined or return a documented unsupported
+connection-point server templates, RGS, windowless hosting or resource-based
+ActiveX dialogs. Windowed containment and simple event sinks are implemented.
+Unsupported names remain undefined or return a documented unsupported
 HRESULT; registration never reports fake success. COM map chaining and aggregate entries are not
 implemented. No claim of arbitrary ATL application compatibility is made.
 

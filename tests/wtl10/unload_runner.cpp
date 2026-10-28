@@ -12,7 +12,6 @@
 #if !defined(OPENATL_REPOSITORY_HEADERS) || OPENATL_REPOSITORY_HEADERS != 0x4F41544CUL
 #error "Use source-owned OpenATL headers"
 #endif
-static_assert(sizeof(void*)==8,"Native x64/ARM64 required");
 using Operation=DWORD (WINAPI*)();
 
 struct Producer {

@@ -122,6 +122,29 @@ if(NOT _wtl_ui_text MATCHES "HRESULT Init\\(HINSTANCE hInstance\\)" OR
 endif()
 file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
 
+# The Microsoft compiler accepts a CWindow -> HWND -> CButton copy
+# initialization used by BmpView. Supply that conversion directly on Clang;
+# preserve every existing constructor and the public HWND representation.
+set(_wtl_ui_header "${_wtl_headers}/atlctrls.h")
+file(READ "${_wtl_ui_header}" _wtl_ui_text)
+foreach(_control IN ITEMS CButtonT CEditT)
+  _openatl_replace_once(
+    "${_control}(HWND hWnd = NULL) : TBase(hWnd)"
+    "${_control}(const ATL::CWindow& window) : TBase(window.m_hWnd) { }\n\t${_control}& operator=(const ATL::CWindow& window) { this->m_hWnd = window.m_hWnd; return *this; }\n\t${_control}(HWND hWnd = NULL) : TBase(hWnd)"
+    "${_control} CWindow copy initialization")
+endforeach()
+file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+
+# mingw-w64's GetThemePartSize declares the SDK input RECT mutable. Pass a
+# local copy while retaining WTL's standard const RECT public signature.
+set(_wtl_ui_header "${_wtl_headers}/atltheme.h")
+file(READ "${_wtl_ui_header}" _wtl_ui_text)
+_openatl_replace_once(
+    "return ::GetThemePartSize(m_hTheme, hDC, nPartID, nStateID, pRect, eSize, pSize);"
+    "RECT copy = {};\n\t\tif(pRect != NULL) copy = *pRect;\n\t\treturn ::GetThemePartSize(m_hTheme, hDC, nPartID, nStateID, pRect != NULL ? &copy : NULL, eSize, pSize);"
+    "MinGW SDK GetThemePartSize input rectangle")
+file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+
 # Legacy IE-registry color lookup adds no required UI capability.
 set(_wtl_ui_header "${_wtl_headers}/atlctrlx.h")
 file(READ "${_wtl_ui_header}" _wtl_ui_text)
@@ -135,6 +158,13 @@ if(_wtl_ui_text MATCHES "ATL::CRegKey" OR
    _wtl_ui_text MATCHES "_ParseColorString")
     message(FATAL_ERROR "WTL UI-only: registry hyperlink code still present")
 endif()
+file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+
+# The list sorter uses a CRTP enum as an array bound, as the command bar does.
+set(_wtl_ui_header "${_wtl_headers}/atlctrlx.h")
+file(READ "${_wtl_ui_header}" _wtl_ui_text)
+_openatl_replace_once("pszTemp[pT->m_cchCmpTextMax]" "pszTemp[T::m_cchCmpTextMax]"
+  "list sorter compile-time text capacity")
 file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
 
 # Preserve standard common printing, page setup and property sheets;
@@ -196,6 +226,12 @@ string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
 foreach(_header IN ITEMS atlmisc.h atlframe.h atlctrls.h atlctrlw.h)
   _openatl_replace_once("#include <${_header}>" "#include \"${_header}\"" "upstream WTL issue 66 ${_header}")
 endforeach()
+foreach(_method IN ITEMS UIAddElement UIRemoveElement)
+  string(REPLACE "this->${_method}<" "this->template ${_method}<" _wtl_ui_text "${_wtl_ui_text}")
+endforeach()
+_openatl_replace_once("return ::VarI4FromDec(pDecimal, &val);"
+  "DECIMAL copy = *pDecimal;\n\t\treturn ::VarI4FromDec(&copy, &val);"
+  "MinGW SDK input-only decimal")
 file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
 
 unset(_wtl_ui_header)

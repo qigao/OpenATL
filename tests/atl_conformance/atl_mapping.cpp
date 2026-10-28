@@ -173,7 +173,6 @@ static int named_shared_memory() {
 }
 
 int main() {
-    static_assert(sizeof(void*) == 8, "Windows x64 and ARM64 only");
     ULONG_PTR context = 0;
     if (::CoGetContextToken(&context) != CO_E_NOTINITIALIZED)
         return fail(1, "No_COM_apartment_on_entry");
