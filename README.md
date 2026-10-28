@@ -30,8 +30,12 @@ The `OpenATL::COM` server API supplies explicit class/interface tables,
 registration. Standard `ATL::CAtlDllModuleT<T>` now forwards actual DLL
 exports to this one factory/lock engine through an explicit bound class
 table; applications still export their own DLL entry points. This is an
-implemented server milestone, **not** complete ATL automatic-object-map or
-type-library support. See [server contracts](docs/COM_SERVER.md) and
+implemented server milestone. Standard `OBJECT_ENTRY_AUTO(clsid, class)`
+now discovers static COM class entries automatically, composes the **same**
+class-factory engine and supports native STA/MTA DLL activation without
+manually calling `BindServer`. This does **not** yet implement automatic
+registry registration, RGS, type libraries or all ATL object-map operations.
+See [server contracts](docs/COM_SERVER.md) and
 [DLL module lifetime](docs/ATL_MODULE.md).
 
 The optional `atlcom.h` implements familiar nonaggregated ATL object templates
@@ -39,8 +43,9 @@ and COM maps: `CComObjectRootEx`, `CComObject`, `CComCoClass`, `CComCreator`,
 `BEGIN_COM_MAP`, `COM_INTERFACE_ENTRY` and explicit-IID/branch variants.
 See the [ATL compatibility matrix](docs/ATL_COMPATIBILITY.md) for supported
 semantics and limits. `CAtlDllModuleT` is implemented for explicit class
-tables; automatic object maps, RGS, type-library helpers and aggregation
-remain compatibility work rather than forbidden features. `CComModule`
+tables; static `OBJECT_ENTRY_AUTO` factory discovery is supported.
+Automatic registration, chained/aggregated COM maps, RGS, type libraries
+and aggregation remain compatibility work. `CComModule`
 is currently absent and will be evaluated against actual ATL consumers. Windowed ActiveX
 containment and typed Automation event sinks are described in
 [the hosting contract](docs/ACTIVEX_HOST.md); resource-based ActiveX dialogs

@@ -4,8 +4,9 @@
 `CAtlExeModuleT<T>` additionally owns a COM initialization on its construction
 thread and optional explicit class-factory registrations.
 `CAtlDllModuleT<T>` now supports the real DLL class-factory/unload exports
-through an explicit class table; automatic standard ATL object maps remain
-compatibility work. `CComModule` is absent today, not banned from future
+through the same `OpenATL::COM::Module` engine. Standard static
+`OBJECT_ENTRY_AUTO` class discovery is implemented; automatic registry
+registration and expanded ATL map entry variants remain compatibility work. `CComModule` is absent today, not banned from future
 consideration.
 
 One application module may be alive per binary image. Construction publishes
@@ -104,9 +105,26 @@ STA/MTA activation, object identity, server locks and unload behavior. The
 IID rejection, factory and object lifetimes, registration forwarding and
 ordinary no-COM initialization.
 
-**Not yet complete:** standard ATL automatic `OBJECT_ENTRY_AUTO` maps,
-`CAtlComModule`, RGS, registered type libraries, aggregated classes and
-complete EXE/service COM server behavior remain separate compatibility
-milestones. The explicit class-table bridge is temporary API surface for
-the already-implemented factory engine, not a secondary provider or
-a claim of complete Microsoft ATL compatibility.
+**Implemented next step:** `OBJECT_ENTRY_AUTO(clsid, type)` registers
+an immutable per-binary COM class descriptor using static storage. The
+registrar only performs atomic pointer linking, with no COM call or heap
+allocation during DLL initialization. Without an explicit `BindServer`,
+the DLL module composes these entries **once on the first class-object
+request** into the existing `OpenATL::COM::Module`. A duplicate CLSID,
+invalid entry or oversized map fails closed; no entry returns
+`CLASS_E_CLASSNOTAVAILABLE`. Factory, object and server-lock ownership
+continues to use the **same** module engine, including `DllCanUnloadNow`.
+
+The native COM DLL fixture uses standard `OBJECT_ENTRY_AUTO` registration
+and is activated through genuine Windows STA and MTA clients; the module
+test covers lookup, failure paths, duplicated CLSIDs and live
+`LockServer` retirement. The old explicit `BindServer` class-table API
+remains supported for existing applications; it does not create a
+second COM backend.
+
+**Not yet complete:** `CAtlComModule`, standard extended object-map
+variants, RGS, automatic persistent registry registration, type libraries,
+aggregated classes, and complete EXE/service COM Server behavior remain
+separate compatibility milestones. Class auto-discovery is not the same
+as installation/registration in Windows. Complete Microsoft ATL source
+compatibility is not yet claimed.

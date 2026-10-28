@@ -1,15 +1,22 @@
-#include <atlbase.h>
+#include <atlcom.h>
 #include <openatl/com_server.h>
 #include <openatl/com_registration.h>
 #include "interfaces.h"
 
 namespace {
 using namespace OpenATL::COM;
-class Value final : public Object<Value, Interface<IOpenATLDerived, &IID_OpenATLDerived>,
-                                       InterfaceAlias<IOpenATLValue, &IID_OpenATLValue, IOpenATLDerived>,
-                                       Interface<IOpenATLSecond, &IID_OpenATLSecond>> {
+// The actual DLL exported class is declared with standard ATL source
+// syntax. Its IClassFactory and module references still come exclusively
+// from OpenATL::COM::Module, composed from the static object map on demand.
+class Value : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>,
+              public ATL::CComCoClass<Value, &CLSID_OpenATLValue>,
+              public IOpenATLDerived, public IOpenATLSecond {
 public:
-    explicit Value(Module& module) noexcept : Object(module) {}
+    BEGIN_COM_MAP(Value)
+        COM_INTERFACE_ENTRY_IID(IID_OpenATLDerived, IOpenATLDerived)
+        COM_INTERFACE_ENTRY2_IID(IID_OpenATLValue, IOpenATLValue, IOpenATLDerived)
+        COM_INTERFACE_ENTRY_IID(IID_OpenATLSecond, IOpenATLSecond)
+    END_COM_MAP()
     HRESULT STDMETHODCALLTYPE GetValue(LONG* value) noexcept override {
         if (!value) return E_POINTER;
         *value = 42;
@@ -26,8 +33,8 @@ public:
         return S_OK;
     }
 };
-const ClassEntry classes[] = {{CLSID_OpenATLValue, &Value::CreateInstance}};
-Module module(classes, 1);
+OBJECT_ENTRY_AUTO(CLSID_OpenATLValue, Value)
+
 HMODULE image = nullptr;
 
 HRESULT registration(bool install) noexcept {
@@ -43,9 +50,9 @@ HRESULT registration(bool install) noexcept {
                              L"OpenATL native COM fixture", ThreadingModel::Both};
     return install ? RegisterClass(root.m_hKey, entry) : UnregisterClass(root.m_hKey, entry);
 }
-// Standard ATL DLL module entry points over the existing single real
-// OpenATL::COM factory and registry engine. This fixture has no type library;
-// its derived registration methods install/revoke its one concrete class.
+// Standard ATL DLL module and automatic class map share the same real
+// OpenATL::COM factory/registration engine. The fixture has no type library;
+// derived registration hooks install/revoke this concrete class.
 class FixtureAtlModule : public ATL::CAtlDllModuleT<FixtureAtlModule> {
 public:
     HRESULT RegisterServer(BOOL, const CLSID* selected = nullptr) noexcept {
@@ -60,8 +67,6 @@ public:
     }
 };
 FixtureAtlModule dllModule;
-
-HRESULT bindServer() noexcept { return dllModule.BindServer(module); }
 } // namespace
 
 extern "C" BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void* reserved) {
@@ -70,17 +75,14 @@ extern "C" BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void* reserved)
 }
 extern "C" HRESULT WINAPI DllGetClassObject(
     REFCLSID clsid, REFIID iid, void** output) {
-    const HRESULT hr = bindServer();
-    return FAILED(hr) ? hr : dllModule.DllGetClassObject(clsid, iid, output);
+    return dllModule.DllGetClassObject(clsid, iid, output);
 }
 extern "C" HRESULT WINAPI DllCanUnloadNow() {
-    return SUCCEEDED(bindServer()) ? dllModule.DllCanUnloadNow() : S_FALSE;
+    return dllModule.DllCanUnloadNow();
 }
 extern "C" HRESULT WINAPI DllRegisterServer() {
-    const HRESULT hr = bindServer();
-    return FAILED(hr) ? hr : dllModule.DllRegisterServer();
+    return dllModule.DllRegisterServer();
 }
 extern "C" HRESULT WINAPI DllUnregisterServer() {
-    const HRESULT hr = bindServer();
-    return FAILED(hr) ? hr : dllModule.DllUnregisterServer();
+    return dllModule.DllUnregisterServer();
 }

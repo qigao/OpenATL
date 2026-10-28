@@ -6,6 +6,7 @@
 #include <atomic>
 #include <mutex>
 #include <optional>
+#include <memory>
 #include <vector>
 #include <limits>
 #include <shellapi.h>
@@ -97,6 +98,29 @@ inline HRESULT AtlModuleException() noexcept {
     catch (const std::bad_alloc&) { return E_OUTOFMEMORY; }
     catch (...) { return E_UNEXPECTED; }
 }
+
+// One registered object-map entry per OBJECT_ENTRY_AUTO expansion, owned by
+// its binary image. Constructors only link already-allocated static nodes;
+// they neither allocate nor call COM while the loader lock is held.
+// Registration completes before the first external class-object request.
+struct AutoObjectEntry;
+inline std::atomic<AutoObjectEntry*> autoObjectEntries{nullptr};
+struct AutoObjectEntry {
+    const CLSID clsid;
+    const OpenATL::COM::Creator creator;
+    AutoObjectEntry* next = nullptr;
+
+    AutoObjectEntry(REFCLSID id, OpenATL::COM::Creator function) noexcept
+        : clsid(id), creator(function) {
+        AutoObjectEntry* head = autoObjectEntries.load(std::memory_order_relaxed);
+        do {
+            next = head;
+        } while (!autoObjectEntries.compare_exchange_weak(
+            head, this, std::memory_order_release, std::memory_order_relaxed));
+    }
+    AutoObjectEntry(const AutoObjectEntry&) = delete;
+    AutoObjectEntry& operator=(const AutoObjectEntry&) = delete;
+};
 }
 
 // DLL module lifetime and standard ATL export forwarding.
@@ -129,8 +153,11 @@ public:
 
     HRESULT DllCanUnloadNow() const noexcept {
         if (this->IsTerminated() || this->GetLockCount() != 0) return S_FALSE;
-        const auto* server = server_.load();
-        return server && server->CanUnloadNow() != S_OK ? S_FALSE : S_OK;
+        const auto* server = server_.load(std::memory_order_acquire);
+        const auto* autoServer = autoServer_.load(std::memory_order_acquire);
+        if (server && server->CanUnloadNow() != S_OK) return S_FALSE;
+        if (autoServer && autoServer->CanUnloadNow() != S_OK) return S_FALSE;
+        return S_OK;
     }
 
     HRESULT DllGetClassObject(REFCLSID clsid, REFIID iid, LPVOID* output) noexcept {
@@ -159,7 +186,15 @@ public:
         if (!output) return E_POINTER;
         *output = nullptr;
         if (this->IsTerminated()) return E_UNEXPECTED;
-        auto* server = server_.load();
+        // An explicitly bound legacy class table remains the single active
+        // server engine for that module. With no binding, discover standard
+        // ATL OBJECT_ENTRY_AUTO declarations and build that same engine once.
+        auto* server = server_.load(std::memory_order_acquire);
+        if (!server) {
+            const HRESULT hr = InitializeAutoMapOnce();
+            if (FAILED(hr)) return hr;
+            server = autoServer_.load(std::memory_order_acquire);
+        }
         return server ? server->GetClassObject(clsid, iid, output)
                       : CLASS_E_CLASSNOTAVAILABLE;
     }
@@ -193,7 +228,58 @@ public:
     }
 
 private:
+    HRESULT InitializeAutoMapOnce() noexcept {
+        try {
+            std::call_once(autoOnce_, [this]() noexcept {
+                try {
+                    for (const detail::AutoObjectEntry* entry =
+                             detail::autoObjectEntries.load(std::memory_order_acquire);
+                         entry; entry = entry->next) {
+                        if (IsEqualCLSID(entry->clsid, CLSID_NULL) || !entry->creator) {
+                            autoStatus_ = E_INVALIDARG;
+                            return;
+                        }
+                        if (autoEntries_.size() == 1024) {
+                            autoStatus_ = HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW);
+                            return;
+                        }
+                        for (const auto& existing : autoEntries_)
+                            if (IsEqualCLSID(entry->clsid, existing.clsid)) {
+                                autoStatus_ = E_INVALIDARG;
+                                return;
+                            }
+                        autoEntries_.push_back({entry->clsid, entry->creator});
+                    }
+                    if (autoEntries_.empty()) {
+                        autoStatus_ = CLASS_E_CLASSNOTAVAILABLE;
+                        return;
+                    }
+                    autoOwned_.reset(new (std::nothrow)
+                        OpenATL::COM::Module(autoEntries_.data(), autoEntries_.size()));
+                    if (!autoOwned_) {
+                        autoStatus_ = E_OUTOFMEMORY;
+                        return;
+                    }
+                    autoStatus_ = autoOwned_->Status();
+                    if (SUCCEEDED(autoStatus_))
+                        autoServer_.store(autoOwned_.get(), std::memory_order_release);
+                } catch (...) {
+                    autoStatus_ = detail::AtlModuleException();
+                }
+            });
+            return autoStatus_;
+        } catch (...) {
+            return detail::AtlModuleException();
+        }
+    }
+
     std::atomic<OpenATL::COM::Module*> server_{nullptr};
+    // Member order: the server is destroyed before its immutable class table.
+    std::once_flag autoOnce_;
+    HRESULT autoStatus_ = CLASS_E_CLASSNOTAVAILABLE;
+    std::vector<OpenATL::COM::ClassEntry> autoEntries_;
+    std::unique_ptr<OpenATL::COM::Module> autoOwned_;
+    std::atomic<OpenATL::COM::Module*> autoServer_{nullptr};
 };
 
 template<class T>
