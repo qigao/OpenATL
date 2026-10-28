@@ -65,6 +65,31 @@ reported as a conflict. No recursive deletion or general RGS execution occurs.
 Registry operations are not a transaction against concurrent external writers;
 cleanup failure is returned and may require installer intervention.
 
+## Multi-class registration milestone
+
+`RegisterClasses(root, entries, count)` and
+`UnregisterClasses(root, entries, count)` extend the existing single-class
+registrar to a bounded, explicit table of up to 1,024 COM class descriptors.
+They share the **same** `RegisterClass`/`UnregisterClass` owner markers,
+CLSID/ProgID registry plan, safe enumeration and nonrecursive deletion;
+no second registry engine, COM apartment, elevation or fallback is introduced.
+
+The entire table is validated **before registry mutation**, including each
+module path, threading model, CLSID and case-insensitively unique ProgID.
+If a later class registration fails, the API attempts reverse-order rollback
+of only the classes installed by this batch. A rollback error is returned
+instead of hidden. Batch unregistration checks every expected owner/value
+and child key before removing *any* class, so a pre-existing foreign value
+in a later entry does not partially remove earlier entries.
+
+A batch call is **not an atomic Win32 registry transaction**. The caller must
+serialize its installer writes against other processes and handle partial
+registry cleanup after OS failures. Neither method infers a ProgID or
+registration metadata from `OBJECT_ENTRY_AUTO` alone: that macro currently
+selects class factories, not RGS/Windows installation semantics. The
+standard ATL class-directed registrar and resource scripts remain upcoming
+compatibility milestones.
+
 ## Integration and validation
 
 Link the single `OpenATL::ATL` target. It supplies `ole32`, `oleaut32`,

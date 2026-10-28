@@ -240,5 +240,92 @@ inline HRESULT UnregisterClass(HKEY root, const ClassRegistration& entry) noexce
       catch (...) { return E_UNEXPECTED; }
 }
 
+// Multi-class registration composes the same strict single-class
+// registrar, preserving existing ownership markers, nonrecursive deletion
+// and fail-closed handling of foreign registry content.
+//
+// This is not a registry transaction. The installer owns exclusive access
+// to its supplied Classes root during preflight, writes and rollback.
+inline HRESULT ValidateClassBatch(const ClassRegistration* entries,
+                                  size_t count) noexcept {
+    using namespace registration_detail;
+    if (!entries && count) return E_INVALIDARG;
+    if (count > 1024) return HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW);
+    try {
+        // Prevalidate the whole immutable input before a single registry write.
+        for (size_t i = 0; i < count; ++i) {
+            Plan plan;
+            HRESULT hr = plan.Build(entries[i]);
+            if (FAILED(hr)) return hr;
+            for (size_t j = 0; j < i; ++j) {
+                if (IsEqualCLSID(entries[i].clsid, entries[j].clsid))
+                    return E_INVALIDARG;
+                // ProgID paths are case-insensitive Windows registry keys.
+                if (entries[i].progId && entries[j].progId &&
+                    ::lstrcmpiW(entries[i].progId, entries[j].progId) == 0)
+                    return E_INVALIDARG;
+            }
+        }
+        return S_OK;
+    } catch (const std::bad_alloc&) { return E_OUTOFMEMORY; }
+      catch (...) { return E_UNEXPECTED; }
+}
+
+// Register 1..1024 classes under a borrowed root. If a later class fails,
+// uninstall only classes actually created by this batch, in reverse order.
+// Rollback conflicts are surfaced rather than silently ignored.
+inline HRESULT RegisterClasses(HKEY root, const ClassRegistration* entries,
+                               size_t count) noexcept {
+    if (!root) return E_INVALIDARG;
+    if (!count) return S_FALSE;
+    HRESULT hr = ValidateClassBatch(entries, count);
+    if (FAILED(hr)) return hr;
+    for (size_t i = 0; i < count; ++i) {
+        hr = RegisterClass(root, entries[i]);
+        if (FAILED(hr)) {
+            HRESULT rollback = S_OK;
+            while (i != 0) {
+                --i;
+                const HRESULT cleanup = UnregisterClass(root, entries[i]);
+                if (FAILED(cleanup) && SUCCEEDED(rollback))
+                    rollback = cleanup;
+            }
+            return FAILED(rollback) ? rollback : hr;
+        }
+    }
+    return S_OK;
+}
+
+// Check *every* class's expected ownership/values and child key structure
+// before removing any class. This avoids partial batch deletion caused by
+// a pre-existing foreign value in a later class; external races remain the
+// explicit caller's responsibility.
+inline HRESULT UnregisterClasses(HKEY root, const ClassRegistration* entries,
+                                 size_t count) noexcept {
+    using namespace registration_detail;
+    if (!root) return E_INVALIDARG;
+    if (!count) return S_FALSE;
+    HRESULT hr = ValidateClassBatch(entries, count);
+    if (FAILED(hr)) return hr;
+    try {
+        const std::array<bool, 5> selected{{true, true, true, true, true}};
+        for (size_t i = 0; i < count; ++i) {
+            Plan plan;
+            hr = plan.Build(entries[i]);
+            if (FAILED(hr)) return hr;
+            for (size_t j = 0; j < plan.nodes.size(); ++j) {
+                const LSTATUS state = inspect(root, plan, j, selected, true);
+                if (state != ERROR_SUCCESS) return result(state);
+            }
+        }
+        for (size_t i = count; i-- != 0;) {
+            hr = UnregisterClass(root, entries[i]);
+            if (FAILED(hr)) return hr;
+        }
+        return S_OK;
+    } catch (const std::bad_alloc&) { return E_OUTOFMEMORY; }
+      catch (...) { return E_UNEXPECTED; }
+}
+
 }} // namespace OpenATL::COM
 #endif
