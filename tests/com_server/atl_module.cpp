@@ -221,6 +221,120 @@ bool executable() {
     CHECK(initializations == 1 && uninitializations == 1 && noCom());
     return true;
 }
+
+// Standard ATL DLL-module entry points use the same real factory/owner
+// as the explicit OpenATL::COM server. No COM apartment is initialized
+// by constructing this module or querying its class factory.
+class Library : public ATL::CAtlDllModuleT<Library> {};
+class RegistrationProbe : public ATL::CAtlDllModuleT<RegistrationProbe> {
+public:
+    int installs = 0, removals = 0;
+    HRESULT RegisterServer(BOOL withTypeLib, const CLSID* selected) noexcept {
+        if (withTypeLib || selected || GetLockCount() != 1) return E_UNEXPECTED;
+        ++installs; return E_ACCESSDENIED;
+    }
+    HRESULT UnregisterServer(BOOL withTypeLib, const CLSID* selected) noexcept {
+        if (withTypeLib || selected || GetLockCount() != 1) return E_UNEXPECTED;
+        ++removals; return E_ABORT;
+    }
+};
+class HookedLookup : public ATL::CAtlDllModuleT<HookedLookup> {
+public:
+    int callbacks = 0;
+    HRESULT GetClassObject(REFCLSID, REFIID, LPVOID* output) noexcept {
+        ++callbacks;
+        if (!output || GetLockCount() != 1) return E_UNEXPECTED;
+        *output = nullptr;
+        return E_ACCESSDENIED;
+    }
+};
+class NullLookup : public ATL::CAtlDllModuleT<NullLookup> {
+public:
+    HRESULT GetClassObject(REFCLSID, REFIID, LPVOID* output) noexcept {
+        if (!output || GetLockCount() != 1) return E_UNEXPECTED;
+        *output = nullptr;
+        return S_OK; // Invalid custom hook: export must fail closed.
+    }
+};
+HRESULT makeDllValue(OpenATL::COM::Module& server, REFIID iid, void** output) noexcept {
+    return ATL::CComObject<Value>::CreateInstance(server, iid, output);
+}
+bool dll_module() {
+    CHECK(noCom() && ATL::_pAtlModule == nullptr);
+    OpenATL::COM::Module invalid(nullptr, 1);
+    const OpenATL::COM::ClassEntry entries[] = {{classId, &makeDllValue}};
+    OpenATL::COM::Module server(entries, 1);
+    OpenATL::COM::Module alternate(entries, 1);
+    CHECK(server.Status() == S_OK && alternate.Status() == S_OK);
+    {
+        Library dll;
+        CHECK(ATL::_pAtlModule == &dll && noCom());
+        CHECK(dll.DllMain(DLL_PROCESS_ATTACH, nullptr) && noCom());
+        CHECK(dll.DllMain(DLL_PROCESS_DETACH, nullptr) && noCom());
+        CHECK(dll.DllCanUnloadNow() == S_OK);
+        void* output = reinterpret_cast<void*>(1);
+        CHECK(dll.DllGetClassObject(classId, IID_IClassFactory, nullptr) == E_POINTER);
+        CHECK(dll.DllGetClassObject(classId, IID_IClassFactory, &output) ==
+              CLASS_E_CLASSNOTAVAILABLE && !output);
+        CHECK(dll.BindServer(invalid) == E_INVALIDARG);
+        CHECK(dll.BindServer(server) == S_OK && dll.BindServer(server) == S_OK);
+        CHECK(dll.BindServer(alternate) == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS));
+
+        output = reinterpret_cast<void*>(1);
+        CHECK(dll.DllGetClassObject(CLSID_NULL, IID_IClassFactory, &output) ==
+              CLASS_E_CLASSNOTAVAILABLE && !output);
+        CHECK(dll.DllGetClassObject(classId, IID_IStream, &output) ==
+              E_NOINTERFACE && !output);
+        CHECK(dll.DllRegisterServer(TRUE) == E_NOTIMPL);
+        CHECK(dll.DllUnregisterServer(TRUE) == E_NOTIMPL);
+
+        ATL::CComPtr<IClassFactory> factory;
+        CHECK(dll.GetClassObject(classId, IID_IClassFactory,
+              reinterpret_cast<void**>(&factory.p)) == S_OK);
+        CHECK(dll.DllCanUnloadNow() == S_FALSE);
+        ATL::CComPtr<IPersist> value;
+        CHECK(factory->CreateInstance(nullptr, IID_IPersist,
+              reinterpret_cast<void**>(&value.p)) == S_OK);
+        CHECK(value.p != nullptr && dll.DllCanUnloadNow() == S_FALSE);
+        CLSID actual{};
+        CHECK(value->GetClassID(&actual) == S_OK && IsEqualCLSID(actual, classId));
+        CHECK(factory->LockServer(TRUE) == S_OK);
+        value.Release();
+        CHECK(factory->LockServer(FALSE) == S_OK);
+        CHECK(dll.DllCanUnloadNow() == S_FALSE); // Factory still live.
+        factory.Release();
+        CHECK(dll.DllCanUnloadNow() == S_OK && server.CanUnloadNow() == S_OK);
+        CHECK(dll.Lock() == 1 && dll.DllCanUnloadNow() == S_FALSE);
+        CHECK(dll.Unlock() == 0 && dll.DllCanUnloadNow() == S_OK);
+        CHECK(dll.GetLockCount() == 0 && pinnedInDestructor);
+    }
+    CHECK(noCom() && ATL::_pAtlModule == nullptr &&
+          server.CanUnloadNow() == S_OK);
+    {
+        RegistrationProbe dll;
+        CHECK(dll.DllRegisterServer(FALSE) == E_ACCESSDENIED &&
+              dll.DllUnregisterServer(FALSE) == E_ABORT);
+        CHECK(dll.installs == 1 && dll.removals == 1 &&
+              dll.GetLockCount() == 0 && dll.DllCanUnloadNow() == S_OK);
+    }
+    {
+        HookedLookup dll;
+        void* output = reinterpret_cast<void*>(1);
+        CHECK(dll.DllGetClassObject(classId, IID_IClassFactory, &output) ==
+              E_ACCESSDENIED && !output && dll.callbacks == 1);
+        CHECK(dll.GetLockCount() == 0 && dll.DllCanUnloadNow() == S_OK);
+    }
+    {
+        NullLookup dll;
+        void* output = reinterpret_cast<void*>(1);
+        CHECK(dll.DllGetClassObject(classId, IID_IClassFactory, &output) ==
+              E_UNEXPECTED && !output && dll.GetLockCount() == 0);
+    }
+    CHECK(noCom() && ATL::_pAtlModule == nullptr);
+    return true;
+}
 }
 
-bool RunAtlModuleTests() { return module_locks() && executable(); }
+bool RunAtlModuleTests() {
+    return module_locks() && executable() && dll_module();
+}

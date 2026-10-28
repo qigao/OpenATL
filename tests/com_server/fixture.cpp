@@ -43,22 +43,44 @@ HRESULT registration(bool install) noexcept {
                              L"OpenATL native COM fixture", ThreadingModel::Both};
     return install ? RegisterClass(root.m_hKey, entry) : UnregisterClass(root.m_hKey, entry);
 }
+// Standard ATL DLL module entry points over the existing single real
+// OpenATL::COM factory and registry engine. This fixture has no type library;
+// its derived registration methods install/revoke its one concrete class.
+class FixtureAtlModule : public ATL::CAtlDllModuleT<FixtureAtlModule> {
+public:
+    HRESULT RegisterServer(BOOL, const CLSID* selected = nullptr) noexcept {
+        if (selected && !IsEqualCLSID(*selected, CLSID_OpenATLValue))
+            return CLASS_E_CLASSNOTAVAILABLE;
+        return registration(true);
+    }
+    HRESULT UnregisterServer(BOOL, const CLSID* selected = nullptr) noexcept {
+        if (selected && !IsEqualCLSID(*selected, CLSID_OpenATLValue))
+            return CLASS_E_CLASSNOTAVAILABLE;
+        return registration(false);
+    }
+};
+FixtureAtlModule dllModule;
+
+HRESULT bindServer() noexcept { return dllModule.BindServer(module); }
 } // namespace
 
-extern "C" BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void*) {
+extern "C" BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void* reserved) {
     if (reason == DLL_PROCESS_ATTACH) image = instance;
-    return TRUE;
+    return dllModule.DllMain(reason, reserved);
 }
 extern "C" HRESULT WINAPI DllGetClassObject(
     REFCLSID clsid, REFIID iid, void** output) {
-    return module.GetClassObject(clsid, iid, output);
+    const HRESULT hr = bindServer();
+    return FAILED(hr) ? hr : dllModule.DllGetClassObject(clsid, iid, output);
 }
 extern "C" HRESULT WINAPI DllCanUnloadNow() {
-    return module.CanUnloadNow();
+    return SUCCEEDED(bindServer()) ? dllModule.DllCanUnloadNow() : S_FALSE;
 }
 extern "C" HRESULT WINAPI DllRegisterServer() {
-    return registration(true);
+    const HRESULT hr = bindServer();
+    return FAILED(hr) ? hr : dllModule.DllRegisterServer();
 }
 extern "C" HRESULT WINAPI DllUnregisterServer() {
-    return registration(false);
+    const HRESULT hr = bindServer();
+    return FAILED(hr) ? hr : dllModule.DllUnregisterServer();
 }

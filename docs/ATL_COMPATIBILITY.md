@@ -20,6 +20,7 @@ target. Missing standard headers and APIs remain compatibility gaps; see the
 | `atlhost.h`, `atliface.h` | Windowed OLE containment, `CAxWindow`/`CAxWindow2`, site/ambient interfaces and explicit control creation; see [ownership contract](ACTIVEX_HOST.md) |
 | `atlcom.h` / `atlctl.h` | `AtlAdvise`/`AtlUnadvise`, `IDispEventSimpleImpl`, typed `SINK_ENTRY_INFO` maps |
 | `atlbase.h`: `CAtlModule`, `CAtlModuleT`, `CAtlExeModuleT` | Module locks, termination callbacks, balanced COM startup and explicit class-factory registration; see [module protocol](ATL_MODULE.md) |
+| `atlbase.h`: `CAtlDllModuleT<T>` | Implemented DLL entry-point methods and real class-factory/unload forwarding through one explicit `OpenATL::COM::Module` class table; custom derived registration hooks. Automatic object maps/RGS remain pending. |
 | `atlcom.h`: `CComObjectRootBase`, `CComObjectRootEx`, `CComObjectRoot` | Nonaggregated reference counting, thread-model critical section, construction/release hooks |
 | `CComObject<T>` | Concrete IUnknown, raw creation with initial reference count **zero**, typed QI, last-release destruction |
 | `CComCoClass<T, &CLSID>`, `CComCreator<Object>` | Local nonaggregated creation, CLSID accessor, aggregation rejection |
@@ -67,8 +68,8 @@ be `final` because `CComObject<T>` derives from it. The class may also inherit
 DLL module reference; a DLL must use the module-aware creator or independently
 retain its module across locally created objects and external callers.
 
-**Tracked compatibility gaps:** `CAtlDllModuleT`, standard automatic/chained
-object maps, aggregation and tear-offs, `IDispatchImpl`/type libraries,
+**Tracked compatibility gaps:** standard automatic/chained COM object maps,
+aggregation and tear-offs, `IDispatchImpl`/type libraries,
 connection-point server templates, RGS, SAFEARRAY wrappers, windowless
 hosting, resource-based ActiveX dialogs and complete control/server support.
 `CComModule` is currently unimplemented but not prohibited by policy; assess
