@@ -22,7 +22,7 @@ on the exact branch HEAD.
 | CAtlExeModuleT lifecycle, raw registry QueryValue and three unchanged RATL samples | 5× native module + sample behavior | Native module; sample PE build | 5× native module + sample behavior | Native module; sample PE build | Sample/module PE/resource build |
 | Optional explicit COM server: interface identity, class factories, module locks, constructor rollback, registry ownership/conflicts, real STA/MTA DLL activation and unregistration | 5× native | 5× real native | 5× native | 5× real native | server DLL/client PE build |
 | Standard ATL COM Server DLL modules, automatic/chained object maps, RGS, Automation/type libraries and SAFEARRAY | **Compatibility gaps; implementation required** | Not qualified | Not qualified | Not qualified | Admit original Microsoft ATL samples and native activation/registration after implementation; never fake a pass |
-| CFG/CET, DSO unload, interactive full SDI | Image CFG/CET + native unload/SDI; HSP excluded on hosted workers | Native CFG/unload/SDI | Native CFG/HSP/unload/SDI | Native CFG/unload/SDI | PE/resource checks |
+| CFG/CET, DSO unload, interactive full SDI | Image CFG/CET + native unload/SDI, no hosted HSP claim | Native CFG/unload/SDI | Native CFG/unload/SDI, hardware HSP independently gated on qualified host (#15) | Native CFG/unload/SDI | PE/resource checks |
 | ATL-compatible nonaggregated object creation, COM maps, canonical identity, FinalConstruct/FinalRelease and explicit module pins | 5× native | 5× real native | 5× native | 5× real native | PE build |
 
 **Separation contracts**:
