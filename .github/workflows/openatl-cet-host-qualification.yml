@@ -1,12 +1,9 @@
 name: OpenATL Windows 2025 hardware CET host qualification
 
+# This is an explicit host-capability experiment. Main OpenATL PR CI
+# always retains its own non-optional hardware CET death-test gate.
+# Hosted x64 Windows image labels do not guarantee shadow-stack availability.
 on:
-  pull_request:
-    paths:
-      - .github/workflows/openatl-cet-host-qualification.yml
-      - tests/wtl10/cet_shadow_stack.cpp
-      - tests/wtl10/verify_pe_mitigations.py
-      - include/**
   workflow_dispatch:
 
 permissions:
