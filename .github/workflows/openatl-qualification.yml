@@ -284,18 +284,14 @@ jobs:
 
   linux-macos-cross:
     name: ${{ matrix.host }} Windows x64/ARM64 cross CMake
+    # A macOS runner is currently unavailable. Keep macOS qualification
+    # opt-in, NOT silently passing or permanently deleted. Set repository
+    # variable OPENATL_MACOS_RUNNER_AVAILABLE=true to schedule the exact same
+    # pinned x64/ARM64 Windows cross-build when capacity has been provisioned.
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - host: Linux
-            runner: ubuntu-24.04
-            archive: llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz
-            sha256: 55064b60b991a1e1e8090b8c2f84e82b22cfe5903d12c159d65064cf5e8ae335
-          - host: macOS
-            runner: macos-15
-            archive: llvm-mingw-20261020-ucrt-macos-universal.tar.xz
-            sha256: e9c13e4ede38e715003ffc674d4d00a1088df8235439d1f0c16188ff0704c17e
+        include: ${{ fromJSON(vars.OPENATL_MACOS_RUNNER_AVAILABLE == 'true' && '[{"host":"Linux","runner":"ubuntu-24.04","archive":"llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz","sha256":"55064b60b991a1e1e8090b8c2f84e82b22cfe5903d12c159d65064cf5e8ae335"},{"host":"macOS","runner":"macos-15","archive":"llvm-mingw-20261020-ucrt-macos-universal.tar.xz","sha256":"e9c13e4ede38e715003ffc674d4d00a1088df8235439d1f0c16188ff0704c17e"}]' || '[{"host":"Linux","runner":"ubuntu-24.04","archive":"llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz","sha256":"55064b60b991a1e1e8090b8c2f84e82b22cfe5903d12c159d65064cf5e8ae335"}]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
