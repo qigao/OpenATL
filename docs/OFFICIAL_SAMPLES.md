@@ -134,9 +134,9 @@ OpenATL build/runtime tests:
 
 Adding `atlcom.h` alone does not implement these contracts. The implemented
 nonaggregated object/map subset remains covered by OpenATL's native tests;
-see [ATL compatibility](ATL_COMPATIBILITY.md). The obsolete `CComModule`
-remains excluded as requested; compatibility work targets the standard modern
-ATL APIs required by these projects.
+see [ATL compatibility](ATL_COMPATIBILITY.md). `CComModule` is not currently implemented, but no standard ATL API is
+excluded merely because of the obsolete UI-only scope decision. Source
+compatibility with the original pure ATL samples is the target.
 
 Sources:
 

@@ -1,8 +1,10 @@
-# ATL source compatibility
+# ATL source compatibility — COM Client and COM Server
 
-OpenATL implements a documented subset of Microsoft's ATL source APIs using
-repository-owned code. Compatibility is scoped to the documented source APIs;
-Microsoft ATL implementation-class binary layout is not part of this contract.
+**OpenATL targets ATL source compatibility for both COM Client and COM
+Server applications**, together with Win32/WTL. The current implementation
+qualifies a subset; missing APIs are implementation backlog, not permanently
+excluded. Microsoft's internal ATL ABI/layout is not currently claimed
+compatible. See [the project charter](PROJECT_SCOPE.md).
 Consumers link only `OpenATL::ATL`; it supplies both ATL and adapted WTL headers.
 
 The acceptance target is now all official WTL samples and all pure ATL
@@ -18,7 +20,7 @@ target. Missing standard headers and APIs remain compatibility gaps; see the
 | `atlhost.h`, `atliface.h` | Windowed OLE containment, `CAxWindow`/`CAxWindow2`, site/ambient interfaces and explicit control creation; see [ownership contract](ACTIVEX_HOST.md) |
 | `atlcom.h` / `atlctl.h` | `AtlAdvise`/`AtlUnadvise`, `IDispEventSimpleImpl`, typed `SINK_ENTRY_INFO` maps |
 | `atlbase.h`: `CAtlModule`, `CAtlModuleT`, `CAtlExeModuleT` | Module locks, termination callbacks, balanced COM startup and explicit class-factory registration; see [module protocol](ATL_MODULE.md) |
-| `atlbase.h`: `CAtlDllModuleT<T>` | Standard DLL entry-point method signatures and real class-factory/unload forwarding through an explicit `OpenATL::COM::Module` class table; current registration uses derived implementation. Not yet automatic object maps/RGS. |
+| `atlbase.h`: `CAtlDllModuleT<T>` | Implemented DLL entry-point methods and real class-factory/unload forwarding through one explicit `OpenATL::COM::Module` class table; custom derived registration hooks. Automatic object maps/RGS remain pending. |
 | `atlcom.h`: `CComObjectRootBase`, `CComObjectRootEx`, `CComObjectRoot` | Nonaggregated reference counting, thread-model critical section, construction/release hooks |
 | `CComObject<T>` | Concrete IUnknown, raw creation with initial reference count **zero**, typed QI, last-release destruction |
 | `CComCoClass<T, &CLSID>`, `CComCreator<Object>` | Local nonaggregated creation, CLSID accessor, aggregation rejection |
@@ -27,7 +29,8 @@ target. Missing standard headers and APIs remain compatibility gaps; see the
 | `COM_INTERFACE_ENTRY2`, `COM_INTERFACE_ENTRY2_IID` | Select the inheritance branch for an ambiguous base interface |
 | `DECLARE_NOT_AGGREGATABLE` | Select the nonaggregated creator |
 | `DECLARE_PROTECT_FINAL_CONSTRUCT` | Retain/release the construction guard reference |
-| WTL `CAppModule::Init` | `Init(hInstance)` and ordinary `Init(nullptr, hInstance)`; nonempty object maps/type-library IDs fail explicitly |
+| WTL `CAppModule::Init` | `Init(hInstance)` and ordinary `Init(nullptr, hInstance)`; nonempty object maps/type-library IDs currently fail explicitly (missing compatibility) |
+| `openatl/com_server.h` / `com_registration.h` | Explicit in-process COM Server, IClassFactory, module/server locks, CLSID/ProgID registration and Windows STA/MTA activation (implemented subset) |
 
 Reference-count and ownership semantics follow the corresponding ATL APIs.
 `CComObject<T>::CreateInstance(&raw)` returns zero references: immediately
@@ -65,14 +68,16 @@ be `final` because `CComObject<T>` derives from it. The class may also inherit
 DLL module reference; a DLL must use the module-aware creator or independently
 retain its module across locally created objects and external callers.
 
-The supported subset now includes `CAtlDllModuleT` with explicit-class-table
-factories. It does not yet include `CComModule`, automatic
-object maps, aggregation, tear-offs, dispatch/type-library implementation,
-connection-point server templates, RGS, windowless hosting or resource-based
-ActiveX dialogs. Windowed containment and simple event sinks are implemented.
-Unsupported names remain undefined or return a documented unsupported
-HRESULT; registration never reports fake success. COM map chaining and aggregate entries are not
-implemented. No claim of arbitrary ATL application compatibility is made.
+**Tracked compatibility gaps:** standard automatic/chained COM object maps,
+aggregation and tear-offs, `IDispatchImpl`/type libraries,
+connection-point server templates, RGS, SAFEARRAY wrappers, windowless
+hosting, resource-based ActiveX dialogs and complete control/server support.
+`CComModule` is currently unimplemented but not prohibited by policy; assess
+it against unchanged ATL consumers. Windowed containment and typed simple
+event sinks are implemented. Missing APIs must not claim fake success.
+Real COM Server support already covers explicit class factories, module
+locks, registration and native STA/MTA activation. No claim of complete
+application compatibility is made yet.
 
 Existing native COM core tests cover zero-ref creation, typed/IID queries,
 multiple inheritance, canonical identity, construction failure and cleanup,

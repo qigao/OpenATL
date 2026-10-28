@@ -1,6 +1,8 @@
 name: OpenATL source-tree native and cross-platform qualification
 
 on:
+  push:
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
@@ -138,6 +140,34 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  msvc-win32-official:
+    name: MSVC x86 complete official WTL10 suite and native CTest
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x86
+      - name: Compile all 11 unchanged official Win32 samples, verify PE resources and run CTest x5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Run([string]$tool, [string[]]$argv) {
+            & $tool @argv
+            if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
+          }
+          Run cmake @('--preset','msvc-x86')
+          Run cmake @('--build','--preset','msvc-x86','--parallel','2')
+          $samples=@('Aero','Alpha','BmpView','GuidGen','MDIDocVw','MemDlg',
+                     'MTPad','MTPad7','TabBrowser','Wizard97Test','WTLExplorer')
+          foreach($sample in $samples) {
+            $filename="build-msvc-x86/openatl_official_$($sample.ToLowerInvariant()).exe"
+            if(!(Test-Path $filename)) { throw "Missing official MSVC Win32 sample: $sample" }
+            Run python @('tests/wtl10/verify_pe_machine.py',$filename,'i686','--require-resources')
+          }
+          Run ctest @('--preset','msvc-x86','--repeat','until-fail:5')
+
   msvc-windows:
     name: MSVC ${{ matrix.target }} native/build qualification
     # Generic hosted Windows build: hardware HSP is NOT guaranteed by this
@@ -184,7 +214,16 @@ jobs:
           $machine=if($arch -eq 'x64'){'x86_64'}else{'aarch64'}
           $build="build-msvc-$arch"
           $sample=(Resolve-Path tools/wtl10-test).Path
-          Run cmake @('--preset',"msvc-$arch","-DOPENATL_WTL_DEMO_DIR=$sample")
+          $cmakeArgs=@('--preset',"msvc-$arch","-DOPENATL_WTL_DEMO_DIR=$sample")
+          if($arch -eq 'x64') {
+            # GitHub's generic windows-2022 image has no guaranteed hardware
+            # Shadow Stack. Preserve strict HSP proof in the dedicated
+            # hardware-only workflow; this hosted job qualifies the PE image,
+            # UI/COM native behavior and does NOT claim hardware HSP admission.
+            $cmakeArgs+='-DOPENATL_REQUIRE_CET_RUNTIME=OFF'
+            Write-Host '::notice::Hardware CET/HSP is UNQUALIFIED on generic hosted Windows; strict independent admission requires openatl-hsp-dedicated.yml and a real HSP runner (#15).'
+          }
+          Run cmake $cmakeArgs
           Run cmake @('--build','--preset',"msvc-$arch",'--parallel','2')
           $peCheck=@('tests/wtl10/verify_pe_mitigations.py',"$build/openatl_mitigation_runtime.exe",$machine,'--require-cfg')
           if($machine -eq 'x86_64') { $peCheck+='--require-cet' }

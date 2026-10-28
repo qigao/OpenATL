@@ -224,6 +224,59 @@ static int check_failed_creation_retirement() {
 }
 
 
+// Stage 5 denies the real WndProc installation after RX thunk allocation.
+// Both subclass entry points must leave the original WndProc installed and
+// release the executable page BEFORE their owner destructor runs.
+class PassiveContainedMap : public ATL::CMessageMap {
+public:
+    BEGIN_MSG_MAP(PassiveContainedMap)
+    END_MSG_MAP()
+};
+static int check_failed_subclass_retirement() {
+    const int stages[] = {1, 3, 4, 5};
+    for (int kind = 0; kind < 2; ++kind) {
+        for (int stage : stages) {
+            HWND raw = ::CreateWindowExW(0, L"STATIC", L"DeniedSubclass",
+                                        WS_POPUP, 0, 0, 70, 25,
+                                        nullptr, nullptr, ::GetModuleHandleW(nullptr), nullptr);
+            if (!raw) return reject(100, "subclass_fixture_create");
+            const LONG_PTR original = ::GetWindowLongPtrW(raw, GWLP_WNDPROC);
+            Thunk::TestFailNext(stage);
+            bool ownerClean = false;
+            if (kind == 0) {
+                FailedWindow owner;
+                const BOOL attached = owner.SubclassWindow(raw);
+                const DWORD error = ::GetLastError();
+                ownerClean = !attached && owner.m_hWnd == nullptr &&
+                    owner.m_thunk.GetCodeAddress() == nullptr &&
+                    (stage != 5 || error == ERROR_ACCESS_DENIED) &&
+                    Thunk::testLivePages == 0;
+            } else {
+                PassiveContainedMap map;
+                ATL::CContainedWindow owner(&map);
+                const BOOL attached = owner.SubclassWindow(raw);
+                const DWORD error = ::GetLastError();
+                ownerClean = !attached && owner.m_hWnd == nullptr &&
+                    owner.m_thunk.GetCodeAddress() == nullptr &&
+                    (stage != 5 || error == ERROR_ACCESS_DENIED) &&
+                    Thunk::testLivePages == 0;
+            }
+            const bool unchanged = ::GetWindowLongPtrW(raw, GWLP_WNDPROC) == original;
+            const bool injection = Thunk::testInjectedCount == 1 &&
+                                   Thunk::testFailureStage == 0;
+            const bool released = stage == 1 ||
+                (Thunk::testLastAllocated != nullptr &&
+                 Thunk::testLastReleased == Thunk::testLastAllocated &&
+                 no_executable_page(Thunk::testLastReleased));
+            const bool destroyed = ::DestroyWindow(raw) != FALSE;
+            if (!ownerClean || !unchanged || !injection || !released || !destroyed)
+                return reject(101 + 10 * kind + stage, "subclass_failed_retirement");
+        }
+    }
+    Thunk::TestFailNext(0);
+    return 0;
+}
+
 // A WM_CREATE handler is allowed to reject creation (-1), causing Win32
 // to synchronously send WM_NCDESTROY and OnFinalMessage. That callback may
 // delete the C++ owner before CreateWindowEx returns. No failed-return path
@@ -274,7 +327,8 @@ int main() {
         status=fault_window_or_dialog(4,true); if(status)return status;
     }
     if (int rc=check_failed_creation_retirement()) return rc;
+    if (int rc=check_failed_subclass_retirement()) return rc;
     if (int rc=check_self_deleting_create()) return rc;
-    std::puts("THUNK_FAULT_OK alloc=1 rx=1 flush=1 reinit_rw=1 free=1 recovery=1 no_rwx=1 window_denied=1 dialog_denied=1");
+    std::puts("THUNK_FAULT_OK alloc=1 rx=1 flush=1 reinit_rw=1 free=1 recovery=1 no_rwx=1 window_denied=1 dialog_denied=1 subclass_denied=1");
     return 0;
 }
