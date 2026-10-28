@@ -1616,10 +1616,11 @@ public:
                 _AtlBaseModule.GetModuleInstance(), lpCreateParam);
         const DWORD error = hWnd == NULL ? ::GetLastError() : ERROR_SUCCESS;
         (void)_AtlWinModule.RemoveCreateWndData(pending);
-        if (hWnd == NULL) {
-            this->m_hWnd = NULL;
+        if (hWnd == NULL)
             ::SetLastError(error);
-        }
+        // WM_CREATE rejection can synchronously execute OnFinalMessage
+        // and delete this before CreateWindowEx returns. No dereference
+        // of the owner is permitted on the failed-create return path.
         ATLASSERT((hWnd == NULL) || (this->m_hWnd == hWnd));
         return hWnd;
     }
@@ -2155,10 +2156,10 @@ public:
 #endif
         const DWORD creationError = hWnd == NULL ? ::GetLastError() : ERROR_SUCCESS;
         (void)_AtlWinModule.RemoveCreateWndData(pending);
-        if (hWnd == NULL) {
-            this->m_hWnd = NULL;
+        if (hWnd == NULL)
             ::SetLastError(creationError);
-        }
+        // The dialog may already have run OnFinalMessage and destroyed its
+        // C++ owner; do not touch this after a failed CreateDialogParam.
         ATLASSERT((hWnd == NULL) || (this->m_hWnd == hWnd));
         return hWnd;
     }
