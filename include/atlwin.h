@@ -191,7 +191,7 @@ struct CWndProcThunk {
     // deterministic failure before the named call; this is test-checkout
     // instrumentation, never a shipped API or a production backend.
 #if defined(OPENATL_WX_FAULT_TEST)
-    inline static int testFailureStage = 0; // 1 alloc, 2 RW, 3 RX, 4 flush
+    inline static int testFailureStage = 0; // 1 alloc, 2 RW, 3 RX, 4 flush, 5 wndproc, 6 create
     inline static int testLivePages = 0;
     inline static int testInjectedCount = 0;
     inline static void* testLastAllocated = NULL;
@@ -251,7 +251,22 @@ struct CWndProcThunk {
         return released;
     }
 
+    // Test-only denial of a real Win32 WndProc installation.
+    static LONG_PTR InstallWndProc(HWND hwnd, int index, LONG_PTR callback) noexcept {
+#if defined(OPENATL_WX_FAULT_TEST)
+        if (TestTakeFailure(5)) return 0;
+#endif
+        return ::SetWindowLongPtr(hwnd, index, callback);
+    }
+
     ThunkCode* pThunkCode;
+
+    void ReleaseCode() noexcept {
+        if (pThunkCode != NULL) {
+            ThunkFree(pThunkCode);
+            pThunkCode = NULL;
+        }
+    }
 
     BOOL Init(WNDPROC proc, void* pThis) noexcept
     {
@@ -333,13 +348,7 @@ struct CWndProcThunk {
         memset(&cd, 0, sizeof(cd));
     }
 
-    ~CWndProcThunk()
-    {
-        if (pThunkCode != NULL) {
-            ThunkFree(pThunkCode);
-            pThunkCode = NULL;
-        }
-    }
+    ~CWndProcThunk() { ReleaseCode(); }
 };
 
 #pragma pack(pop)
@@ -1496,13 +1505,23 @@ public:
 
         // Initialize the thunk
         if (!pThis->m_thunk.Init(pThis->GetWindowProc(), pThis)) {
+            pThis->m_hWnd = NULL;
             ::SetLastError(ERROR_OUTOFMEMORY);
             return FALSE;
         }
         WNDPROC pProc = pThis->m_thunk.GetWndProc();
 
-        // Subclass the window with the thunk
-        ::SetWindowLongPtr(hWnd, GWLP_WNDPROC, (LONG_PTR)pProc);
+        // Failure to install a callback must not publish or invoke it.
+        ::SetLastError(ERROR_SUCCESS);
+        const LONG_PTR previous = CWndProcThunk::InstallWndProc(
+            hWnd, GWLP_WNDPROC, (LONG_PTR)pProc);
+        if (previous == 0 && ::GetLastError() != ERROR_SUCCESS) {
+            const DWORD error = ::GetLastError();
+            pThis->m_hWnd = NULL;
+            pThis->m_thunk.ReleaseCode();
+            ::SetLastError(error);
+            return FALSE;
+        }
 
         // Process the first message through the thunk
         return pProc(hWnd, uMsg, wParam, lParam);
@@ -1574,20 +1593,33 @@ public:
         if (atom == 0)
             return NULL;
 
-        _AtlWinModule.AddCreateWndData(&this->m_thunk.cd, this);
+        _AtlCreateWndData* const pending = &this->m_thunk.cd;
+        _AtlWinModule.AddCreateWndData(pending, this);
 
         if ((MenuOrID.m_hMenu == NULL) && (dwStyle & WS_CHILD))
             MenuOrID.m_hMenu = (HMENU)(UINT_PTR)this;
         if (rect.m_lpRect == NULL)
             rect.m_lpRect = &TBase::rcDefault;
 
-        HWND hWnd = ::CreateWindowEx(dwExStyle, MAKEINTATOM(atom), szWindowName,
-            dwStyle, rect.m_lpRect->left, rect.m_lpRect->top,
-            rect.m_lpRect->right - rect.m_lpRect->left,
-            rect.m_lpRect->bottom - rect.m_lpRect->top,
-            hWndParent, MenuOrID.m_hMenu,
-            _AtlBaseModule.GetModuleInstance(), lpCreateParam);
-
+#if defined(OPENATL_WX_FAULT_TEST)
+        // Deterministic failure before Win32 invokes StartWindowProc.
+        const bool rejectCreate = CWndProcThunk::TestTakeFailure(6);
+#else
+        const bool rejectCreate = false;
+#endif
+        HWND hWnd = rejectCreate ? NULL :
+            ::CreateWindowEx(dwExStyle, MAKEINTATOM(atom), szWindowName,
+                dwStyle, rect.m_lpRect->left, rect.m_lpRect->top,
+                rect.m_lpRect->right - rect.m_lpRect->left,
+                rect.m_lpRect->bottom - rect.m_lpRect->top,
+                hWndParent, MenuOrID.m_hMenu,
+                _AtlBaseModule.GetModuleInstance(), lpCreateParam);
+        const DWORD error = hWnd == NULL ? ::GetLastError() : ERROR_SUCCESS;
+        (void)_AtlWinModule.RemoveCreateWndData(pending);
+        if (hWnd == NULL) {
+            this->m_hWnd = NULL;
+            ::SetLastError(error);
+        }
         ATLASSERT((hWnd == NULL) || (this->m_hWnd == hWnd));
         return hWnd;
     }
