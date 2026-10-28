@@ -248,6 +248,14 @@ public:
         return E_ACCESSDENIED;
     }
 };
+class NullLookup : public ATL::CAtlDllModuleT<NullLookup> {
+public:
+    HRESULT GetClassObject(REFCLSID, REFIID, LPVOID* output) noexcept {
+        if (!output || GetLockCount() != 1) return E_UNEXPECTED;
+        *output = nullptr;
+        return S_OK; // Invalid custom hook: export must fail closed.
+    }
+};
 HRESULT makeDllValue(OpenATL::COM::Module& server, REFIID iid, void** output) noexcept {
     return ATL::CComObject<Value>::CreateInstance(server, iid, output);
 }
@@ -315,6 +323,12 @@ bool dll_module() {
         CHECK(dll.DllGetClassObject(classId, IID_IClassFactory, &output) ==
               E_ACCESSDENIED && !output && dll.callbacks == 1);
         CHECK(dll.GetLockCount() == 0 && dll.DllCanUnloadNow() == S_OK);
+    }
+    {
+        NullLookup dll;
+        void* output = reinterpret_cast<void*>(1);
+        CHECK(dll.DllGetClassObject(classId, IID_IClassFactory, &output) ==
+              E_UNEXPECTED && !output && dll.GetLockCount() == 0);
     }
     CHECK(noCom() && ATL::_pAtlModule == nullptr);
     return true;
