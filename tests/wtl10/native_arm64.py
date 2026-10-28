@@ -26,6 +26,7 @@ TARGETS = (
     "openatl_unload_runner",
     "openatl_unload_native",
     "openatl_com_client",
+    "openatl_com_server_tests",
     "openatl_wtl10_sdi",
 )
 
@@ -40,6 +41,9 @@ CASES = (
     ("openatl_mitigation_runtime", (), "OPENATL_MITIGATION_OK cfg=1 rx=1 indirect=1 deny=1"),
     ("openatl_unload_runner", (), "OPENATL_UNLOAD_OK rounds=12 events=1 lease=1 held=1 blocked=1 callers_joined=1 caller_leases=1 lease_bounds=1 thunk_freed=1 class_unregistered=1 dll_unmapped=1 no_com=1"),
     ("openatl_unload_native", (), "OPENATL_UNLOAD_OK cycles=8 blocked=1 busy=1 retire=1 free=1 no_com=1"),
+    ("openatl_com_server_tests", ("--core",), "OPENATL_COM_SERVER_CORE_OK identity=1 factory=1 locks=1 concurrent=1 rollback=1 registry=1 no_com=1"),
+    ("openatl_com_server_tests", ("--sta",), "OPENATL_COM_SERVER_NATIVE_OK mode=sta activation=1 identity=1 locks=1 unregister=1 unload=1"),
+    ("openatl_com_server_tests", ("--mta",), "OPENATL_COM_SERVER_NATIVE_OK mode=mta activation=1 identity=1 locks=1 unregister=1 unload=1"),
     ("openatl_com_client", (), "ATL_COM_CLIENT_OK activate=1 qi=1 comptr=1 bstr=1 variant=1 unregister=0"),
     ("openatl_com_client", ("--sta",), "ATL_COM_CLIENT_MODE_OK mode=sta apartment=1 activation=1 balance=1 changed=0"),
     ("openatl_com_client", ("--mta",), "ATL_COM_CLIENT_MODE_OK mode=mta apartment=1 activation=1 balance=1 changed=0"),
@@ -56,7 +60,7 @@ def main() -> int:
     root = Path(sys.argv[1]).resolve(strict=True)
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8-sig"))
     required = {name + ".exe" for name in TARGETS} | {
-        "openatl_unload_fixture.dll", "openatl_unload_probe.dll"}
+        "openatl_unload_fixture.dll", "openatl_unload_probe.dll", "openatl_com_server_fixture.dll"}
     if set(manifest) != required:
         raise SystemExit(f"ARM64 provenance set mismatch: missing={required-set(manifest)}, unexpected={set(manifest)-required}")
     pe_validator = Path(__file__).with_name("verify_pe_machine.py")
@@ -92,7 +96,7 @@ def main() -> int:
                 f"Native ARM64 real SDI UI repeat {attempt} "
                 f"exit={sdi.returncode} stdout={sdi.stdout!r} "
                 f"stderr={sdi.stderr!r}")
-    print("OPENATL_NATIVE_ARM64_OK files=14 tests=17 repeats=5 "
+    print(f"OPENATL_NATIVE_ARM64_OK files={len(required)} tests={len(CASES) + 1} repeats=5 "
           "sha256=1 pe=1 resources=1")
     return 0
 

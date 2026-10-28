@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 project(OpenATL VERSION 0.1.0 LANGUAGES CXX)
 
 # Only Windows-targeting compilers: llvm-mingw on Windows/Linux/macOS,
-# or MSVC cl.exe on Windows. This is UI + optional COM CLIENT only.
+# or MSVC cl.exe on Windows. Server support is an explicit separate target.
 if(NOT WIN32)
   message(FATAL_ERROR "OpenATL targets Windows; cross-compile with llvm-mingw")
 endif()
@@ -23,7 +23,8 @@ if(NOT EXISTS "${_openatl_atl_include}/atlbase.h" OR
    NOT EXISTS "${_openatl_atl_include}/atlimage.h")
   message(FATAL_ERROR "Missing repository-owned OpenATL headers")
 endif()
-# Server-side ATL and registration are deliberately absent, not stubbed.
+# Legacy ATL server compatibility is absent; the independent server API is
+# explicitly included from openatl/ and does not restore atlcom.h.
 if(EXISTS "${_openatl_atl_include}/atlcom.h")
   message(FATAL_ERROR "COM Server atlcom.h is outside OpenATL UI/COM Client scope")
 endif()
@@ -51,6 +52,14 @@ add_library(openatl_comclient INTERFACE)
 add_library(OpenATL::COMClient ALIAS openatl_comclient)
 target_link_libraries(openatl_comclient INTERFACE
   OpenATL::ATL ole32 oleaut32 uuid)
+
+# Optional native COM server API; never pulled into UI/client targets.
+add_library(openatl_comserver INTERFACE)
+add_library(OpenATL::COMServer ALIAS openatl_comserver)
+target_link_libraries(openatl_comserver INTERFACE OpenATL::ATL ole32 uuid)
+add_library(openatl_comregistration INTERFACE)
+add_library(OpenATL::COMRegistration ALIAS openatl_comregistration)
+target_link_libraries(openatl_comregistration INTERFACE OpenATL::COMServer advapi32)
 
 option(OPENATL_BUILD_QUALIFICATION "Compile native UI, ATL utility and COM client tests" OFF)
 if(OPENATL_BUILD_QUALIFICATION)
@@ -233,7 +242,9 @@ if(OPENATL_BUILD_QUALIFICATION)
              COMMAND openatl_com_client "--${_client_mode}")
   endforeach()
 
-  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_mitigation_runtime openatl_unload_fixture openatl_unload_runner openatl_unload_probe openatl_unload_native openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
+  add_subdirectory(tests/com_server)
+
+  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_com_server_fixture openatl_com_server_tests openatl_thunk_fault openatl_mitigation_runtime openatl_unload_fixture openatl_unload_runner openatl_unload_probe openatl_unload_native openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)
     if(MSVC)
       set_property(TARGET ${_qualified} PROPERTY
@@ -288,7 +299,7 @@ if(OPENATL_BUILD_QUALIFICATION)
   endif()
 endif()
 
-# No COM server targets, class factories, registry writers, RGS or RATL.
+# No legacy ATL server/module compatibility, RGS or RATL provider.
 # The clean-room MIT ATL implementation is owned here under include/.
 # No checkout patch or external ATL implementation is ever used.
 # Permanent source-tree-only API: no install(), export(), packaging, or

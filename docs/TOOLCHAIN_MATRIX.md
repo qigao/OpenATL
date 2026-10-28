@@ -1,16 +1,17 @@
 # Required OpenATL llvm-mingw and MSVC CI
 
 This project qualifies **Windows UI without COM initialization** and
-**optional COM Client** with two mandatory compiler paths. The same in-repository MIT clean-room OpenATL implementation and pinned
+**optional COM Client** plus an independent opt-in in-process COM server
+with two mandatory compiler paths. The same in-repository MIT clean-room OpenATL implementation and pinned
 official MS-PL WTL10 headers are used, installed by the checked-in
 vcpkg manifest and ATL-free WTL overlay on every build host.
 
 | Toolchain | Build host | Target | Mandatory acceptance |
 | --- | --- | --- | --- |
-| llvm-mingw 20261020 | Windows x64 | Windows x64 | UI no-COM + file/string/sync/path/mapping utilities + COM Client 5×, WTL10 SDI/.rc link |
+| llvm-mingw 20261020 | Windows x64 | Windows x64 | 20 CTests 5×: UI/utilities/client, explicit server core + STA/MTA activation, unload/SDI; CFG/CET image checks, hosted HSP runtime excluded |
 | llvm-mingw 20261020 | Windows x64 → Windows ARM64 | ARM64 | PE machine/SHA256 → genuine ARM64 UI/utilities/client 5× |
 | llvm-mingw 20261020 | Linux and macOS | Windows x64 + ARM64 | independently cross-build GUI/utilities/client PE + SDI/.rc |
-| MSVC 2022 `cl.exe` / SDK `rc.exe` | Windows x64 | x64 | CMake **13/13** CTests 5×, SDI/.rc |
+| MSVC 2022 `cl.exe` / SDK `rc.exe` | Windows x64 | x64 | 22 CTests 5×, including optional server core + STA/MTA activation, HSP, unload and SDI |
 | MSVC 2022 HostX64→ARM64 | Windows x64 | ARM64 | PE machine/SHA256 → genuine ARM64 UI/utilities/client 5× |
 
 MSVC developer-shell action is pinned to
@@ -26,8 +27,12 @@ preceded the UI/client-only architectural refactor and included removed
 COM server tests. Do **not** interpret it as evidence for the new boundary.
 The new branch HEAD requires its own full CI acceptance.
 
-Still unqualified: CFG/CET, aggressive failure injection and concurrent
-thunk unloading, real interactive SDI and production release.
+Native mitigation, bounded unload and interactive SDI evidence is scoped to
+the formal fixtures. The server adds explicit nonaggregated class factories,
+module locks and registry ownership tests; it does not provide legacy ATL
+server compatibility. See [server contracts](COM_SERVER.md) and
+[hardware HSP scope](CET_HARDWARE_ACCEPTANCE.md). Product release acceptance
+remains application-specific.
 
 **Build boundary:** OpenATL is permanently source-tree-only. There is
 no OpenATL install/export/package config, Installed SDK, or installed-consumer

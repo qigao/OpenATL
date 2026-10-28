@@ -1,6 +1,7 @@
 # OpenATL UI + optional COM client architecture
 
-Two independent functional paths share repository-owned clean-room ATL headers:
+UI/client paths share repository-owned clean-room ATL headers. An explicit
+server API lives separately under `include/openatl/`:
 
 ```
 Win32 GUI application
@@ -37,18 +38,26 @@ link COM Client libraries.
 
 The production header surface contains the real Win32 base and window
 modules (`_AtlBaseModule`, `_AtlWinModule`), optional `atlcomcli.h`
-helpers and ordinary Win32 `atlreg.h` settings operations. Server-side
-`atlcom.h`, `CComModule`/object maps, COM registration writers, class
+helpers and ordinary Win32 `atlreg.h` settings operations. Legacy server-side
+`atlcom.h`, `CComModule`/object maps, ATL registrars, compatibility class
 factories, registration success stubs and fake ActiveX initialization
-were removed. A separate source policy rejects their reintroduction;
+were removed. A separate source policy rejects those legacy APIs;
 compilation with pinned official WTL10 headers and the native UI/COM-client
 tests is the actual acceptance gate.
 
-**Excluded features:** implementing `IClassFactory` servers, registering
-COM class objects, RGS, HKCR/HKLM registry writes, self-registering DLLs,
-server-side Object Maps, in-proc/out-of-proc servers and ActiveX/OLE
-container implementations. The broader original OpenATL headers may declare
-such names, but this project does not qualify or ship those features.
+**Excluded features:** legacy ATL server modules and object-map macros,
+RGS, EXE servers and ActiveX/OLE container implementations. The separate
+`OpenATL::COMServer` target supports nonaggregated in-process servers through
+explicit C++ class/interface descriptors; `OpenATL::COMRegistration` adds
+explicit CLSID/ProgID registration. It does not restore the legacy ATL server
+classes or macros. EXE servers, RGS and ActiveX remain excluded.
+
+The server neither initializes COM nor inherits the WTL UI module. A module
+reference pins each object/factory, and balanced server locks independently
+prevent unload. Explicit registration refuses existing keys and validates
+ownership before nonrecursive deletion. Its root handle is supplied by the
+application; tests use private HKCU roots and a uniquely identified COM class.
+See [COM server API, ownership and registration](COM_SERVER.md).
 
 ## Upstream pins and licenses
 

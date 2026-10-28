@@ -1,7 +1,8 @@
 # OpenATL
 
 **OpenATL is a Windows UI library for ATL-style Win32 windowing, official
-WTL 10, and optional COM *client* helpers.** Its only supported scope is:
+WTL 10, optional COM *client* helpers, and an opt-in in-process COM server.**
+Its supported scope is:
 
 - Win32 GUI: `CWindowImpl`, `CDialogImpl`, message maps, common controls,
   resources and WTL10 frames, without `CoInitializeEx()`.
@@ -16,13 +17,19 @@ WTL 10, and optional COM *client* helpers.** Its only supported scope is:
   explicitly initializes a COM apartment. BSTR self-assignment and
   self-append, embedded-NUL comparisons, length overflow rejection,
   VARIANT copy/Detach ownership and COM identity-query failure handling
-  have native Windows tests; no registration or COM Server is added.
+  have native Windows tests; this client target adds no registration or server.
 
-**Not supported or present:** COM server creation, `IClassFactory`
-implementations, `OBJECT_ENTRY_AUTO`, `DllRegisterServer/UnregisterServer`,
-RGS, COM registration and ActiveX hosting, and COM
-class-object maps. A separate source-owned Win32 CRegKey handles ordinary
-application settings; it is not a registrar. The former server-only `atlcom.h`, `CComModule`,
+The independent `OpenATL::COM` server API supplies explicit class/interface
+tables, `IClassFactory`, reference and module-lock accounting, and explicit
+CLSID/ProgID registration. Applications export their DLL entry points and
+opt into `OpenATL::COMServer` and `OpenATL::COMRegistration`; the UI and COM
+client targets do not acquire server dependencies. See [server contracts and
+usage](docs/COM_SERVER.md).
+
+**Not supported or present:** legacy ATL server compatibility,
+`OBJECT_ENTRY_AUTO`, RGS, EXE servers, Automation/type-library helpers,
+aggregation or ActiveX hosting. A separate source-owned Win32 CRegKey handles
+ordinary application settings. The former server-only `atlcom.h`, `CComModule`,
 `CAtlModuleT`, `CAtlComModule`, object maps and no-op
 `RegisterServer`/`AtlAxWinInit` stubs have been **deleted**, not replaced
 with compatibility shims. The real `_AtlBaseModule` and `_AtlWinModule`
@@ -37,8 +44,12 @@ No RATL provider, fallback or alternate ATL implementation.
   namespaced target**; no dependency on Visual Studio's Microsoft ATL.
 - `OpenATL::COMClient`: **opt-in** ATL client helpers, depending on
   `OpenATL::ATL`, Windows `ole32`, `oleaut32` and `uuid`.
+- `OpenATL::COMServer`: **opt-in** in-process server core in
+  `openatl/com_server.h`, depending on `OpenATL::ATL`, `ole32` and `uuid`.
+- `OpenATL::COMRegistration`: **opt-in** explicit registration in
+  `openatl/com_registration.h`, adding `advapi32` to `OpenATL::COMServer`.
 
-The two `OpenATL::` targets are **permanently source-tree CMake INTERFACE
+The `OpenATL::` targets are **permanently source-tree CMake INTERFACE
 targets**. OpenATL
 will not provide an Installed SDK, a package configuration, exported
 targets, or a `cmake --install` workflow. Consumers integrate the source
@@ -153,8 +164,9 @@ Windows ARM64 and Linux/macOS Windows PE cross-builds.
 
 API declarations and naming compatibility do not require copying Microsoft
 ATL or RATL implementation code. The existing OpenATL file notices and
-third-party source provenance remain unchanged. No COM server, registry
-registration, Installed SDK or `scripts/` directory is added.
+third-party source provenance remain unchanged. These ATL utilities do not
+depend on the optional server/registration API. No Installed SDK or `scripts/`
+directory is added.
 
 ## Dependencies and licensing
 
@@ -171,7 +183,9 @@ There is one ATL implementation: the files owned under `include/`.
 
 The in-tree `atlwin.h` includes W^X thunk hardening and test-only
 fault injection. No external OpenATL checkout or runtime patch is used.
-CFG/CET and concurrency remain unqualified. OpenATL installation is
+CFG/CET and concurrency qualification is scoped to the native test fixtures;
+downstream products must validate their own lifetime and mitigation contracts.
+OpenATL installation is
 permanently out of scope; installing the external WTL dependency with
 vcpkg does not install OpenATL.
 
@@ -181,7 +195,8 @@ The pinned WTL UI overlay retains MRU menu helpers, CFindFile and ordinary
 HKCU registry MRU persistence through source-owned CRegKey, with native menu,
 capacity, dedup, reorder and persistence tests. It still removes the separate
 CRegProperty serializer, Internet Explorer registry hyperlink colors and
-COM-based extended print callbacks. No COM Server API or registration shim is reintroduced. Win32 CRegKey
+COM-based extended print callbacks. WTL itself acquires no server API or
+registration shim. Win32 CRegKey
 is confined to `include/atlreg.h`; native HKCU tests cover ownership,
 malformed strings, values, errors, access masks and cleanup without COM
 initialization. Applications using its registry methods explicitly link
@@ -209,8 +224,12 @@ See [architecture](docs/ARCHITECTURE.md),
 [acceptance](docs/ACCEPTANCE.md), and
 [toolchain matrix](docs/TOOLCHAIN_MATRIX.md).
 
-**Source-tree qualified; final review required before merge.** Full GUI
-CFG/CET, failure cleanup, DSO unloading and interactive SDI still need
-explicit acceptance. No WTL8
+The optional COM server has separate core/registry and STA/MTA DLL activation
+tests. Each DLL test registers its fixture under the current user's Classes
+root, verifies real COM activation, unregisters it and checks DLL retirement.
+Other entries are not overwritten or recursively deleted.
+
+**Source-tree qualification is bounded by the documented APIs and tests.**
+Downstream product acceptance remains explicit. No WTL8
 fallback, no Salts production ABI or compiler switch. **Installed SDK is
 permanently out of scope**; there is no future installation gate.
