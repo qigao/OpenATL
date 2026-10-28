@@ -207,6 +207,17 @@ if(OPENATL_BUILD_QUALIFICATION)
   add_test(NAME openatl.dll_unload_native COMMAND openatl_unload_runner)
   set_tests_properties(openatl.dll_unload_native PROPERTIES TIMEOUT 35)
 
+  # Independent blocked-callback probe from PR #9, alongside the queued-work
+  # and caller-lease unload fixture above.
+  add_library(openatl_unload_probe SHARED tests/wtl10/unload_probe.cpp)
+  set_target_properties(openatl_unload_probe PROPERTIES PREFIX "")
+  target_link_libraries(openatl_unload_probe PRIVATE OpenATL::ATL user32)
+  add_executable(openatl_unload_native tests/wtl10/unload_native.cpp)
+  target_link_libraries(openatl_unload_native PRIVATE OpenATL::ATL ole32 user32)
+  add_dependencies(openatl_unload_native openatl_unload_probe)
+  add_test(NAME openatl.dll_callback_unload COMMAND openatl_unload_native)
+  set_tests_properties(openatl.dll_callback_unload PROPERTIES TIMEOUT 30)
+
   add_executable(openatl_thunk_fault tests/wtl10/thunk_fault.cpp)
   target_compile_definitions(openatl_thunk_fault PRIVATE OPENATL_WX_FAULT_TEST=1)
   target_link_libraries(openatl_thunk_fault PRIVATE OpenATL::ATL)
@@ -222,7 +233,7 @@ if(OPENATL_BUILD_QUALIFICATION)
              COMMAND openatl_com_client "--${_client_mode}")
   endforeach()
 
-  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_mitigation_runtime openatl_unload_fixture openatl_unload_runner openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
+  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_thunk_fault openatl_mitigation_runtime openatl_unload_fixture openatl_unload_runner openatl_unload_probe openatl_unload_native openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)
     if(MSVC)
       set_property(TARGET ${_qualified} PROPERTY
