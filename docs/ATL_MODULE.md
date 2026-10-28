@@ -53,3 +53,54 @@ units including the terminator, then tokenized as Windows arguments;
 default persistent server/AppID/type-library registration is unsupported and
 returns `E_NOTIMPL`. No RGS, automatic object maps, idle-shutdown monitor,
 service module or complete ATL EXE-server framework is claimed.
+
+## `CAtlDllModuleT<T>` — implemented explicit-class-table milestone
+
+`ATL::CAtlDllModuleT<T>` is now available in `atlbase.h`. It inherits the
+existing `CAtlModuleT<T>` lock/termination protocol and exposes the standard
+ATL DLL-module entry points: `DllMain(DWORD, LPVOID)`,
+`DllGetClassObject(REFCLSID, REFIID, LPVOID*)`,
+`GetClassObject(...)`, `DllCanUnloadNow()`,
+`DllRegisterServer(BOOL = TRUE)` and
+`DllUnregisterServer(BOOL = TRUE)`. The application continues to export
+its own unmangled `DllGetClassObject`, `DllCanUnloadNow`,
+`DllRegisterServer` and `DllUnregisterServer` functions, delegating to
+the module. This does not auto-export symbols.
+
+**Current class map bridge:** call
+`module.BindServer(OpenATL::COM::Module&)` with a valid, externally-owned,
+immutable explicit COM class table. Binding succeeds exactly once (repeat
+binding to the same module is idempotent); a second different table is
+rejected without rebinding. The `OpenATL::COM::Module` and its class entries
+must outlive all factories, objects, server locks and the bound DLL module.
+An absent class table returns `CLASS_E_CLASSNOTAVAILABLE` and clears output;
+invalid module descriptors cannot be bound.
+
+`DllCanUnloadNow` returns `S_FALSE` when either the ATL module lock count
+or the bound server's factory/object/server references are nonzero. Native
+`DllGetClassObject` internally pins the ATL module during synchronous lookup;
+the real class factory independently retains its explicit server module.
+This is a cooperative unload contract: it cannot make arbitrary
+`FreeLibrary` safe during an active callback. The application must
+quiesce every caller before unloading.
+
+`DllMain` performs no COM activation, registry writes, or class registration
+under the OS loader lock. Registration forwards to a derived
+`T::RegisterServer(BOOL, const CLSID*)` /
+`T::UnregisterServer(BOOL, const CLSID*)` implementation. The inherited
+default is **`E_NOTIMPL`**, not fake success, until concrete registrar and
+type-library semantics are supplied by that server.
+
+The existing `tests/com_server/fixture.cpp` now routes its actual COM DLL
+exports through `CAtlDllModuleT` and preserves real HKCU class registration,
+STA/MTA activation, object identity, server locks and unload behavior. The
+`atl_module.cpp` native test exercises failed/unbound/duplicate binding,
+IID rejection, factory and object lifetimes, registration forwarding and
+ordinary no-COM initialization.
+
+**Not yet complete:** standard ATL automatic `OBJECT_ENTRY_AUTO` maps,
+`CAtlComModule`, RGS, registered type libraries, aggregated classes and
+complete EXE/service COM server behavior remain separate compatibility
+milestones. The explicit class-table bridge is temporary API surface for
+the already-implemented factory engine, not a secondary provider or
+a claim of complete Microsoft ATL compatibility.
