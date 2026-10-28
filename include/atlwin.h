@@ -1655,8 +1655,16 @@ public:
 
     BOOL SubclassWindow(HWND hWnd) noexcept
     {
-        ATLASSERT(this->m_hWnd == NULL);
-        ATLASSERT(::IsWindow(hWnd));
+        // A second subclass admission must not rewrite an RX thunk still
+        // installed on the first HWND (or silently steal its owner).
+        if (this->m_hWnd != NULL) {
+            ::SetLastError(ERROR_ALREADY_EXISTS);
+            return FALSE;
+        }
+        if (!::IsWindow(hWnd)) {
+            ::SetLastError(ERROR_INVALID_WINDOW_HANDLE);
+            return FALSE;
+        }
 
         BOOL bRet = this->m_thunk.Init(GetWindowProc(), this);
         if (bRet == FALSE)
@@ -2275,8 +2283,14 @@ public:
 
     BOOL SubclassWindow(HWND hWnd) noexcept
     {
-        ATLASSERT(this->m_hWnd == NULL);
-        ATLASSERT(::IsWindow(hWnd));
+        if (this->m_hWnd != NULL) {
+            ::SetLastError(ERROR_ALREADY_EXISTS);
+            return FALSE;
+        }
+        if (!::IsWindow(hWnd)) {
+            ::SetLastError(ERROR_INVALID_WINDOW_HANDLE);
+            return FALSE;
+        }
 
         BOOL bRet = m_thunk.Init(WindowProc, this);
         if (bRet == FALSE)

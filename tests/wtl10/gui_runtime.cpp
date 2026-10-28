@@ -241,9 +241,18 @@ static bool check_window()
         ProbeWindow wnd;
         wnd.handle_nc_destroy = (i & 1) != 0;
         const bool attached = wnd.SubclassWindow(raw) != FALSE;
-        const bool rx = attached && executable_read_only(wnd.m_thunk.GetCodeAddress());
+        const void* liveCode = wnd.m_thunk.GetCodeAddress();
+        const bool rx = attached && executable_read_only(liveCode);
+        // Re-admitting the same owner must fail WITHOUT invalidating the
+        // first HWND's WndProc or changing its RX thunk.
+        const BOOL duplicate = attached ? wnd.SubclassWindow(raw) : FALSE;
+        const DWORD duplicateError = ::GetLastError();
+        const bool stable = attached && !duplicate &&
+            duplicateError == ERROR_ALREADY_EXISTS && wnd.m_hWnd == raw &&
+            wnd.m_thunk.GetCodeAddress() == liveCode &&
+            (WNDPROC)::GetWindowLongPtrW(raw, GWLP_WNDPROC) == wnd.m_thunk.GetWndProc();
         const bool destroyed = ::DestroyWindow(raw) != FALSE;
-        if (!attached || !rx || !destroyed || ::IsWindow(raw) ||
+        if (!attached || !rx || !stable || !destroyed || ::IsWindow(raw) ||
             wnd.destroyed != 1 || wnd.finalized != 1 || wnd.m_hWnd != NULL)
             return false;
     }
@@ -258,9 +267,16 @@ static bool check_window()
         map.handle_nc_destroy = (i & 1) != 0;
         ATL::CContainedWindow contained(&map);
         const bool attached = contained.SubclassWindow(raw) != FALSE;
-        const bool rx = attached && executable_read_only(contained.m_thunk.GetCodeAddress());
+        const void* liveCode = contained.m_thunk.GetCodeAddress();
+        const bool rx = attached && executable_read_only(liveCode);
+        const BOOL duplicate = attached ? contained.SubclassWindow(raw) : FALSE;
+        const DWORD duplicateError = ::GetLastError();
+        const bool stable = attached && !duplicate &&
+            duplicateError == ERROR_ALREADY_EXISTS && contained.m_hWnd == raw &&
+            contained.m_thunk.GetCodeAddress() == liveCode &&
+            (WNDPROC)::GetWindowLongPtrW(raw, GWLP_WNDPROC) == contained.m_thunk.GetWndProc();
         const bool destroyed = ::DestroyWindow(raw) != FALSE;
-        if (!attached || !rx || !destroyed || ::IsWindow(raw) ||
+        if (!attached || !rx || !stable || !destroyed || ::IsWindow(raw) ||
             map.destroyed != 1 || contained.m_hWnd != NULL)
             return false;
     }
