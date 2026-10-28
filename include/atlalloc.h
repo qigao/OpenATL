@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <malloc.h>
+#include <limits>
 
 namespace ATL {
 
@@ -121,29 +122,33 @@ public:
 
     bool Allocate(size_t nElements = 1) noexcept
     {
-        ATLASSERT(m_pData == NULL);
+        if (m_pData != NULL ||
+            nElements > (std::numeric_limits<size_t>::max)() / sizeof(T))
+            return false;
         m_pData = (T*)Allocator::Allocate(nElements * sizeof(T));
         return m_pData != NULL;
     }
 
     bool AllocateBytes(size_t nBytes) noexcept
     {
-        ATLASSERT(m_pData == NULL);
+        if (m_pData != NULL) return false;
         m_pData = (T*)Allocator::Allocate(nBytes);
         return m_pData != NULL;
     }
 
     bool Reallocate(size_t nElements) noexcept
     {
-        T* pNew = (T*)Allocator::Reallocate(m_pData, nElements * sizeof(T));
-        if (pNew == NULL)
+        if (nElements > (std::numeric_limits<size_t>::max)() / sizeof(T))
             return false;
-        m_pData = pNew;
-        return true;
+        return ReallocateBytes(nElements * sizeof(T));
     }
 
     bool ReallocateBytes(size_t nBytes) noexcept
     {
+        if (nBytes == 0) {
+            Free();
+            return true;
+        }
         T* pNew = (T*)Allocator::Reallocate(m_pData, nBytes);
         if (pNew == NULL)
             return false;
@@ -168,6 +173,8 @@ public:
 
     void Attach(T* p) noexcept
     {
+        // Self-attach must not free the block and leave an owned dangling pointer.
+        if (m_pData == p) return;
         Free();
         m_pData = p;
     }
@@ -212,6 +219,8 @@ public:
 
     T* Allocate(size_t nElements)
     {
+        if (nElements > (std::numeric_limits<size_t>::max)() / sizeof(T))
+            return NULL;
         return AllocateBytes(nElements * sizeof(T));
     }
 
@@ -243,7 +252,7 @@ private:
     T* m_p;
     size_t m_nSize;
     bool m_bOnHeap;
-    BYTE m_abFixedBuffer[t_nFixedBytes];
+    alignas(T) BYTE m_abFixedBuffer[t_nFixedBytes > 0 ? t_nFixedBytes : 1];
 
     CTempBuffer(const CTempBuffer&) = delete;
     CTempBuffer& operator=(const CTempBuffer&) = delete;

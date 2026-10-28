@@ -1,349 +1,320 @@
-// OpenATL - Clean-room ATL subset for WTL 10.0
-// Simple collection classes
-
+// OpenATL - source-owned ATL-style simple collection containers.
+// No raw relocation of constructed C++ objects or shallow owning copies.
 #ifndef __ATLSIMPCOLL_H__
 #define __ATLSIMPCOLL_H__
-
 #pragma once
 
 #include "atldef.h"
-
+#include <climits>
+#include <cstddef>
 #include <new>
-#include <cstring>
+#include <stdexcept>
+#include <utility>
+#include <vector>
 
 namespace ATL {
-
-///////////////////////////////////////////////////////////////////////////////
-// CSimpleArrayEqualHelper
 
 template <typename T>
 class CSimpleArrayEqualHelper {
 public:
-    static bool IsEqual(const T& a, const T& b)
-    {
-        return a == b;
-    }
+    static bool IsEqual(const T& a, const T& b) { return a == b; }
 };
 
 template <typename T>
 class CSimpleArrayEqualHelperFalse {
 public:
-    static bool IsEqual(const T&, const T&)
-    {
+    static bool IsEqual(const T&, const T&) {
         ATLASSERT(FALSE);
         return false;
     }
 };
 
-///////////////////////////////////////////////////////////////////////////////
-// CSimpleArray
-
+// m_aT, m_nSize and m_nAllocSize retain the usual ATL inspection surface;
+// these are non-owning mirrors, NOT an alternate independently owned buffer.
+// Mutation is through methods; callers may not modify the count/pointer.
 template <typename T, typename TEqual = CSimpleArrayEqualHelper<T>>
 class CSimpleArray {
 public:
-    T* m_aT;
-    int m_nSize;
-    int m_nAllocSize;
+    T* m_aT = nullptr;
+    int m_nSize = 0;
+    int m_nAllocSize = 0;
 
-    CSimpleArray() noexcept : m_aT(NULL), m_nSize(0), m_nAllocSize(0)
-    {
+    CSimpleArray() noexcept = default;
+    CSimpleArray(const CSimpleArray& src) : values_(src.values_) { Sync(); }
+    CSimpleArray(CSimpleArray&& src) noexcept
+        : values_(std::move(src.values_)) {
+        Sync();
+        src.Sync();
     }
-
-    CSimpleArray(const CSimpleArray<T, TEqual>& src) : m_aT(NULL), m_nSize(0), m_nAllocSize(0)
-    {
-        if (src.GetSize()) {
-            m_aT = (T*)calloc(src.GetSize(), sizeof(T));
-            if (m_aT != NULL) {
-                m_nAllocSize = src.GetSize();
-                for (int i = 0; i < src.GetSize(); i++)
-                    Add(src[i]);
-            }
-        }
-    }
-
-    ~CSimpleArray()
-    {
-        RemoveAll();
-    }
-
-    CSimpleArray<T, TEqual>& operator=(const CSimpleArray<T, TEqual>& src)
-    {
+    CSimpleArray& operator=(const CSimpleArray& src) {
         if (this != &src) {
-            RemoveAll();
-            if (src.GetSize()) {
-                m_aT = (T*)calloc(src.GetSize(), sizeof(T));
-                if (m_aT != NULL) {
-                    m_nAllocSize = src.GetSize();
-                    for (int i = 0; i < src.GetSize(); i++)
-                        Add(src[i]);
-                }
-            }
+            CSimpleArray replacement(src);
+            values_.swap(replacement.values_);
+            Sync();
         }
         return *this;
     }
-
-    int GetSize() const noexcept
-    {
-        return m_nSize;
-    }
-
-    BOOL Add(const T& t)
-    {
-        if (m_nSize == m_nAllocSize) {
-            int nNewAllocSize = (m_nAllocSize == 0) ? 1 : (m_nSize * 2);
-            T* aT = (T*)realloc(m_aT, nNewAllocSize * sizeof(T));
-            if (aT == NULL)
-                return FALSE;
-            m_nAllocSize = nNewAllocSize;
-            m_aT = aT;
+    CSimpleArray& operator=(CSimpleArray&& src) noexcept {
+        if (this != &src) {
+            values_ = std::move(src.values_);
+            Sync();
+            src.Sync();
         }
-        // Use placement new for proper construction
-        ::new (&m_aT[m_nSize]) T(t);
-        m_nSize++;
+        return *this;
+    }
+    ~CSimpleArray() = default;
+
+    int GetSize() const noexcept { return m_nSize; }
+
+    BOOL Add(const T& value) {
+        if (m_nSize == INT_MAX) return FALSE;
+        try {
+            // std::vector handles Add(GetData()[i]) aliasing even on growth:
+            // never reallocate live objects with realloc or memmove.
+            values_.push_back(value);
+        } catch (const std::bad_alloc&) {
+            Sync();
+            return FALSE;
+        } catch (const std::length_error&) {
+            Sync();
+            return FALSE;
+        } catch (...) {
+            Sync();
+            throw;
+        }
+        Sync();
         return TRUE;
     }
 
-    BOOL Remove(const T& t)
-    {
-        int nIndex = Find(t);
-        if (nIndex < 0)
-            return FALSE;
-        return RemoveAt(nIndex);
+    BOOL Remove(const T& value) {
+        const int index = Find(value);
+        return index < 0 ? FALSE : RemoveAt(index);
     }
 
-    BOOL RemoveAt(int nIndex)
-    {
-        ATLASSERT(nIndex >= 0 && nIndex < m_nSize);
-        if (nIndex < 0 || nIndex >= m_nSize)
-            return FALSE;
-
-        m_aT[nIndex].~T();
-        if (nIndex != (m_nSize - 1))
-            memmove(&m_aT[nIndex], &m_aT[nIndex + 1], (m_nSize - nIndex - 1) * sizeof(T));
-        m_nSize--;
+    BOOL RemoveAt(int index) {
+        ATLASSERT(index >= 0 && index < m_nSize);
+        if (index < 0 || index >= m_nSize) return FALSE;
+        try {
+            values_.erase(values_.begin() + index);
+        } catch (...) {
+            Sync();
+            throw;
+        }
+        Sync();
         return TRUE;
     }
 
-    void RemoveAll()
-    {
-        if (m_aT != NULL) {
-            for (int i = 0; i < m_nSize; i++)
-                m_aT[i].~T();
-            free(m_aT);
-            m_aT = NULL;
-        }
-        m_nSize = 0;
-        m_nAllocSize = 0;
+    void RemoveAll() noexcept {
+        std::vector<T> empty;
+        values_.swap(empty);
+        Sync();
     }
 
-    const T& operator[](int nIndex) const
-    {
-        ATLASSERT(nIndex >= 0 && nIndex < m_nSize);
-        return m_aT[nIndex];
+    const T& operator[](int index) const {
+        ATLASSERT(index >= 0 && index < m_nSize);
+        return values_.at(static_cast<size_t>(index));
     }
-
-    T& operator[](int nIndex)
-    {
-        ATLASSERT(nIndex >= 0 && nIndex < m_nSize);
-        return m_aT[nIndex];
+    T& operator[](int index) {
+        ATLASSERT(index >= 0 && index < m_nSize);
+        return values_.at(static_cast<size_t>(index));
     }
+    T* GetData() const noexcept { return m_aT; }
 
-    T* GetData() const noexcept
-    {
-        return m_aT;
-    }
-
-    int Find(const T& t) const
-    {
-        for (int i = 0; i < m_nSize; i++) {
-            if (TEqual::IsEqual(m_aT[i], t))
+    int Find(const T& value) const {
+        for (int i = 0; i < m_nSize; ++i)
+            if (TEqual::IsEqual(values_[static_cast<size_t>(i)], value))
                 return i;
-        }
         return -1;
     }
-
-    BOOL SetAtIndex(int nIndex, const T& t)
-    {
-        ATLASSERT(nIndex >= 0 && nIndex < m_nSize);
-        if (nIndex < 0 || nIndex >= m_nSize)
-            return FALSE;
-        m_aT[nIndex] = t;
+    BOOL SetAtIndex(int index, const T& value) {
+        ATLASSERT(index >= 0 && index < m_nSize);
+        if (index < 0 || index >= m_nSize) return FALSE;
+        // Copy before assignment to avoid a self-alias that is invalidated
+        // if a value object internally changes its own storage.
+        T staged(value);
+        values_[static_cast<size_t>(index)] = std::move(staged);
         return TRUE;
     }
+
+private:
+    void Sync() noexcept {
+        m_aT = values_.empty() ? nullptr : values_.data();
+        m_nSize = static_cast<int>(values_.size());
+        m_nAllocSize = values_.capacity() > static_cast<size_t>(INT_MAX)
+            ? INT_MAX : static_cast<int>(values_.capacity());
+    }
+    std::vector<T> values_;
 };
 
-///////////////////////////////////////////////////////////////////////////////
-// CSimpleMap
-
-template <typename TKey, typename TVal, typename TEqual = CSimpleArrayEqualHelper<TKey>>
+// Distinct owned key/value vectors preserve the ATL key/value pointer
+// accessors. Copy, insert, remove and replacement have explicit object
+// lifetimes and cannot leave one side of the map half committed.
+template <typename TKey, typename TVal,
+          typename TEqual = CSimpleArrayEqualHelper<TKey>>
 class CSimpleMap {
 public:
-    TKey* m_aKey;
-    TVal* m_aVal;
-    int m_nSize;
+    TKey* m_aKey = nullptr;
+    TVal* m_aVal = nullptr;
+    int m_nSize = 0;
 
-    CSimpleMap() noexcept : m_aKey(NULL), m_aVal(NULL), m_nSize(0)
-    {
+    CSimpleMap() noexcept = default;
+    CSimpleMap(const CSimpleMap& src)
+        : keys_(src.keys_), values_(src.values_) { Sync(); }
+    CSimpleMap(CSimpleMap&& src) noexcept
+        : keys_(std::move(src.keys_)), values_(std::move(src.values_)) {
+        Sync();
+        src.Sync();
     }
-
-    ~CSimpleMap()
-    {
-        RemoveAll();
-    }
-
-    int GetSize() const noexcept
-    {
-        return m_nSize;
-    }
-
-    BOOL Add(const TKey& key, const TVal& val)
-    {
-        TKey* pKeyNew = (TKey*)realloc(m_aKey, (m_nSize + 1) * sizeof(TKey));
-        if (pKeyNew == NULL)
-            return FALSE;
-        m_aKey = pKeyNew;
-
-        TVal* pValNew = (TVal*)realloc(m_aVal, (m_nSize + 1) * sizeof(TVal));
-        if (pValNew == NULL)
-            return FALSE;
-        m_aVal = pValNew;
-
-        ::new (&m_aKey[m_nSize]) TKey(key);
-        ::new (&m_aVal[m_nSize]) TVal(val);
-        m_nSize++;
-        return TRUE;
-    }
-
-    BOOL Remove(const TKey& key)
-    {
-        int nIndex = FindKey(key);
-        if (nIndex < 0)
-            return FALSE;
-        return RemoveAt(nIndex);
-    }
-
-    BOOL RemoveAt(int nIndex)
-    {
-        ATLASSERT(nIndex >= 0 && nIndex < m_nSize);
-        if (nIndex < 0 || nIndex >= m_nSize)
-            return FALSE;
-
-        m_aKey[nIndex].~TKey();
-        m_aVal[nIndex].~TVal();
-
-        if (nIndex != (m_nSize - 1)) {
-            memmove(&m_aKey[nIndex], &m_aKey[nIndex + 1], (m_nSize - nIndex - 1) * sizeof(TKey));
-            memmove(&m_aVal[nIndex], &m_aVal[nIndex + 1], (m_nSize - nIndex - 1) * sizeof(TVal));
+    CSimpleMap& operator=(const CSimpleMap& src) {
+        if (this != &src) {
+            CSimpleMap replacement(src);
+            keys_.swap(replacement.keys_);
+            values_.swap(replacement.values_);
+            Sync();
         }
-        m_nSize--;
-        return TRUE;
+        return *this;
     }
+    CSimpleMap& operator=(CSimpleMap&& src) noexcept {
+        if (this != &src) {
+            keys_ = std::move(src.keys_);
+            values_ = std::move(src.values_);
+            Sync();
+            src.Sync();
+        }
+        return *this;
+    }
+    ~CSimpleMap() = default;
 
-    void RemoveAll()
-    {
-        if (m_aKey != NULL) {
-            for (int i = 0; i < m_nSize; i++) {
-                m_aKey[i].~TKey();
-                m_aVal[i].~TVal();
+    int GetSize() const noexcept { return m_nSize; }
+
+    BOOL Add(const TKey& key, const TVal& val) {
+        if (m_nSize == INT_MAX) return FALSE;
+        try {
+            // Stage both inputs before growth: arguments may alias keys_/values_.
+            TKey nextKey(key);
+            TVal nextValue(val);
+            keys_.push_back(nextKey);
+            try {
+                values_.push_back(nextValue);
+            } catch (...) {
+                keys_.pop_back();
+                throw;
             }
-            free(m_aKey);
-            m_aKey = NULL;
-        }
-        if (m_aVal != NULL) {
-            free(m_aVal);
-            m_aVal = NULL;
-        }
-        m_nSize = 0;
-    }
-
-    BOOL SetAt(const TKey& key, const TVal& val)
-    {
-        int nIndex = FindKey(key);
-        if (nIndex < 0)
+        } catch (const std::bad_alloc&) {
+            Sync();
             return FALSE;
-        m_aVal[nIndex] = val;
+        } catch (const std::length_error&) {
+            Sync();
+            return FALSE;
+        } catch (...) {
+            Sync();
+            throw;
+        }
+        Sync();
         return TRUE;
     }
 
-    TVal Lookup(const TKey& key) const
-    {
-        int nIndex = FindKey(key);
-        if (nIndex >= 0)
-            return GetValueAt(nIndex);
-        return TVal();
+    BOOL Remove(const TKey& key) {
+        const int index = FindKey(key);
+        return index < 0 ? FALSE : RemoveAt(index);
     }
-
-    TKey ReverseLookup(const TVal& val) const
-    {
-        int nIndex = FindVal(val);
-        if (nIndex >= 0)
-            return GetKeyAt(nIndex);
-        return TKey();
-    }
-
-    TKey& GetKeyAt(int nIndex) const
-    {
-        ATLASSERT(nIndex >= 0 && nIndex < m_nSize);
-        return m_aKey[nIndex];
-    }
-
-    TVal& GetValueAt(int nIndex) const
-    {
-        ATLASSERT(nIndex >= 0 && nIndex < m_nSize);
-        return m_aVal[nIndex];
-    }
-
-    int FindKey(const TKey& key) const
-    {
-        for (int i = 0; i < m_nSize; i++) {
-            if (TEqual::IsEqual(m_aKey[i], key))
-                return i;
-        }
-        return -1;
-    }
-
-    int FindVal(const TVal& val) const
-    {
-        for (int i = 0; i < m_nSize; i++) {
-            if (CSimpleArrayEqualHelper<TVal>::IsEqual(m_aVal[i], val))
-                return i;
-        }
-        return -1;
-    }
-
-    BOOL SetAtIndex(int nIndex, const TKey& key, const TVal& val)
-    {
-        ATLASSERT(nIndex >= 0 && nIndex < m_nSize);
-        if (nIndex < 0 || nIndex >= m_nSize)
-            return FALSE;
-        m_aKey[nIndex] = key;
-        m_aVal[nIndex] = val;
+    BOOL RemoveAt(int index) {
+        ATLASSERT(index >= 0 && index < m_nSize);
+        if (index < 0 || index >= m_nSize) return FALSE;
+        // Both erase operations are prepared before either is published;
+        // if copying/moving user objects throws, the map is unchanged.
+        std::vector<TKey> stagedKeys(keys_);
+        std::vector<TVal> stagedValues(values_);
+        stagedKeys.erase(stagedKeys.begin() + index);
+        stagedValues.erase(stagedValues.begin() + index);
+        keys_.swap(stagedKeys);
+        values_.swap(stagedValues);
+        Sync();
         return TRUE;
     }
+    void RemoveAll() noexcept {
+        std::vector<TKey> emptyKeys;
+        std::vector<TVal> emptyValues;
+        keys_.swap(emptyKeys);
+        values_.swap(emptyValues);
+        Sync();
+    }
+    BOOL SetAt(const TKey& key, const TVal& val) {
+        const int index = FindKey(key);
+        if (index < 0) return FALSE;
+        // Keep the old map valid if user assignment throws.
+        std::vector<TVal> replacement(values_);
+        replacement[static_cast<size_t>(index)] = val;
+        values_.swap(replacement);
+        Sync();
+        return TRUE;
+    }
+    TVal Lookup(const TKey& key) const {
+        int index = FindKey(key);
+        return index < 0 ? TVal() : values_[static_cast<size_t>(index)];
+    }
+    TKey ReverseLookup(const TVal& val) const {
+        int index = FindVal(val);
+        return index < 0 ? TKey() : keys_[static_cast<size_t>(index)];
+    }
+    TKey& GetKeyAt(int index) const {
+        ATLASSERT(index >= 0 && index < m_nSize);
+        return const_cast<TKey&>(keys_.at(static_cast<size_t>(index)));
+    }
+    TVal& GetValueAt(int index) const {
+        ATLASSERT(index >= 0 && index < m_nSize);
+        return const_cast<TVal&>(values_.at(static_cast<size_t>(index)));
+    }
+    int FindKey(const TKey& key) const {
+        for (int i = 0; i < m_nSize; ++i)
+            if (TEqual::IsEqual(keys_[static_cast<size_t>(i)], key))
+                return i;
+        return -1;
+    }
+    int FindVal(const TVal& val) const {
+        for (int i = 0; i < m_nSize; ++i)
+            if (CSimpleArrayEqualHelper<TVal>::IsEqual(
+                    values_[static_cast<size_t>(i)], val))
+                return i;
+        return -1;
+    }
+    BOOL SetAtIndex(int index, const TKey& key, const TVal& val) {
+        ATLASSERT(index >= 0 && index < m_nSize);
+        if (index < 0 || index >= m_nSize) return FALSE;
+        std::vector<TKey> stagedKeys(keys_);
+        std::vector<TVal> stagedValues(values_);
+        stagedKeys[static_cast<size_t>(index)] = key;
+        stagedValues[static_cast<size_t>(index)] = val;
+        keys_.swap(stagedKeys);
+        values_.swap(stagedValues);
+        Sync();
+        return TRUE;
+    }
+
+private:
+    void Sync() noexcept {
+        ATLASSERT(keys_.size() == values_.size());
+        m_aKey = keys_.empty() ? nullptr : keys_.data();
+        m_aVal = values_.empty() ? nullptr : values_.data();
+        m_nSize = static_cast<int>(keys_.size());
+    }
+    std::vector<TKey> keys_;
+    std::vector<TVal> values_;
 };
-
-///////////////////////////////////////////////////////////////////////////////
-// CSimpleValArray - array of simple value types
 
 template <typename T>
 class CSimpleValArray : public CSimpleArray<T, CSimpleArrayEqualHelperFalse<T>> {
 public:
-    BOOL Add(T t)
-    {
-        return CSimpleArray<T, CSimpleArrayEqualHelperFalse<T>>::Add(t);
+    BOOL Add(T value) {
+        return CSimpleArray<T, CSimpleArrayEqualHelperFalse<T>>::Add(value);
     }
-
-    BOOL Remove(T t)
-    {
-        return CSimpleArray<T, CSimpleArrayEqualHelperFalse<T>>::Remove(t);
+    BOOL Remove(T value) {
+        return CSimpleArray<T, CSimpleArrayEqualHelperFalse<T>>::Remove(value);
     }
-
-    T operator[](int nIndex) const
-    {
-        return CSimpleArray<T, CSimpleArrayEqualHelperFalse<T>>::operator[](nIndex);
+    T operator[](int index) const {
+        return CSimpleArray<T, CSimpleArrayEqualHelperFalse<T>>::operator[](index);
     }
 };
 
 } // namespace ATL
-
 #endif // __ATLSIMPCOLL_H__
