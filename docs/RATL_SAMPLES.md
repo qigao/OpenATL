@@ -42,7 +42,8 @@ ordinary WTL UI tests still complete without initializing COM.
 Persistent EXE/AppID/type-library registration, automatic object maps,
 idle-shutdown monitoring, services and a complete ATL EXE-server framework
 remain outside this subset. Default registration commands fail E_NOTIMPL;
-they never claim an installation succeeded. CComModule remains removed.
+they never claim an installation succeeded. `CComModule` remains unimplemented, not permanently forbidden; standard
+ATL APIs required by real consumers are compatibility work.
 
 The upstream MSVC build leaves RATL include paths empty and can select
 Visual Studio's ATL implementation, so its own build is not OpenATL evidence.
