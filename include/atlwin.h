@@ -1566,18 +1566,21 @@ public:
         ATLASSERT(pThis->m_pCurrentMsg == &msg);
         pThis->m_pCurrentMsg = pOldMsg;
 
-        if (!bRet) {
-            if (uMsg != WM_NCDESTROY) {
+        // WM_NCDESTROY retires the HWND regardless of whether the application
+        // handled the message. The previous subclass procedure must also be
+        // restored while this callback is still active.
+        if (uMsg == WM_NCDESTROY) {
+            const LONG_PTR installed = ::GetWindowLongPtr(pThis->m_hWnd, GWLP_WNDPROC);
+            if (!bRet)
                 lRes = pThis->DefWindowProc(uMsg, wParam, lParam);
-            } else {
-                LONG_PTR pfnWndProc = ::GetWindowLongPtr(pThis->m_hWnd, GWLP_WNDPROC);
-                lRes = pThis->DefWindowProc(uMsg, wParam, lParam);
-                if ((pThis->m_pfnSuperWindowProc != ::DefWindowProc) &&
-                    (::GetWindowLongPtr(pThis->m_hWnd, GWLP_WNDPROC) == pfnWndProc)) {
-                    ::SetWindowLongPtr(pThis->m_hWnd, GWLP_WNDPROC, (LONG_PTR)pThis->m_pfnSuperWindowProc);
-                }
-                pThis->m_dwState |= CWindowImplRoot<TBase>::WINSTATE_DESTROYED;
+            if (pThis->m_pfnSuperWindowProc != ::DefWindowProc &&
+                ::GetWindowLongPtr(pThis->m_hWnd, GWLP_WNDPROC) == installed) {
+                (void)::SetWindowLongPtr(pThis->m_hWnd, GWLP_WNDPROC,
+                                         (LONG_PTR)pThis->m_pfnSuperWindowProc);
             }
+            pThis->m_dwState |= CWindowImplRoot<TBase>::WINSTATE_DESTROYED;
+        } else if (!bRet) {
+            lRes = pThis->DefWindowProc(uMsg, wParam, lParam);
         }
 
         if ((pThis->m_dwState & CWindowImplRoot<TBase>::WINSTATE_DESTROYED) && (pThis->m_pCurrentMsg == NULL)) {
@@ -1660,11 +1663,18 @@ public:
             return FALSE;
 
         WNDPROC pProc = this->m_thunk.GetWndProc();
-        WNDPROC pfnWndProc = (WNDPROC)::SetWindowLongPtr(hWnd, GWLP_WNDPROC, (LONG_PTR)pProc);
-        if (pfnWndProc == NULL)
+        // Fault injection and real Win32 installation share one boundary.
+        ::SetLastError(ERROR_SUCCESS);
+        const LONG_PTR previous = CWndProcThunk::InstallWndProc(
+            hWnd, GWLP_WNDPROC, (LONG_PTR)pProc);
+        if (previous == 0) {
+            const DWORD error = ::GetLastError();
+            this->m_thunk.ReleaseCode();
+            ::SetLastError(error != ERROR_SUCCESS ? error : ERROR_INVALID_WINDOW_HANDLE);
             return FALSE;
+        }
 
-        this->m_pfnSuperWindowProc = pfnWndProc;
+        this->m_pfnSuperWindowProc = (WNDPROC)previous;
         this->m_hWnd = hWnd;
         return TRUE;
     }
@@ -2273,11 +2283,17 @@ public:
             return FALSE;
 
         WNDPROC pProc = m_thunk.GetWndProc();
-        WNDPROC pfnWndProc = (WNDPROC)::SetWindowLongPtr(hWnd, GWLP_WNDPROC, (LONG_PTR)pProc);
-        if (pfnWndProc == NULL)
+        ::SetLastError(ERROR_SUCCESS);
+        const LONG_PTR previous = CWndProcThunk::InstallWndProc(
+            hWnd, GWLP_WNDPROC, (LONG_PTR)pProc);
+        if (previous == 0) {
+            const DWORD error = ::GetLastError();
+            m_thunk.ReleaseCode();
+            ::SetLastError(error != ERROR_SUCCESS ? error : ERROR_INVALID_WINDOW_HANDLE);
             return FALSE;
+        }
 
-        m_pfnSuperWindowProc = pfnWndProc;
+        m_pfnSuperWindowProc = (WNDPROC)previous;
         this->m_hWnd = hWnd;
         return TRUE;
     }
@@ -2314,18 +2330,20 @@ public:
         ATLASSERT(pThis->m_pCurrentMsg == &msg);
         pThis->m_pCurrentMsg = pOldMsg;
 
-        if (!bRet) {
-            if (uMsg != WM_NCDESTROY) {
+        // A contained message map may claim WM_NCDESTROY. It still must
+        // retire this borrowed HWND, including when destruction is nested.
+        if (uMsg == WM_NCDESTROY) {
+            const LONG_PTR installed = ::GetWindowLongPtr(pThis->m_hWnd, GWLP_WNDPROC);
+            if (!bRet)
                 lRes = pThis->DefWindowProc(uMsg, wParam, lParam);
-            } else {
-                LONG_PTR pfnWndProc = ::GetWindowLongPtr(pThis->m_hWnd, GWLP_WNDPROC);
-                lRes = pThis->DefWindowProc(uMsg, wParam, lParam);
-                if (pThis->m_pfnSuperWindowProc != ::DefWindowProc &&
-                    ::GetWindowLongPtr(pThis->m_hWnd, GWLP_WNDPROC) == pfnWndProc) {
-                    ::SetWindowLongPtr(pThis->m_hWnd, GWLP_WNDPROC, (LONG_PTR)pThis->m_pfnSuperWindowProc);
-                }
-                pThis->m_dwState |= WINSTATE_DESTROYED;
+            if (pThis->m_pfnSuperWindowProc != ::DefWindowProc &&
+                ::GetWindowLongPtr(pThis->m_hWnd, GWLP_WNDPROC) == installed) {
+                (void)::SetWindowLongPtr(pThis->m_hWnd, GWLP_WNDPROC,
+                                         (LONG_PTR)pThis->m_pfnSuperWindowProc);
             }
+            pThis->m_dwState |= WINSTATE_DESTROYED;
+        } else if (!bRet) {
+            lRes = pThis->DefWindowProc(uMsg, wParam, lParam);
         }
 
         if ((pThis->m_dwState & WINSTATE_DESTROYED) && (pThis->m_pCurrentMsg == NULL)) {
