@@ -240,6 +240,73 @@ bool registry() {
     REQUIRE(RegisterClass(root.key, other) == E_INVALIDARG);
     other = entry; other.progId = nullptr; other.threadingModel = ThreadingModel::Apartment;
     REQUIRE(RegisterClass(root.key, other) == S_OK && UnregisterClass(root.key, other) == S_OK);
+    // Multi-class source registration: validate all members before writes,
+    // rollback a previously created class if a later one conflicts, and
+    // preflight every owner before deleting any class from the batch.
+    const ClassRegistration batch[] = {
+        {CLSID_OpenATLValue, L"C:\\OpenATL Conformance\\server.dll",
+         L"OpenATL.Private.BatchOne", L"Batch One", ThreadingModel::Both},
+        {CLSID_OpenATLThrow, L"C:\\OpenATL Conformance\\server.dll",
+         L"OpenATL.Private.BatchTwo", L"Batch Two", ThreadingModel::Apartment},
+    };
+    wchar_t batchGuid1[40]{}, batchGuid2[40]{};
+    REQUIRE(::StringFromGUID2(batch[0].clsid, batchGuid1, 40));
+    REQUIRE(::StringFromGUID2(batch[1].clsid, batchGuid2, 40));
+    const std::wstring batchKey1 = std::wstring(L"CLSID\\") + batchGuid1;
+    const std::wstring batchKey2 = std::wstring(L"CLSID\\") + batchGuid2;
+    REQUIRE(RegisterClasses(root.key, batch, 0) == S_FALSE);
+    REQUIRE(UnregisterClasses(root.key, batch, 0) == S_FALSE);
+    REQUIRE(RegisterClasses(nullptr, batch, 2) == E_INVALIDARG);
+    REQUIRE(RegisterClasses(root.key, nullptr, 2) == E_INVALIDARG);
+    REQUIRE(RegisterClasses(root.key, batch, 1025) ==
+            HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW));
+    ClassRegistration invalid[] = {batch[0], batch[1]};
+    invalid[1].modulePath = L"relative.dll";
+    REQUIRE(RegisterClasses(root.key, invalid, 2) == E_INVALIDARG);
+    invalid[1] = batch[0];
+    REQUIRE(RegisterClasses(root.key, invalid, 2) == E_INVALIDARG);
+    invalid[1] = batch[1];
+    invalid[1].progId = L"openatl.private.batchone";
+    REQUIRE(RegisterClasses(root.key, invalid, 2) == E_INVALIDARG);
+    REQUIRE(!exists(root.key, batchKey1.c_str()) &&
+            !exists(root.key, batchKey2.c_str()));
+
+    ATL::CRegKey laterConflict;
+    REQUIRE(::RegCreateKeyExW(root.key, batch[1].progId, 0, nullptr, 0,
+                              KEY_ALL_ACCESS, nullptr, &laterConflict.m_hKey,
+                              nullptr) == ERROR_SUCCESS);
+    REQUIRE(laterConflict.SetStringValue(nullptr, L"Foreign application") == ERROR_SUCCESS);
+    REQUIRE(RegisterClasses(root.key, batch, 2) ==
+            HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS));
+    REQUIRE(!exists(root.key, batchKey1.c_str()) &&
+            !exists(root.key, batchKey2.c_str()));
+    REQUIRE(exists(root.key, batch[1].progId));
+    REQUIRE(laterConflict.Close() == ERROR_SUCCESS);
+    REQUIRE(::RegDeleteKeyW(root.key, batch[1].progId) == ERROR_SUCCESS);
+
+    REQUIRE(RegisterClasses(root.key, batch, 2) == S_OK);
+    REQUIRE(exists(root.key, batchKey1.c_str()) && exists(root.key, batchKey2.c_str()));
+    REQUIRE(RegisterClasses(root.key, batch, 2) ==
+            HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS));
+
+    ATL::CRegKey foreignInLater;
+    REQUIRE(::RegOpenKeyExW(root.key, batchKey2.c_str(), 0, KEY_ALL_ACCESS,
+                            &foreignInLater.m_hKey) == ERROR_SUCCESS);
+    DWORD sentinel = 99;
+    REQUIRE(::RegSetValueExW(foreignInLater.m_hKey, L"Foreign", 0, REG_DWORD,
+                             reinterpret_cast<const BYTE*>(&sentinel),
+                             sizeof(sentinel)) == ERROR_SUCCESS);
+    REQUIRE(UnregisterClasses(root.key, batch, 2) ==
+            HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED));
+    REQUIRE(exists(root.key, batchKey1.c_str()) && exists(root.key, batchKey2.c_str()));
+    REQUIRE(::RegDeleteValueW(foreignInLater.m_hKey, L"Foreign") == ERROR_SUCCESS);
+    REQUIRE(foreignInLater.Close() == ERROR_SUCCESS);
+    REQUIRE(UnregisterClasses(root.key, batch, 2) == S_OK);
+    REQUIRE(!exists(root.key, batchKey1.c_str()) &&
+            !exists(root.key, batchKey2.c_str()) &&
+            !exists(root.key, batch[0].progId) &&
+            !exists(root.key, batch[1].progId));
+    REQUIRE(UnregisterClasses(root.key, batch, 2) == S_OK);
     REQUIRE(root.Close());
     return true;
 }
