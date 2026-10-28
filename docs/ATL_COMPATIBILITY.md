@@ -65,7 +65,8 @@ be `final` because `CComObject<T>` derives from it. The class may also inherit
 DLL module reference; a DLL must use the module-aware creator or independently
 retain its module across locally created objects and external callers.
 
-The supported subset does not include `CComModule`, `CAtlDllModuleT`, automatic
+The supported subset now includes `CAtlDllModuleT` with explicit-class-table
+factories. It does not yet include `CComModule`, automatic
 object maps, aggregation, tear-offs, dispatch/type-library implementation,
 connection-point server templates, RGS, windowless hosting or resource-based
 ActiveX dialogs. Windowed containment and simple event sinks are implemented.
