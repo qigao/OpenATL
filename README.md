@@ -19,12 +19,14 @@ Its supported scope is:
   VARIANT copy/Detach ownership and COM identity-query failure handling
   have native Windows tests; this client target adds no registration or server.
 
-The independent `OpenATL::COM` server API supplies explicit class/interface
-tables, `IClassFactory`, reference and module-lock accounting, and explicit
-CLSID/ProgID registration. Applications export their DLL entry points and
-link the single `OpenATL::ATL` target and include the server headers when
-needed. See [server contracts and
-usage](docs/COM_SERVER.md).
+The `OpenATL::COM` server API supplies explicit class/interface tables,
+`IClassFactory`, reference and module-lock accounting, and real CLSID/ProgID
+registration. Standard `ATL::CAtlDllModuleT<T>` now forwards actual DLL
+exports to this one factory/lock engine through an explicit bound class
+table; applications still export their own DLL entry points. This is an
+implemented server milestone, **not** complete ATL automatic-object-map or
+type-library support. See [server contracts](docs/COM_SERVER.md) and
+[DLL module lifetime](docs/ATL_MODULE.md).
 
 The optional `atlcom.h` implements familiar nonaggregated ATL object templates
 and COM maps: `CComObjectRootEx`, `CComObject`, `CComCoClass`, `CComCreator`,
