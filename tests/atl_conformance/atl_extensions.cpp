@@ -8,6 +8,10 @@
 #include <atlmem.h>
 #include <atltime.h>
 #include <atlcoll.h>
+#include <atlsimpcoll.h>
+#include <atlalloc.h>
+#include <cstdlib>
+#include <stdexcept>
 #include <atldef.h>
 #include <cstdio>
 #include <cstdint>
@@ -286,14 +290,147 @@ static int test_list() {
     return 0;
 }
 
+// Prove that raw-style ATL simple collections now own live elements exactly
+// once, including deep copies, growth, aliasing, removal and exceptions.
+static int test_simple_collections() {
+    static_assert(std::is_copy_constructible<ATL::CSimpleMap<int,int>>::value,
+        "CSimpleMap explicitly owns a deep copy, never a shallow pointer copy");
+    static_assert(std::is_move_constructible<ATL::CSimpleArray<int>>::value,
+        "CSimpleArray supports bounded move ownership");
+    {
+        ATL::CSimpleArray<Tracked> a;
+        Tracked first(7), second(9);
+        if (!a.Add(first) || !a.Add(second) || !a.Add(a[0]) ||
+            a.GetSize()!=3 || a.GetData()!=a.m_aT ||
+            a.m_nSize!=3 || a.m_nAllocSize<a.m_nSize)
+            return fail(71, "simple_array_growth_and_alias");
+        ATL::CSimpleArray<Tracked> b(a);
+        if (b.GetData()==a.GetData() || b[0].value!=7 ||
+            b.GetSize()!=3 || !a.RemoveAt(1))
+            return fail(72, "simple_array_deep_copy_and_remove");
+        b=b;  // Self-assignment must not invalidate the owner.
+        ATL::CSimpleArray<Tracked> moved(std::move(a));
+        if (a.GetSize()!=0 || a.m_aT!=nullptr ||
+            moved.GetSize()!=2 || moved[1].value!=7)
+            return fail(73, "simple_array_move_owner");
+        if (!b.SetAtIndex(0, second) || b[0].value!=9 ||
+            !moved.RemoveAt(0) || moved.GetSize()!=1)
+            return fail(74, "simple_array_replace_and_destruct");
+        b.RemoveAll();
+        moved.RemoveAll();
+    }
+    if (Tracked::live!=0)
+        return fail(75, "simple_array_owned_destructors");
+    {
+        ATL::CSimpleMap<int, Tracked> a;
+        Tracked first(12), second(24);
+        if (!a.Add(11,first) || !a.Add(22,second) ||
+            !a.Add(a.GetKeyAt(0), a.GetValueAt(1)) ||
+            a.GetSize()!=3 || a.m_aKey==nullptr || a.m_aVal==nullptr ||
+            a.GetValueAt(2).value!=24)
+            return fail(76, "simple_map_alias_and_growth");
+        ATL::CSimpleMap<int, Tracked> b(a);
+        if (b.m_aKey==a.m_aKey || b.m_aVal==a.m_aVal ||
+            b.GetSize()!=3 || !a.RemoveAt(1) ||
+            b.FindKey(22)!=1 || a.FindKey(22)!=-1)
+            return fail(77, "simple_map_deep_copy");
+        if (!a.SetAt(11,second) || a.GetValueAt(0).value!=24 ||
+            !a.SetAtIndex(0, 33, first) || a.FindKey(33)!=0)
+            return fail(78, "simple_map_replace_atomic");
+        ATL::CSimpleMap<int, Tracked> moved(std::move(a));
+        if (a.GetSize()!=0 || a.m_aKey!=nullptr || a.m_aVal!=nullptr ||
+            moved.GetSize()!=2 || moved.GetKeyAt(0)!=33)
+            return fail(80, "simple_map_move_owner");
+        b.RemoveAll();
+        moved.RemoveAll();
+    }
+    if (Tracked::live!=0)
+        return fail(81, "simple_map_owned_destructors");
+    {
+        ATL::CSimpleMap<int, ThrowingCopy> map;
+        ATL::CSimpleArray<ThrowingCopy> array;
+        ThrowingCopy first(42), second(52);
+        if (!map.Add(1, first) || !array.Add(first))
+            return fail(82, "simple_exception_baseline");
+        ThrowingCopy::reject=true;
+        bool mapRejected=false, arrayRejected=false;
+        try { (void)map.Add(2, second); }
+        catch(const std::runtime_error&) { mapRejected=true; }
+        try { (void)array.Add(second); }
+        catch(const std::runtime_error&) { arrayRejected=true; }
+        ThrowingCopy::reject=false;
+        if (!mapRejected || !arrayRejected ||
+            map.GetSize()!=1 || map.GetKeyAt(0)!=1 ||
+            map.GetValueAt(0).value!=42 ||
+            array.GetSize()!=1 || array[0].value!=42)
+            return fail(83, "simple_exception_atomicity");
+    }
+    return 0;
+}
+
+// CHeapPtr owns raw allocator bytes. Self-attach and SIZE_MAX element
+// requests must never discard existing ownership or overflow arithmetic.
+struct CountingAllocator {
+    inline static int frees=0;
+    static void* Allocate(size_t bytes) noexcept { return std::malloc(bytes); }
+    static void* Reallocate(void* p,size_t bytes) noexcept {
+        return std::realloc(p,bytes);
+    }
+    static void Free(void* p) noexcept { ++frees; std::free(p); }
+};
+struct alignas(64) AlignedBlock { unsigned char payload[64]; };
+static int test_heap_pointer_ownership() {
+    CountingAllocator::frees=0;
+    {
+        ATL::CHeapPtr<unsigned, CountingAllocator> bytes;
+        if (!bytes.Allocate(4) || bytes.m_pData==nullptr)
+            return fail(84, "heap_pointer_allocate");
+        unsigned* original=bytes.m_pData;
+        bytes.Attach(original);
+        if (bytes.m_pData!=original || CountingAllocator::frees!=0 ||
+            bytes.Allocate(1) ||
+            bytes.Reallocate((std::numeric_limits<size_t>::max)()) ||
+            bytes.m_pData!=original || CountingAllocator::frees!=0)
+            return fail(85, "heap_pointer_alias_or_overflow");
+        if (!bytes.Reallocate(0) || bytes.m_pData!=nullptr ||
+            CountingAllocator::frees!=1)
+            return fail(86, "heap_pointer_zero_free");
+    }
+    {
+        ATL::CTempBuffer<AlignedBlock> block;
+        AlignedBlock* p=block.Allocate(1);
+        if (!p || reinterpret_cast<uintptr_t>(p)%alignof(AlignedBlock)!=0 ||
+            block.Allocate((std::numeric_limits<size_t>::max)())!=nullptr)
+            return fail(87, "temp_buffer_alignment_or_overflow");
+        // Exercise the actual heap path, not only the aligned fixed buffer.
+        AlignedBlock* large=block.Allocate(5);
+        if (!large || reinterpret_cast<uintptr_t>(large)%
+                      alignof(AlignedBlock)!=0)
+            return fail(88, "temp_buffer_overaligned_heap");
+        ATL::CTempBuffer<AlignedBlock, 0> zeroCapacity;
+        AlignedBlock* zero=zeroCapacity.Allocate(1);
+        if (!zero || reinterpret_cast<uintptr_t>(zero)%
+                     alignof(AlignedBlock)!=0)
+            return fail(89, "temp_buffer_zero_fixed_capacity");
+        ATL::CTempBuffer<AlignedBlock, -1> negativeCapacity;
+        AlignedBlock* negative=negativeCapacity.Allocate(1);
+        if (!negative || reinterpret_cast<uintptr_t>(negative)%
+                         alignof(AlignedBlock)!=0)
+            return fail(90, "temp_buffer_signed_fixed_capacity");
+    }
+    return 0;
+}
+
 int main() {
     static_assert(sizeof(void*) == 8, "Only Windows x64 and ARM64 qualified");
     ULONG_PTR token = 0;
     if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED)
         return fail(1, "initial_com_apartment");
     if (int rc = test_heap()) return rc;
+    if (int rc = test_heap_pointer_ownership()) return rc;
     if (int rc = test_filetime()) return rc;
     if (int rc = test_array()) return rc;
+    if (int rc = test_simple_collections()) return rc;
     if (int rc = test_list()) return rc;
     if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED)
         return fail(2, "implicit_com_apartment");

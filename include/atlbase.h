@@ -242,21 +242,21 @@ public:
 
     CHandle() noexcept : m_h(NULL) {}
     CHandle(CHandle&& h) noexcept : m_h(h.m_h) { h.m_h = NULL; }
-    explicit CHandle(HANDLE h) noexcept : m_h(h) {}
+    explicit CHandle(HANDLE h) noexcept
+        : m_h(h == INVALID_HANDLE_VALUE ? NULL : h) {}
 
-    ~CHandle()
-    {
-        if (m_h != NULL)
-            Close();
-    }
+    ~CHandle() { Close(); }
 
     CHandle& operator=(CHandle&& h) noexcept
     {
         if (this != &h) {
-            if (m_h != NULL)
-                Close();
-            m_h = h.m_h;
-            h.m_h = NULL;
+            // Failed CloseHandle must not lose the existing owner or
+            // steal another handle into an already-occupied wrapper.
+            Close();
+            if (m_h == NULL) {
+                m_h = h.m_h;
+                h.m_h = NULL;
+            }
         }
         return *this;
     }
@@ -265,8 +265,13 @@ public:
 
     void Attach(HANDLE h) noexcept
     {
-        ATLASSERT(m_h == NULL);
-        m_h = h;
+        // Never overwrite an owned handle in release builds.
+        if (m_h == h) return;
+        if (m_h != NULL) {
+            ATLASSERT(m_h == NULL);
+            return;
+        }
+        m_h = h == INVALID_HANDLE_VALUE ? NULL : h;
     }
 
     HANDLE Detach() noexcept
@@ -278,10 +283,14 @@ public:
 
     void Close() noexcept
     {
-        if (m_h != NULL) {
-            ::CloseHandle(m_h);
-            m_h = NULL;
+        if (m_h == INVALID_HANDLE_VALUE) {
+            m_h = NULL; // Invalid sentinel never owns a Win32 resource.
+            return;
         }
+        if (m_h != NULL && ::CloseHandle(m_h))
+            m_h = NULL;
+        // A failed CloseHandle leaves the original owner intact so an
+        // explicit subsequent Close can retry or inspect GetLastError.
     }
 
 private:
@@ -422,6 +431,26 @@ public:
             pData->m_pNext = m_pCreateWndList;
             m_pCreateWndList = pData;
         }
+    }
+
+    // Remove a stack-local pending creation record even when Win32 fails
+    // before invoking StartWindowProc. A stale entry would otherwise be
+    // consumed by a subsequent unrelated window on this thread.
+    bool RemoveCreateWndData(_AtlCreateWndData* pending) noexcept
+    {
+        if (pending == NULL) return false;
+        CComCritSecLock<CComCriticalSection> lock(m_csWindowCreate, false);
+        if (FAILED(lock.Lock())) return false;
+        _AtlCreateWndData** link = &m_pCreateWndList;
+        while (*link != NULL) {
+            if (*link == pending) {
+                *link = pending->m_pNext;
+                pending->m_pNext = NULL;
+                return true;
+            }
+            link = &(*link)->m_pNext;
+        }
+        return false;
     }
 
     void* ExtractCreateWndData() noexcept

@@ -75,6 +75,34 @@ static int strings() {
 #endif
     return 0;
 }
+
+static int conversions() {
+    USES_CONVERSION;
+    const wchar_t* first = A2W("OpenATL alpha");
+    const wchar_t* second = A2CW("second");
+    const char* third = W2A(L"narrow alpha");
+    const char* fourth = CW2A(L"another");
+    if (!first || !second || !third || !fourth ||
+        wcscmp(first,L"OpenATL alpha")!=0 ||
+        wcscmp(second,L"second")!=0 ||
+        strcmp(third,"narrow alpha")!=0 ||
+        strcmp(fourth,"another")!=0)
+        return failure(81, "conversion_lexical_owners");
+    // These must remain alive when subsequent strings are converted.
+    if (T2A(L"hello")==nullptr || A2T("world")==nullptr ||
+        wcscmp(first,L"OpenATL alpha")!=0 ||
+        strcmp(third,"narrow alpha")!=0)
+        return failure(82, "conversion_scope_pointer_stability");
+    if (A2W(nullptr)!=nullptr || W2A(nullptr)!=nullptr ||
+        wcscmp(T2W(L"unicode"),L"unicode")!=0)
+        return failure(83, "conversion_null_or_unicode_identity");
+    // Surrogates cannot be represented by a valid Unicode scalar value.
+    // Never quietly accept a replacement '?' as if conversion succeeded.
+    const wchar_t invalidUnicode[] = {static_cast<wchar_t>(0xD800), 0};
+    if (W2A(invalidUnicode)!=nullptr)
+        return failure(85, "lossy_ansi_unicode_rejected");
+    return 0;
+}
 struct TemporaryFile {
     wchar_t path[MAX_PATH] = {};
     bool create() {
@@ -161,6 +189,23 @@ static int synchronization() {
     {
         ATL::CScopedCriticalSectionLock lock(section);
         if(!lock.IsLocked())return failure(46,"scoped_lock");
+    }
+    ATL::CHandle invalid(INVALID_HANDLE_VALUE);
+    if(invalid.m_h!=NULL)
+        return failure(47,"invalid_handle_not_normalized");
+    {
+        // Generic CHandle move is a unique transfer, never a shallow copy.
+        ATL::CHandle moved(std::move(static_cast<ATL::CHandle&>(gate)));
+        if(gate.m_h!=NULL || moved.m_h==NULL)
+            return failure(48,"handle_move_owner");
+        ATL::CHandle movedAgain;
+        movedAgain=std::move(moved);
+        if(moved.m_h!=NULL || movedAgain.m_h==NULL)
+            return failure(49,"handle_move_assignment");
+        movedAgain.Close();
+        if(movedAgain.m_h!=NULL)
+            return failure(50,"handle_close_success");
+        movedAgain.Close();
     }
     return 0;
 }
@@ -365,6 +410,7 @@ static int registry() {
 int main() {
     if(!no_com())return failure(1,"COM_apartment_unexpected");
     int result=strings();
+    if(!result)result=conversions();
     if(!result)result=files();
     if(!result)result=synchronization();
     if(!result)result=registry();
