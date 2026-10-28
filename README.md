@@ -88,8 +88,10 @@ For llvm-mingw, set `OPENATL_LLVM_MINGW_BIN` to the compiler `bin` directory,
 then use `llvm-x86_64` or `llvm-aarch64`. MSVC ARM64 uses `msvc-arm64` from an
 ARM64-targeting VS developer shell. The optional full SDI sample is selected
 with `OPENATL_WTL_DEMO_DIR`. CI builds the pinned sample without source edits.
-The hosted LLVM profile excludes hardware HSP execution; MSVC x64 retains its
-hardware admission test. `OPENATL_ATL_INCLUDE_DIR` and
+Generic hosted LLVM and MSVC tests cannot guarantee hardware HSP;
+a separate strict hardware CET workflow qualifies that property on a vetted
+native Windows x64 runner (#15), without treating its absence as success.
+`OPENATL_ATL_INCLUDE_DIR` and
 `OPENATL_WTL_INCLUDE_DIR` overrides are obsolete and rejected.
 
 ## Unicode text
