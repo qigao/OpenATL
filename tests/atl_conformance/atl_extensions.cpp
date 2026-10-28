@@ -402,6 +402,21 @@ static int test_heap_pointer_ownership() {
         if (!p || reinterpret_cast<uintptr_t>(p)%alignof(AlignedBlock)!=0 ||
             block.Allocate((std::numeric_limits<size_t>::max)())!=nullptr)
             return fail(87, "temp_buffer_alignment_or_overflow");
+        // Exercise the actual heap path, not only the aligned fixed buffer.
+        AlignedBlock* large=block.Allocate(5);
+        if (!large || reinterpret_cast<uintptr_t>(large)%
+                      alignof(AlignedBlock)!=0)
+            return fail(88, "temp_buffer_overaligned_heap");
+        ATL::CTempBuffer<AlignedBlock, 0> zeroCapacity;
+        AlignedBlock* zero=zeroCapacity.Allocate(1);
+        if (!zero || reinterpret_cast<uintptr_t>(zero)%
+                     alignof(AlignedBlock)!=0)
+            return fail(89, "temp_buffer_zero_fixed_capacity");
+        ATL::CTempBuffer<AlignedBlock, -1> negativeCapacity;
+        AlignedBlock* negative=negativeCapacity.Allocate(1);
+        if (!negative || reinterpret_cast<uintptr_t>(negative)%
+                         alignof(AlignedBlock)!=0)
+            return fail(90, "temp_buffer_signed_fixed_capacity");
     }
     return 0;
 }

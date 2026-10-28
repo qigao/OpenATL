@@ -12,6 +12,8 @@
 #include <cstring>
 #include <malloc.h>
 #include <limits>
+#include <cstddef>
+#include <new>
 
 namespace ATL {
 
@@ -227,11 +229,21 @@ public:
     T* AllocateBytes(size_t nBytes)
     {
         FreeHeap();
-        if (nBytes <= t_nFixedBytes) {
+        // Signed template capacities must not become SIZE_MAX when negative.
+        constexpr size_t fixedBytes = t_nFixedBytes > 0
+            ? static_cast<size_t>(t_nFixedBytes) : 0;
+        if (nBytes <= fixedBytes) {
             m_p = reinterpret_cast<T*>(m_abFixedBuffer);
             m_bOnHeap = false;
         } else {
-            m_p = static_cast<T*>(malloc(nBytes));
+            // Plain malloc is not guaranteed to satisfy over-aligned T.
+            // Use C++17 aligned new/delete as one matched ownership pair.
+            if constexpr (alignof(T) > alignof(std::max_align_t)) {
+                m_p = static_cast<T*>(::operator new(
+                    nBytes, std::align_val_t{alignof(T)}, std::nothrow));
+            } else {
+                m_p = static_cast<T*>(malloc(nBytes));
+            }
             m_bOnHeap = true;
         }
         m_nSize = nBytes;
@@ -242,7 +254,10 @@ private:
     void FreeHeap() noexcept
     {
         if (m_bOnHeap && m_p != NULL) {
-            free(m_p);
+            if constexpr (alignof(T) > alignof(std::max_align_t))
+                ::operator delete(m_p, std::align_val_t{alignof(T)});
+            else
+                free(m_p);
         }
         m_p = NULL;
         m_nSize = 0;

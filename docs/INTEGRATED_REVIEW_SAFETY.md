@@ -23,3 +23,11 @@ No claim of support for arbitrary uncooperative DLL hot-unload, non-x64
 CET, COM servers, or a production Installed SDK. Keep this PR Draft until
 its own full GitHub Actions matrix passes on this exact head. Parent PRs
 remain open and unmerged until a final merge decision.
+
+Strict Windows ACP conversion now rejects unmappable/default-substituted
+Unicode and malformed byte sequences; CTempBuffer uses matched C++17
+aligned new/delete for over-aligned heap types and tests zero/negative
+fixed-buffer capacity. The Windows CET gate explicitly requests hardware
+HSP at child creation; its actual process policy and FAST_FAIL=0x39
+remain mandatory, independent of the parent runner's default HSP state.
+See Issue #15 for hosted-runner variability.

@@ -96,6 +96,11 @@ static int conversions() {
     if (A2W(nullptr)!=nullptr || W2A(nullptr)!=nullptr ||
         wcscmp(T2W(L"unicode"),L"unicode")!=0)
         return failure(83, "conversion_null_or_unicode_identity");
+    // Surrogates cannot be represented by a valid Unicode scalar value.
+    // Never quietly accept a replacement '?' as if conversion succeeded.
+    const wchar_t invalidUnicode[] = {static_cast<wchar_t>(0xD800), 0};
+    if (W2A(invalidUnicode)!=nullptr)
+        return failure(85, "lossy_ansi_unicode_rejected");
     return 0;
 }
 struct TemporaryFile {

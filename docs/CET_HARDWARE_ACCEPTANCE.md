@@ -78,3 +78,23 @@ References:
 - https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-process_mitigation_user_shadow_stack_policy
 - https://learn.microsoft.com/en-us/cpp/intrinsics/addressofreturnaddress
 - https://chromium.googlesource.com/chromium/src/+/lkgr/base/win/cet_shadow_stack_unittest.cc
+
+## Creation-time HSP admission (native Windows x64 only)
+
+The --require-hardware command no longer assumes that its parent runner
+process has user Shadow Stack enabled by default. It creates a new
+CETCOMPAT process with STARTUPINFOEXW, UpdateProcThreadAttribute and
+PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY. The second 64-bit creation-policy
+word contains CET_USER_SHADOW_STACKS_ALWAYS_ON (1ULL << 28). All subsequent
+control and debugged invalid-return children use this same mandatory policy.
+
+The spawned protected child must confirm an enabled, non-audit user HSP
+policy, execute and retire a genuine source-owned RX WndProcThunk, then
+record a native FAST_FAIL_CONTROL_INVALID_RETURN_ADDRESS (0x39) from a
+debugger event. A failed CreateProcess or unsupported hardware/OS policy
+is RED. No always-off, silent skip or weak verification path is provided.
+The --inventory mode still reports the default *parent* process policy
+and does not qualify HSP on its own. GitHub-host variability is tracked
+in Issue #15.
+
+API: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute
