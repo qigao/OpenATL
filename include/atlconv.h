@@ -23,11 +23,13 @@ public:
 
     LPWSTR ToWide(LPCSTR text) {
         if (text == nullptr) return nullptr;
-        const int length = ::MultiByteToWideChar(CP_ACP, 0, text, -1, nullptr, 0);
+        const UINT codepage = ::GetACP();
+        const int length = ::MultiByteToWideChar(
+            codepage, MB_ERR_INVALID_CHARS, text, -1, nullptr, 0);
         if (length <= 0) return nullptr;
         std::wstring converted(static_cast<size_t>(length), L'\0');
-        if (::MultiByteToWideChar(CP_ACP, 0, text, -1, converted.data(), length)
-              != length)
+        if (::MultiByteToWideChar(codepage, MB_ERR_INVALID_CHARS, text, -1,
+                                  converted.data(), length) != length)
             return nullptr;
         converted.resize(static_cast<size_t>(length - 1));
         wide_.push_back(std::move(converted));
@@ -35,12 +37,22 @@ public:
     }
     LPSTR ToAnsi(LPCWSTR text) {
         if (text == nullptr) return nullptr;
-        const int length = ::WideCharToMultiByte(CP_ACP, 0, text, -1, nullptr,
-                                                  0, nullptr, nullptr);
-        if (length <= 0) return nullptr;
+        const UINT codepage = ::GetACP();
+        // CP_UTF8/GB18030 require null substitution pointers; other ACPs
+        // must reject best-fit/default-character replacement explicitly.
+        const bool fullUnicode = codepage == CP_UTF8 || codepage == 54936u;
+        const DWORD flags = fullUnicode ? WC_ERR_INVALID_CHARS
+                                        : WC_NO_BEST_FIT_CHARS;
+        BOOL substituted = FALSE;
+        LPBOOL usedDefault = fullUnicode ? nullptr : &substituted;
+        const int length = ::WideCharToMultiByte(
+            codepage, flags, text, -1, nullptr, 0, nullptr, usedDefault);
+        if (length <= 0 || substituted) return nullptr;
         std::string converted(static_cast<size_t>(length), '\0');
-        if (::WideCharToMultiByte(CP_ACP, 0, text, -1, converted.data(), length,
-                                  nullptr, nullptr) != length)
+        substituted = FALSE;
+        if (::WideCharToMultiByte(codepage, flags, text, -1,
+                                  converted.data(), length, nullptr, usedDefault)
+                != length || substituted)
             return nullptr;
         converted.resize(static_cast<size_t>(length - 1));
         ansi_.push_back(std::move(converted));
