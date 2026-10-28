@@ -16,6 +16,7 @@ using namespace OpenATL::COM;
     return false; } } while (0)
 
 bool RunAtlCompatibilityTests();
+bool RunAtlModuleTests();
 namespace {
 std::atomic<int> live{0};
 bool throwUnexpected = false;
@@ -335,6 +336,11 @@ bool native(DWORD apartment) {
 
 int main(int argc, char** argv) {
     if (argc != 2) return 2;
+    if (std::strcmp(argv[1], "--module") == 0) {
+        if (!RunAtlModuleTests()) return 1;
+        std::puts("ATL_MODULE_OK locks=1 termination=1 com_balance=1 class_objects=1 loop=1");
+        return 0;
+    }
     if (std::strcmp(argv[1], "--core") == 0) {
         ULONG_PTR token = 0;
         if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED || !core() || !registry() ||

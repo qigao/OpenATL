@@ -50,12 +50,21 @@ using CComObjectRoot = CComObjectRootEx<CComObjectThreadModel>;
 namespace detail {
 // The first base is destroyed last, after the user's Base destructor.
 class AtlObjectModulePin {
+public:
+    AtlObjectModulePin() noexcept : application_(_pAtlModule) {
+        if (application_) application_->Lock();
+    }
+    ~AtlObjectModulePin() {
+        reference_.reset();
+        if (application_) application_->Unlock();
+    }
 protected:
     HRESULT BindModule(OpenATL::COM::Module& module) noexcept {
         reference_.emplace(module);
         return reference_->Status();
     }
 private:
+    CAtlModule* application_;
     std::optional<OpenATL::COM::ModuleReference> reference_;
 };
 inline HRESULT AtlObjectException() noexcept {

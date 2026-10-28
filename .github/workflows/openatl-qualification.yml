@@ -81,6 +81,9 @@ jobs:
               Run python @('tests/wtl10/verify_pe_mitigations.py',
                 "$build/openatl_cet_shadow_stack.exe",$arch,'--require-cfg','--require-cet')
             }
+            foreach($name in @('console','dialog','window')) {
+              Run python @('tests/wtl10/verify_pe_machine.py',"$build/openatl_ratl_$name.exe",$arch,'--require-resources')
+            }
             $manifest=@{}
             foreach($target in $targets) {
               $file="$build/$target.exe"
@@ -107,6 +110,7 @@ jobs:
           name: openatl-llvm-arm64
           path: |
             build-llvm-aarch64/*.exe
+            !build-llvm-aarch64/openatl_ratl_*.exe
             build-llvm-aarch64/*.dll
             build-llvm-aarch64/manifest.json
           if-no-files-found: error
@@ -173,6 +177,9 @@ jobs:
             throw 'MSVC cl.exe was not the actual compiler'
           }
           $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_wtl10_sdi','openatl_official_guidgen','openatl_official_memdlg')
+          foreach($name in @('console','dialog','window')) {
+            Run python @('tests/wtl10/verify_pe_machine.py',"$build/openatl_ratl_$name.exe",$machine,'--require-resources')
+          }
           $manifest=@{}
           foreach($target in $targets) {
             $file="$build/$target.exe"
@@ -219,6 +226,7 @@ jobs:
           name: openatl-msvc-arm64
           path: |
             build-msvc-arm64/*.exe
+            !build-msvc-arm64/openatl_ratl_*.exe
             build-msvc-arm64/*.dll
             build-msvc-arm64/manifest.json
           if-no-files-found: error
@@ -308,8 +316,8 @@ jobs:
             else
               python3 tests/wtl10/verify_pe_mitigations.py "$build/openatl_mitigation_runtime.exe" "$arch" --require-cfg
             fi
-            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_unicode openatl_unicode_utf8 openatl_atl_extensions openatl_atl_mapping openatl_atl_image openatl_thunk_fault openatl_mitigation_runtime openatl_unload_runner openatl_unload_native openatl_com_client openatl_com_server_tests openatl_wtl10_sdi openatl_official_guidgen; do
-              if [ "$target" = openatl_gui_runtime ] || [ "$target" = openatl_unicode_utf8 ] || [ "$target" = openatl_wtl10_sdi ] || [ "$target" = openatl_official_guidgen ]; then
+            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_unicode openatl_unicode_utf8 openatl_atl_extensions openatl_atl_mapping openatl_atl_image openatl_thunk_fault openatl_mitigation_runtime openatl_unload_runner openatl_unload_native openatl_com_client openatl_com_server_tests openatl_wtl10_sdi openatl_official_guidgen openatl_ratl_console openatl_ratl_dialog openatl_ratl_window; do
+              if [ "$target" = openatl_gui_runtime ] || [ "$target" = openatl_unicode_utf8 ] || [ "$target" = openatl_wtl10_sdi ] || [ "$target" = openatl_official_guidgen ] || [[ "$target" == openatl_ratl_* ]]; then
                 python3 tests/wtl10/verify_pe_machine.py "$build/$target.exe" "$arch" --require-resources
               else
                 python3 tests/wtl10/verify_pe_machine.py "$build/$target.exe" "$arch"

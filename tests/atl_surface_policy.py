@@ -16,9 +16,7 @@ FORBIDDEN_TOKENS = (
     r"\bCRegObject\b",
     r"\bIRegistrarBase\b",
     r"\bCComModule\b",
-    r"\bCAtlModuleT\b",
     r"\bCAtlComModule\b",
-    r"\bCAtlModule\b",
     r"\bCComObjectCached\b",
     r"\bCComClassFactory\b",
     r"\bIObjectWithSiteImpl\b",
@@ -30,10 +28,7 @@ FORBIDDEN_TOKENS = (
     r"\b_ATL_COM_MODULE\w*\b",
     r"\b_ATL_REGMAP_ENTRY\b",
     r"\b_AtlComModule\b",
-    r"\b_pAtlModule\b",
     r"\b_pModule\b",
-    r"\bRegisterServer\s*\(",
-    r"\bUnregisterServer\s*\(",
     r"\bAddCommonRGSReplacements\s*\(",
 )
 REGISTRY_WRITE_TOKENS = (
@@ -52,6 +47,7 @@ EXPECTED = {
     "atlcomcli.h": ("class CComPtr",),
     "atlwin.h": ("class ATL_NO_VTABLE CWindowImplBaseT",),
     "atldef.h": ("#define _ATL_NO_HOSTING 1",),
+    "openatl/atl_module.h": ("class CAtlModule", "class CAtlExeModuleT", "CoRegisterClassObject", "CoRevokeClassObject"),
     "atlreg.h": ("class CRegKey", "RegGetValue", "RegOpenKeyEx", "RegCreateKeyEx"),
     "openatl/com_server.h": ("class Module final", "class ModuleReference final", "class ClassFactory final"),
     "openatl/com_registration.h": ("ClassRegistration", "RegisterClass", "UnregisterClass"),

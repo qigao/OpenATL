@@ -51,7 +51,7 @@ if(MINGW)
   # WTL's _tWinMain is wWinMain in this Unicode-only library. Apply the
   # matching CRT entry only to GUI executables, leaving console tests alone.
   target_link_options(openatl_atl INTERFACE
-    "$<$<BOOL:$<TARGET_PROPERTY:WIN32_EXECUTABLE>>:-municode>")
+    "$<$<AND:$<BOOL:$<TARGET_PROPERTY:WIN32_EXECUTABLE>>,$<NOT:$<BOOL:$<TARGET_PROPERTY:OPENATL_USE_WINMAIN>>>>:-municode>")
 endif()
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/OpenATLWTL.cmake")
 
@@ -237,6 +237,7 @@ if(OPENATL_BUILD_QUALIFICATION)
 
   add_subdirectory(tests/com_server)
   add_subdirectory(tests/official_samples)
+  add_subdirectory(tests/ratl_samples)
 
   foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_unicode openatl_unicode_utf8 openatl_com_server_fixture openatl_com_server_tests openatl_thunk_fault openatl_mitigation_runtime openatl_unload_fixture openatl_unload_runner openatl_unload_probe openatl_unload_native openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)

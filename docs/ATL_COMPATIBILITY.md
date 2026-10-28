@@ -9,6 +9,7 @@ Consumers link only `OpenATL::ATL`; it supplies both ATL and adapted WTL headers
 | --- | --- |
 | `atlbase.h`, `atlcomcli.h` | Existing Win32 modules, threading policies, COM smart pointers, BSTR/VARIANT helpers |
 | `atlwin.h`, `atlstr.h`, utility headers | Existing documented Windows/WTL subset; Unicode-only, C++17 |
+| `atlbase.h`: `CAtlModule`, `CAtlModuleT`, `CAtlExeModuleT` | Module locks, termination callbacks, balanced COM startup and explicit class-factory registration; see [module protocol](ATL_MODULE.md) |
 | `atlcom.h`: `CComObjectRootBase`, `CComObjectRootEx`, `CComObjectRoot` | Nonaggregated reference counting, thread-model critical section, construction/release hooks |
 | `CComObject<T>` | Concrete IUnknown, raw creation with initial reference count **zero**, typed QI, last-release destruction |
 | `CComCoClass<T, &CLSID>`, `CComCreator<Object>` | Local nonaggregated creation, CLSID accessor, aggregation rejection |
@@ -36,10 +37,10 @@ external serialization; `CComMultiThreadModel` synchronizes the reference
 count and provides explicit `Lock`/`Unlock`. This does not marshal interfaces
 or synchronize application fields automatically.
 
-There is no hidden global DLL module. Local ATL-style objects are independent
-of `OpenATL::COM::Module`. For a DLL class table, use the explicit module-aware
-creator overload so each object retains a module reference until after its
-user-defined destructor:
+When an application declares a `CAtlModule`-derived module, `CComObject`
+automatically retains it through destruction. Without one, local creation is
+independent of a module. The separate `OpenATL::COM::Module` lifetime still
+requires its explicit creator overload for a DLL class table:
 
 ```cpp
 const OpenATL::COM::ClassEntry classes[] = {
@@ -57,8 +58,8 @@ retain its module across locally created objects and external callers.
 
 The supported subset does not include `CComModule`, `CAtlDllModuleT`, automatic
 object maps, aggregation, tear-offs, dispatch/type-library implementation,
-connection points, RGS or ActiveX. Unsupported names remain undefined rather
-than reporting fake success. COM map chaining and aggregate entries are not
+connection points, RGS or ActiveX. Unsupported names remain undefined or return a documented unsupported
+HRESULT; registration never reports fake success. COM map chaining and aggregate entries are not
 implemented. No claim of arbitrary ATL application compatibility is made.
 
 Existing native COM core tests cover zero-ref creation, typed/IID queries,
@@ -69,8 +70,8 @@ its existing `<atlcom.h>` include and `Init(nullptr, hInstance)` call.
 It is not an official sample. [Official sample coverage](OFFICIAL_SAMPLES.md)
 records separate WTL GuidGen/MemDlg tests and the gaps observed in Microsoft's
 COMMap, ATLCollections and ATLSafeArray sources. The separate
-[RATL sample audit](RATL_SAMPLES.md) records three applications blocked by
-`CAtlExeModuleT`, plus the generic registry-query and CRT-entry requirements.
+[RATL sample admission](RATL_SAMPLES.md) records three unchanged applications
+passing native behavior tests against OpenATL, plus the module API coverage.
 
 Public behavior references:
 

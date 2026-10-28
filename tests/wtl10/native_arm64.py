@@ -45,6 +45,7 @@ CASES = (
     ("openatl_mitigation_runtime", (), "OPENATL_MITIGATION_OK cfg=1 rx=1 indirect=1 deny=1"),
     ("openatl_unload_runner", (), "OPENATL_UNLOAD_OK rounds=12 events=1 lease=1 held=1 blocked=1 callers_joined=1 caller_leases=1 lease_bounds=1 thunk_freed=1 class_unregistered=1 dll_unmapped=1 no_com=1"),
     ("openatl_unload_native", (), "OPENATL_UNLOAD_OK cycles=8 blocked=1 busy=1 retire=1 free=1 no_com=1"),
+    ("openatl_com_server_tests", ("--module",), "ATL_MODULE_OK locks=1 termination=1 com_balance=1 class_objects=1 loop=1"),
     ("openatl_com_server_tests", ("--core",), "OPENATL_COM_SERVER_CORE_OK identity=1 factory=1 locks=1 concurrent=1 rollback=1 registry=1 no_com=1"),
     ("openatl_com_server_tests", ("--sta",), "OPENATL_COM_SERVER_NATIVE_OK mode=sta activation=1 identity=1 locks=1 unregister=1 unload=1"),
     ("openatl_com_server_tests", ("--mta",), "OPENATL_COM_SERVER_NATIVE_OK mode=mta activation=1 identity=1 locks=1 unregister=1 unload=1"),

@@ -10,8 +10,10 @@ implementation, custom proxy/stub generator or ActiveX host is supplied.
 For conventional ATL object declarations, `atlcom.h` supplies the
 [nonaggregated object and COM-map compatibility subset](ATL_COMPATIBILITY.md).
 Its module-aware creator plugs into the same explicit class table. Local
-ATL-style creation retains standard zero-ref semantics without an implicit
-global module; DLL classes must use the explicit module-aware creation path.
+ATL-style creation retains zero-ref semantics and pins an active application
+CAtlModule if present; DLL classes still use the explicit COM::Module-aware
+creator. The [modern EXE module](ATL_MODULE.md) separately owns its COM startup
+and explicit process-local class registration.
 
 ## Ownership and concurrency protocol
 

@@ -8,10 +8,10 @@ in each build tree on every build host. Downstream ports are not required.
 
 | Toolchain | Build host | Target | Mandatory acceptance |
 | --- | --- | --- | --- |
-| llvm-mingw 20261020 | Windows x64 | Windows x64 | 23 CTests 5×: UI/utilities/client, Unicode, server core + STA/MTA activation, unload/community SDI and official GuidGen; CFG/CET image checks, hosted HSP runtime excluded |
+| llvm-mingw 20261020 | Windows x64 | Windows x64 | 27 CTests 5×: UI/utilities/client, Unicode, server core + STA/MTA activation, unload/community SDI, official GuidGen and three RATL examples; CFG/CET image checks, hosted HSP runtime excluded |
 | llvm-mingw 20261020 | Windows x64 → Windows ARM64 | ARM64 | PE machine/SHA256 → genuine ARM64 UI/utilities/client 5× |
 | llvm-mingw 20261020 | Linux and macOS | Windows x64 + ARM64 | independently cross-build GUI/utilities/client PE + SDI/.rc |
-| MSVC 2022 `cl.exe` / SDK `rc.exe` | Windows x64 | x64 | 26 CTests 5×, including Unicode, server core + STA/MTA activation, HSP, unload/community SDI and official GuidGen/MemDlg; separate published Salts Unicode SDK profile |
+| MSVC 2022 `cl.exe` / SDK `rc.exe` | Windows x64 | x64 | 30 CTests 5×, including Unicode, server core + STA/MTA activation, HSP, unload/community SDI, official GuidGen/MemDlg and three RATL examples; separate published Salts Unicode SDK profile |
 | MSVC 2022 HostX64→ARM64 | Windows x64 | ARM64 | PE machine/SHA256 → genuine ARM64 UI/utilities/client 5× |
 
 MSVC developer-shell action is pinned to
@@ -41,3 +41,8 @@ no OpenATL install/export/package config, Installed SDK, or installed-consumer
 test. External WTL sources are checksum-pinned; adapted headers live under
 `<OpenATL binary directory>/wtl/include`. That is not an OpenATL SDK.
 Windows SDK means Microsoft's target OS headers and resource tools.
+
+RATL examples are rebuilt from pinned external source and tested on x64; their
+binaries are excluded from artifact uploads. ARM64 admission includes the
+separate native module-contract case (LLVM 24 cases / MSVC 25 cases), while
+RATL examples receive ARM64 build/resource checks only.

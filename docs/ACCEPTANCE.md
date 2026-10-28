@@ -19,6 +19,7 @@ on the exact branch HEAD.
 | Community WTL10 SDI fixture + .rc | PE + `.rsrc` link | PE machine/link | PE + `.rsrc` link | PE machine/link | llvm-mingw PE/link |
 | Official WTL GuidGen | 5× native GUI behavior | 5× real native GUI behavior | 5× native GUI behavior | 5× real native GUI behavior | PE/resource build |
 | Official WTL MemDlg | Blocked: llvm-rc TOOLBAR syntax | Blocked: llvm-rc TOOLBAR syntax | 5× native resource/memory dialog behavior | 5× real native dialog behavior | Not admitted |
+| CAtlExeModuleT lifecycle, raw registry QueryValue and three unchanged RATL samples | 5× native module + sample behavior | Native module; sample PE build | 5× native module + sample behavior | Native module; sample PE build | Sample/module PE/resource build |
 | Optional explicit COM server: interface identity, class factories, module locks, constructor rollback, registry ownership/conflicts, real STA/MTA DLL activation and unregistration | 5× native | 5× real native | 5× native | 5× real native | server DLL/client PE build |
 | Obsolete ATL modules/auto object maps, RGS, `OBJECT_ENTRY_AUTO`, `CRegObject`, `statreg.h`, COM printing callback and fake ActiveX init | **Source policy: absent** | Absent | Absent | Absent | Header scan + native WTL10 PE compile |
 | CFG/CET, DSO unload, interactive full SDI | Image CFG/CET + native unload/SDI; HSP excluded on hosted workers | Native CFG/unload/SDI | Native CFG/HSP/unload/SDI | Native CFG/unload/SDI | PE/resource checks |

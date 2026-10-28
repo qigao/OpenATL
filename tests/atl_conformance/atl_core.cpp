@@ -259,6 +259,32 @@ static int registry() {
         key.QueryDWORDValue(_T("Count"), count) != ERROR_SUCCESS || count != 1234)
         return failure(52, "registry_dword");
 
+    ULONG rawSize = 0;
+    DWORD rawType = 0;
+    if (key.QueryValue(_T("Count"), &rawType, nullptr, &rawSize) != ERROR_SUCCESS ||
+        rawType != REG_DWORD || rawSize != sizeof(DWORD))
+        return failure(76, "registry_raw_size_type");
+    DWORD rawCount = 0;
+    if (key.QueryValue(_T("Count"), nullptr, &rawCount, &rawSize) != ERROR_SUCCESS || rawCount != 1234)
+        return failure(77, "registry_raw_dword");
+    struct { BYTE data; BYTE guard; } rawShortBuffer = {0, 0x7f};
+    rawSize = 1;
+    if (key.QueryValue(_T("Count"), &rawType, &rawShortBuffer.data, &rawSize) != ERROR_MORE_DATA ||
+        rawSize != sizeof(DWORD) || rawShortBuffer.guard != 0x7f)
+        return failure(78, "registry_raw_small_buffer");
+    if (key.QueryValue(_T("Count"), &rawType, nullptr, nullptr) != ERROR_SUCCESS || rawType != REG_DWORD ||
+        key.QueryValue(_T("Count"), nullptr, &rawCount, nullptr) != ERROR_INVALID_PARAMETER ||
+        key.QueryValue(_T("Missing"), &rawType, nullptr, &rawSize) != ERROR_FILE_NOT_FOUND)
+        return failure(79, "registry_raw_optional_errors");
+    if (key.SetStringValue(nullptr, _T("default")) != ERROR_SUCCESS)
+        return failure(80, "registry_raw_default_fixture");
+    WCHAR rawText[8]{};
+    rawSize = sizeof(rawText);
+    if (key.QueryValue(nullptr, &rawType, rawText, &rawSize) != ERROR_SUCCESS ||
+        rawType != REG_SZ || std::wcscmp(rawText, L"default") != 0 ||
+        key.DeleteValue(nullptr) != ERROR_SUCCESS)
+        return failure(81, "registry_raw_default");
+
     const TCHAR* label = _T("alpha-\u6771\u4eac");
     if (key.SetStringValue(_T("Label"), label) != ERROR_SUCCESS)
         return failure(53, "registry_string_write");

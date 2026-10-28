@@ -49,10 +49,12 @@ compilation with pinned official WTL10 headers and the native UI/COM-client
 tests is the actual acceptance gate.
 
 **Excluded features:** legacy ATL server modules and object-map macros,
-RGS, EXE servers and ActiveX/OLE container implementations. The separate
+RGS, automatic EXE-server deployment and ActiveX/OLE container implementations. The separate
 server API supports nonaggregated in-process servers through explicit C++
 class/interface descriptors, with explicit CLSID/ProgID registration. These headers and the `atlcom.h` compatibility subset use the same
-`OpenATL::ATL` target. See [ATL compatibility](ATL_COMPATIBILITY.md). EXE servers, RGS and ActiveX remain excluded.
+`OpenATL::ATL` target. See [ATL compatibility](ATL_COMPATIBILITY.md). Automatic object maps, persistent EXE registration, RGS and ActiveX remain excluded.
+Modern application modules and explicit class-factory registration are covered
+separately by the [module protocol](ATL_MODULE.md).
 
 The server neither initializes COM nor inherits the WTL UI module. A module
 reference pins each object/factory, and balanced server locks independently

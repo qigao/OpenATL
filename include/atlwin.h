@@ -49,6 +49,11 @@
 #define LM_GETIDEALSIZE (WM_USER + 0x301)
 #endif
 
+// windowsx.h's two-argument helper collides with ATL's member API.
+#ifdef SubclassWindow
+#undef SubclassWindow
+#endif
+
 namespace ATL {
 
 ///////////////////////////////////////////////////////////////////////////////

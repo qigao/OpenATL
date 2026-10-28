@@ -128,6 +128,16 @@ public:
                                reinterpret_cast<const BYTE*>(&value), sizeof(value));
     }
 
+    // Raw Win32 value semantics: byte counts and optional type/data outputs.
+    // REG_SZ data is not repaired or interpreted; use QueryStringValue for
+    // checked NUL-terminated text. ERROR_MORE_DATA updates the required size.
+    LSTATUS QueryValue(LPCTSTR valueName, DWORD* type, void* data, ULONG* bytes) const noexcept {
+        if (!m_hKey) return ERROR_INVALID_HANDLE;
+        if (data && !bytes) return ERROR_INVALID_PARAMETER;
+        return ::RegQueryValueEx(m_hKey, valueName, nullptr, type,
+                                 static_cast<LPBYTE>(data), bytes);
+    }
+
     // In/out character capacity includes the NUL. A null destination queries
     // required capacity only. REG_EXPAND_SZ is returned verbatim, not expanded.
     // RegGetValue handles malformed REG_SZ lacking the trailing NUL; its
