@@ -102,7 +102,7 @@ inline HRESULT AtlModuleException() noexcept {
 // DLL module lifetime and standard ATL export forwarding.
 //
 // BindServer() is the current explicit-class-table bridge, not a claim that
-// OBJECT_ENTRY_AUTO, RGS or type-library registration is implemented. The
+// automatic ATL object maps, RGS or type-library registration exists. The
 // bound OpenATL::COM::Module and its static class table must outlive the DLL
 // module and every factory/object/server lock. Binding is one-time; callers
 // must coordinate DLL unload and configuration externally.
