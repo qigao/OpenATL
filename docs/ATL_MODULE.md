@@ -78,8 +78,10 @@ invalid module descriptors cannot be bound.
 
 `DllCanUnloadNow` returns `S_FALSE` when either the ATL module lock count
 or the bound server's factory/object/server references are nonzero. Native
-`DllGetClassObject` internally pins the ATL module during synchronous lookup;
-the real class factory independently retains its explicit server module.
+`DllGetClassObject` delegates through the derived `T::GetClassObject`
+hook (as in ATL) and pins the ATL module during the synchronous lookup.
+The default hook uses the explicit server table; a returned real factory
+independently retains its server module.
 This is a cooperative unload contract: it cannot make arbitrary
 `FreeLibrary` safe during an active callback. The application must
 quiesce every caller before unloading.
