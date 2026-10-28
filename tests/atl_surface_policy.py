@@ -16,8 +16,11 @@ REQUIRED = {
     "atlwin.h": ("class ATL_NO_VTABLE CWindowImplBaseT",),
     "atlcomcli.h": ("class CComPtr", "class CComVariant", "class CComBSTR"),
     "atlcom.h": ("class CComObjectRootEx", "class CComObject :",
-                 "class CComCoClass", "#define BEGIN_COM_MAP"),
+                 "class CComCoClass", "#define BEGIN_COM_MAP",
+                 "#define OBJECT_ENTRY_AUTO"),
     "openatl/atl_module.h": ("class CAtlModule", "class CAtlExeModuleT",
+                             "class ATL_NO_VTABLE CAtlDllModuleT",
+                             "struct AutoObjectEntry", "autoObjectEntries",
                              "CoRegisterClassObject", "CoRevokeClassObject"),
     "openatl/com_server.h": ("class Module final", "class ModuleReference final",
                              "class ClassFactory final"),
@@ -44,7 +47,7 @@ def main() -> int:
             print("OPENATL_ATL_COMPAT_SURFACE_FAIL " + failure, file=sys.stderr)
         return 1
     print("OPENATL_ATL_COMPAT_SURFACE_OK "
-          "ui=1 com_client=1 com_server=1 registration=1 gaps=tracked")
+          "ui=1 com_client=1 com_server=1 auto_object_map=1 registration=1 gaps=tracked")
     return 0
 
 
