@@ -238,6 +238,16 @@ public:
         ++removals; return E_ABORT;
     }
 };
+class HookedLookup : public ATL::CAtlDllModuleT<HookedLookup> {
+public:
+    int callbacks = 0;
+    HRESULT GetClassObject(REFCLSID, REFIID, LPVOID* output) noexcept {
+        ++callbacks;
+        if (!output || GetLockCount() != 1) return E_UNEXPECTED;
+        *output = nullptr;
+        return E_ACCESSDENIED;
+    }
+};
 HRESULT makeDllValue(OpenATL::COM::Module& server, REFIID iid, void** output) noexcept {
     return ATL::CComObject<Value>::CreateInstance(server, iid, output);
 }
@@ -298,6 +308,13 @@ bool dll_module() {
               dll.DllUnregisterServer(FALSE) == E_ABORT);
         CHECK(dll.installs == 1 && dll.removals == 1 &&
               dll.GetLockCount() == 0 && dll.DllCanUnloadNow() == S_OK);
+    }
+    {
+        HookedLookup dll;
+        void* output = reinterpret_cast<void*>(1);
+        CHECK(dll.DllGetClassObject(classId, IID_IClassFactory, &output) ==
+              E_ACCESSDENIED && !output && dll.callbacks == 1);
+        CHECK(dll.GetLockCount() == 0 && dll.DllCanUnloadNow() == S_OK);
     }
     CHECK(noCom() && ATL::_pAtlModule == nullptr);
     return true;
