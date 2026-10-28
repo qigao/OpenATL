@@ -36,10 +36,12 @@ server compatibility. See [server contracts](COM_SERVER.md) and
 [hardware HSP scope](CET_HARDWARE_ACCEPTANCE.md). Product release acceptance
 remains application-specific.
 
-**Build boundary:** OpenATL is permanently source-tree-only. There is
-no OpenATL install/export/package config, Installed SDK, or installed-consumer
-test. External WTL sources are checksum-pinned; adapted headers live under
-`<OpenATL binary directory>/wtl/include`. That is not an OpenATL SDK.
+**Current build boundary:** OpenATL is presently consumed via source-tree
+CMake, without installed/exported config or installed-consumer CI. This is
+today's implemented build, not a permanent prohibition. An installed profile
+can be evaluated and qualified under #4. WTL sources remain checksum-pinned;
+the build-local adapted headers live under
+`<OpenATL binary directory>/wtl/include`.
 Windows SDK means Microsoft's target OS headers and resource tools.
 
 RATL examples are rebuilt from pinned external source and tested on x64; their
