@@ -17,6 +17,8 @@ void WINAPI record(DWORD_PTR value) {
 void WINAPI countCallback(DWORD_PTR value) { ++*reinterpret_cast<std::atomic<int>*>(value); }
 bool pinnedInDestructor = true;
 inline constexpr CLSID classId = {0xd19b8862, 0xa881, 0x47f6, {0x9c, 0x71, 0x91, 0xb2, 0xaf, 0x43, 0xe1, 0x03}};
+inline constexpr CLSID autoClassId = {0xd19b8863, 0xa881, 0x47f6, {0x9c, 0x71, 0x91, 0xb2, 0xaf, 0x43, 0xe1, 0x03}};
+std::atomic<int> autoLive{0}, autoFinalRelease{0};
 
 class Value : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>, public IPersist {
 public:
@@ -31,6 +33,26 @@ public:
         *output = classId; return S_OK;
     }
 };
+// The unchanged client-side ATL OBJECT_ENTRY_AUTO spelling registers a
+// binary-local class. The generated factory uses the *same* COM module
+// provider as explicit class entries and requires no manual BindServer.
+class AutoValue : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>,
+                  public ATL::CComCoClass<AutoValue, &autoClassId>, public IPersist {
+public:
+    BEGIN_COM_MAP(AutoValue)
+        COM_INTERFACE_ENTRY(IPersist)
+    END_COM_MAP()
+    AutoValue() noexcept { ++autoLive; }
+    ~AutoValue() { --autoLive; }
+    void FinalRelease() noexcept { ++autoFinalRelease; }
+    HRESULT STDMETHODCALLTYPE GetClassID(CLSID* output) override {
+        if (!output) return E_POINTER;
+        *output = autoClassId;
+        return S_OK;
+    }
+};
+OBJECT_ENTRY_AUTO(autoClassId, AutoValue)
+
 class Factory : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>, public IClassFactory {
 public:
     BEGIN_COM_MAP(Factory)
@@ -335,6 +357,67 @@ bool dll_module() {
 }
 }
 
+bool auto_object_map() {
+    CHECK(noCom() && !ATL::_pAtlModule && autoLive == 0);
+    {
+        Library dll;
+        CHECK(dll.DllCanUnloadNow() == S_OK);
+        ATL::CComPtr<IClassFactory> factory;
+        CHECK(dll.DllGetClassObject(autoClassId, IID_IClassFactory,
+            reinterpret_cast<void**>(&factory.p)) == S_OK && factory.p);
+        CHECK(dll.DllCanUnloadNow() == S_FALSE && dll.GetLockCount() == 0);
+        void* unexpected = reinterpret_cast<void*>(1);
+        CHECK(dll.DllGetClassObject(CLSID_NULL, IID_IClassFactory, &unexpected) ==
+              CLASS_E_CLASSNOTAVAILABLE && !unexpected);
+        CHECK(dll.DllGetClassObject(autoClassId, IID_IStream, &unexpected) ==
+              E_NOINTERFACE && !unexpected);
+        CHECK(factory->CreateInstance(reinterpret_cast<IUnknown*>(1),
+              IID_IPersist, &unexpected) == CLASS_E_NOAGGREGATION && !unexpected);
+        ATL::CComPtr<IPersist> object;
+        CHECK(factory->CreateInstance(nullptr, IID_IPersist,
+              reinterpret_cast<void**>(&object.p)) == S_OK);
+        CHECK(autoLive == 1 && dll.DllCanUnloadNow() == S_FALSE);
+        CLSID actual{};
+        CHECK(object->GetClassID(&actual) == S_OK && IsEqualCLSID(actual, autoClassId));
+        CHECK(factory->LockServer(FALSE) == E_UNEXPECTED);
+        CHECK(factory->LockServer(TRUE) == S_OK);
+        factory.Release();
+        object.Release();
+        CHECK(autoLive == 0 && autoFinalRelease == 1 &&
+              dll.DllCanUnloadNow() == S_FALSE);
+        // Server lock is per module, not per factory pointer. A different
+        // factory can balance it; no COM Server implementation is duplicated.
+        CHECK(dll.DllGetClassObject(autoClassId, IID_IClassFactory,
+              reinterpret_cast<void**>(&factory.p)) == S_OK);
+        CHECK(factory->LockServer(FALSE) == S_OK);
+        factory.Release();
+        CHECK(dll.DllCanUnloadNow() == S_OK && dll.GetLockCount() == 0);
+    }
+    CHECK(noCom() && !ATL::_pAtlModule && autoLive == 0);
+    return true;
+}
+
+bool duplicate_auto_map() {
+    // Inject an actual duplicate after the positive auto-map test. Each DLL
+    // instance freezes its map exactly once, so a new owner must reject this
+    // ambiguous pair and clear the out pointer rather than picking one.
+    static ATL::detail::AutoObjectEntry duplicate(
+        autoClassId, static_cast<OpenATL::COM::Creator>(
+            &ATL::CComObject<AutoValue>::CreateInstance));
+    CHECK(noCom() && !ATL::_pAtlModule);
+    {
+        Library dll;
+        void* out = reinterpret_cast<void*>(1);
+        CHECK(dll.DllGetClassObject(autoClassId, IID_IClassFactory, &out) ==
+              E_INVALIDARG && !out);
+        CHECK(dll.DllCanUnloadNow() == S_OK && dll.GetLockCount() == 0);
+    }
+    CHECK(noCom() && !ATL::_pAtlModule && autoLive == 0);
+    return true;
+}
+}
+
 bool RunAtlModuleTests() {
-    return module_locks() && executable() && dll_module();
+    return module_locks() && executable() && dll_module() &&
+           auto_object_map() && duplicate_auto_map();
 }
