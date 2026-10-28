@@ -36,8 +36,10 @@ FALSE. Swapping image labels is not a hardware contract.
 following the merge of PR #14. It still needs a qualified registered host
 with the required labels before it can execute. Once that host is available,
 dispatch it on the exact source commit and record its full MSVC/llvm-mingw
-native evidence. Hosted LLVM-MinGW CI checks CFG/CET image metadata but
-excludes HSP runtime tests; the ordinary MSVC hardware gate remains enabled.
+native evidence. Generic hosted Windows CI (MSVC and llvm-mingw) checks
+CFG/CET PE metadata and native UI/COM behavior but does not require the
+unavailable user Shadow Stack; its result is explicitly **HSP UNQUALIFIED**.
+The separate dedicated hardware workflow remains a strict fail-closed gate.
 
 ## Security and merge boundary
 
