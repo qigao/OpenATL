@@ -68,7 +68,9 @@ The pinned community WTL SDI fixture builds and runs without source patches, inc
 its existing `<atlcom.h>` include and `Init(nullptr, hInstance)` call.
 It is not an official sample. [Official sample coverage](OFFICIAL_SAMPLES.md)
 records separate WTL GuidGen/MemDlg tests and the gaps observed in Microsoft's
-COMMap, ATLCollections and ATLSafeArray sources.
+COMMap, ATLCollections and ATLSafeArray sources. The separate
+[RATL sample audit](RATL_SAMPLES.md) records three applications blocked by
+`CAtlExeModuleT`, plus the generic registry-query and CRT-entry requirements.
 
 Public behavior references:
 
