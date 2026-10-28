@@ -1,8 +1,8 @@
-# Required UI-only and optional COM Client acceptance
+# Required ATL COM Client, COM Server and WTL compatibility acceptance
 
-Supported paths are Win32/WTL UI **without COM initialization**, an
-independently opted-in COM **client**, and the separate explicit in-process
-COM **server/registration** API. Native tests verify these paths separately
+OpenATL must support **both** ATL COM Client and COM Server, plus Win32/WTL
+windowing. Ordinary UI can run without initializing COM; actual COM features
+need appropriate apartment lifecycle. Native tests verify these paths separately
 on the exact branch HEAD.
 
 | Gate | llvm-mingw Windows x64 | llvm-mingw Windows ARM64 | MSVC Windows x64 | MSVC Windows ARM64 | Linux/macOS |
@@ -21,7 +21,7 @@ on the exact branch HEAD.
 | Official WTL MemDlg | Blocked: llvm-rc TOOLBAR syntax | Blocked: llvm-rc TOOLBAR syntax | 5× native resource/memory dialog behavior | 5× real native dialog behavior | Not admitted |
 | CAtlExeModuleT lifecycle, raw registry QueryValue and three unchanged RATL samples | 5× native module + sample behavior | Native module; sample PE build | 5× native module + sample behavior | Native module; sample PE build | Sample/module PE/resource build |
 | Optional explicit COM server: interface identity, class factories, module locks, constructor rollback, registry ownership/conflicts, real STA/MTA DLL activation and unregistration | 5× native | 5× real native | 5× native | 5× real native | server DLL/client PE build |
-| Obsolete ATL modules/auto object maps, RGS, `OBJECT_ENTRY_AUTO`, `CRegObject`, `statreg.h`, COM printing callback and fake ActiveX init | **Source policy: absent** | Absent | Absent | Absent | Header scan + native WTL10 PE compile |
+| Standard ATL COM Server DLL modules, automatic/chained object maps, RGS, Automation/type libraries and SAFEARRAY | **Compatibility gaps; implementation required** | Not qualified | Not qualified | Not qualified | Admit original Microsoft ATL samples and native activation/registration after implementation; never fake a pass |
 | CFG/CET, DSO unload, interactive full SDI | Image CFG/CET + native unload/SDI; HSP excluded on hosted workers | Native CFG/unload/SDI | Native CFG/HSP/unload/SDI | Native CFG/unload/SDI | PE/resource checks |
 | ATL-compatible nonaggregated object creation, COM maps, canonical identity, FinalConstruct/FinalRelease and explicit module pins | 5× native | 5× real native | 5× native | 5× real native | PE build |
 
@@ -48,6 +48,6 @@ on the exact branch HEAD.
 
 **Scope qualification:** passing the exact-head native and cross-platform tests qualifies the checked-in source-tree APIs, not production CFG/CET mitigation compliance. The PR may be reviewed for merge separately; this document does not authorize an automatic merge.
 
-**Permanent exclusion:** no OpenATL Installed SDK, OpenATL `install()`/
-`export()` CMake rules, OpenATL package metadata, or post-install consumers.
-CMake-managed external WTL headers are a dependency, not an OpenATL SDK.
+**Current build status:** no installed/exported OpenATL SDK or post-install
+consumer acceptance exists yet. This is not a permanent exclusion:
+packaging/exports can be designed under #4 with native client/server validation.
