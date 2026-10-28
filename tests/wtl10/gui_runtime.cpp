@@ -101,6 +101,7 @@ public:
     int finalized = 0;
     int reentrant = 0;
     int nested_contract_broken = 0;
+    bool handle_nc_destroy = false;
 
     DECLARE_WND_CLASS(L"WTL10OpenATLNativeRuntimeProbe")
 
@@ -125,7 +126,7 @@ public:
 
     LRESULT OnNcDestroy(UINT, WPARAM, LPARAM, BOOL& handled) {
         ++destroyed;
-        handled = FALSE;
+        handled = handle_nc_destroy ? TRUE : FALSE;
         return 0;
     }
 
@@ -143,6 +144,7 @@ public:
     int finalized = 0;
     int reentrant = 0;
     int nested_contract_broken = 0;
+    bool handle_nc_destroy = false;
 
     BEGIN_MSG_MAP(ProbeDialog)
         MESSAGE_HANDLER(WM_INITDIALOG, OnInit)
@@ -172,7 +174,7 @@ public:
 
     LRESULT OnNcDestroy(UINT, WPARAM, LPARAM, BOOL& handled) {
         ++destroyed;
-        handled = FALSE;
+        handled = handle_nc_destroy ? TRUE : FALSE;
         return 0;
     }
 
@@ -181,10 +183,26 @@ public:
     }
 };
 
+// Exercise the contained-window map independently of CWindowImpl.
+class ContainedDestroyMap : public ATL::CMessageMap {
+public:
+    int destroyed = 0;
+    bool handle_nc_destroy = false;
+    BEGIN_MSG_MAP(ContainedDestroyMap)
+        MESSAGE_HANDLER(WM_NCDESTROY, OnNcDestroy)
+    END_MSG_MAP()
+    LRESULT OnNcDestroy(UINT, WPARAM, LPARAM, BOOL& handled) {
+        ++destroyed;
+        handled = handle_nc_destroy ? TRUE : FALSE;
+        return 0;
+    }
+};
+
 static bool check_window()
 {
     for (int i = 0; i < 12; ++i) {
         ProbeWindow wnd;
+        wnd.handle_nc_destroy = (i & 1) != 0;
         RECT bounds = {0, 0, 128, 56};
         HWND h = wnd.Create(NULL, bounds, L"WTL10 hidden runtime",
                             WS_POPUP, 0);
@@ -202,6 +220,7 @@ static bool check_window()
     // Nested WM_NCDESTROY defers finalization until the outer dispatch unwinds.
     for (int i = 0; i < 12; ++i) {
         ProbeWindow wnd;
+        wnd.handle_nc_destroy = (i & 1) != 0;
         RECT bounds = {0, 0, 128, 56};
         HWND h = wnd.Create(NULL, bounds, L"WTL10 nested destroy", WS_POPUP, 0);
         if (!h || !executable_read_only(wnd.m_thunk.GetCodeAddress()))
@@ -210,6 +229,55 @@ static bool check_window()
         if (::IsWindow(h) || wnd.reentrant != 1 ||
             wnd.nested_contract_broken != 0 || wnd.destroyed != 1 ||
             wnd.finalized != 1 || wnd.m_hWnd != NULL)
+            return false;
+    }
+    // A subclassed Win32 control must retire an explicitly handled
+    // WM_NCDESTROY and notify its owner exactly once.
+    for (int i = 0; i < 12; ++i) {
+        HWND raw = ::CreateWindowExW(0, L"STATIC", L"OpenATL subclassed HWND",
+                                    WS_POPUP, 0, 0, 80, 30,
+                                    NULL, NULL, ::GetModuleHandleW(NULL), NULL);
+        if (!raw) return false;
+        ProbeWindow wnd;
+        wnd.handle_nc_destroy = (i & 1) != 0;
+        const bool attached = wnd.SubclassWindow(raw) != FALSE;
+        const void* liveCode = wnd.m_thunk.GetCodeAddress();
+        const bool rx = attached && executable_read_only(liveCode);
+        // Re-admitting the same owner must fail WITHOUT invalidating the
+        // first HWND's WndProc or changing its RX thunk.
+        const BOOL duplicate = attached ? wnd.SubclassWindow(raw) : FALSE;
+        const DWORD duplicateError = ::GetLastError();
+        const bool stable = attached && !duplicate &&
+            duplicateError == ERROR_ALREADY_EXISTS && wnd.m_hWnd == raw &&
+            wnd.m_thunk.GetCodeAddress() == liveCode &&
+            (WNDPROC)::GetWindowLongPtrW(raw, GWLP_WNDPROC) == wnd.m_thunk.GetWndProc();
+        const bool destroyed = ::DestroyWindow(raw) != FALSE;
+        if (!attached || !rx || !stable || !destroyed || ::IsWindow(raw) ||
+            wnd.destroyed != 1 || wnd.finalized != 1 || wnd.m_hWnd != NULL)
+            return false;
+    }
+    // CContainedWindowT has no OnFinalMessage hook, but must clear its
+    // borrowed HWND for both handled and unhandled WM_NCDESTROY.
+    for (int i = 0; i < 12; ++i) {
+        HWND raw = ::CreateWindowExW(0, L"STATIC", L"OpenATL contained HWND",
+                                    WS_POPUP, 0, 0, 80, 30,
+                                    NULL, NULL, ::GetModuleHandleW(NULL), NULL);
+        if (!raw) return false;
+        ContainedDestroyMap map;
+        map.handle_nc_destroy = (i & 1) != 0;
+        ATL::CContainedWindow contained(&map);
+        const bool attached = contained.SubclassWindow(raw) != FALSE;
+        const void* liveCode = contained.m_thunk.GetCodeAddress();
+        const bool rx = attached && executable_read_only(liveCode);
+        const BOOL duplicate = attached ? contained.SubclassWindow(raw) : FALSE;
+        const DWORD duplicateError = ::GetLastError();
+        const bool stable = attached && !duplicate &&
+            duplicateError == ERROR_ALREADY_EXISTS && contained.m_hWnd == raw &&
+            contained.m_thunk.GetCodeAddress() == liveCode &&
+            (WNDPROC)::GetWindowLongPtrW(raw, GWLP_WNDPROC) == contained.m_thunk.GetWndProc();
+        const bool destroyed = ::DestroyWindow(raw) != FALSE;
+        if (!attached || !rx || !stable || !destroyed || ::IsWindow(raw) ||
+            map.destroyed != 1 || contained.m_hWnd != NULL)
             return false;
     }
     return true;
@@ -226,6 +294,7 @@ static bool check_dialog()
 
     for (int i = 0; i < 6; ++i) {
         ProbeDialog dlg;
+        dlg.handle_nc_destroy = (i & 1) != 0;
         HWND h = dlg.Create(NULL);
         if (!h || !::IsWindow(h) || dlg.initialized != 1)
             return false;
@@ -241,6 +310,7 @@ static bool check_dialog()
     }
     for (int i = 0; i < 6; ++i) {
         ProbeDialog dlg;
+        dlg.handle_nc_destroy = (i & 1) != 0;
         HWND h = dlg.Create(NULL);
         if (!h || dlg.initialized != 1 ||
             !executable_read_only(dlg.m_thunk.GetCodeAddress()))
