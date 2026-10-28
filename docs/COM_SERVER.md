@@ -128,6 +128,43 @@ batch and complete preflight are needed.
 ATL's complete class registry/type-library APIs, and broad Microsoft ATL
 sample compatibility. The callbacks are not an RGS interpreter.
 
+## RGS grammar admission — read-only, source-owned
+
+The new `openatl/rgs_parser.h` implements a **bounded C++17 parser and
+read-only projection** for an initial subset of real ATL registration
+resources. It accepts a symbolic `HKCR` root; nested `NoRemove` and
+`ForceRemove` keys; case-insensitive key/value names; default and named
+`REG_SZ` values (`= s '...'` and `val Name = s '...'`);
+GUID key names; quoted bare `Programmable` keys; `TypeLib`,
+`Version`, `AppID`, `LocalizedString`; and explicit, bounded
+`%MODULE%` replacement.
+
+Inputs must fit **65,536 UTF-16 code units**, **512 keys**, **1,024 values**,
+**20 nested scopes** and bounded name/path/value lengths. Unsupported
+roots, value types or substitutions, malformed quotes/braces, case-folded
+duplicate keys/values, traversal names and ownership-marker collisions
+fail closed. Failure leaves the output document unchanged.
+`ResolveModule` produces an independent expanded document and never reads
+environment variables or the registry.
+
+**No registry execution in this milestone.** `ForceRemove` and `NoRemove`
+are retained AST directives only. The parser does not open HKCR/HKLM,
+recursively delete keys, load RGS DLL resources, initialize COM or write
+registry entries. It does not claim ATL `DECLARE_REGISTRY_RESOURCEID` or
+`CAtlRegistrar` compatibility. Subsequent native registrar work must
+accept an **explicit caller-owned root** and reject foreign-key/value
+changes rather than treating `ForceRemove` as unqualified authorization
+to delete another program's data.
+
+The binary-native COM core test parses **four byte-identical Microsoft
+VCSamples RGS resources** (pinned revision
+`9e1d4475555b76a17a3568369867f1d7b6cc6126`): COMMap Chain/Outer,
+ATLSafeArray ArrayManager and ATLCollections MapCollection. Their original
+Git blob identities are checked at CMake configure time, their node/value
+counts and values are compared, and malformed inputs are tested
+independently. A successful parse is **not** evidence that those original
+Microsoft ATL projects build, register or activate against OpenATL.
+
 ## Integration and validation
 
 Link the single `OpenATL::ATL` target. It supplies `ole32`, `oleaut32`,

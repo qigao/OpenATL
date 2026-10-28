@@ -1,0 +1,324 @@
+// OpenATL - bounded, source-owned ATL RGS grammar parser (C++17).
+// This is a read-only parser: HKCR is a symbolic AST root, never a Win32
+// registry handle. ForceRemove is metadata, not permission to delete keys.
+#ifndef OPENATL_RGS_PARSER_H
+#define OPENATL_RGS_PARSER_H
+
+#include <algorithm>
+#include <cstddef>
+#include <cwctype>
+#include <new>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+namespace OpenATL { namespace RGS {
+
+enum class Error {
+    Ok, Syntax, Unsupported, Limit, Duplicate, InvalidName, AllocationFailure
+};
+enum class Directive { Ordinary, NoRemove, ForceRemove };
+struct Value {
+    std::wstring name; // Empty name is a Win32 registry key's default value.
+    std::wstring text; // Only ATL 's' (REG_SZ) values are accepted at present.
+};
+struct Key {
+    std::wstring path; // Relative to a caller-owned Classes root; never HKCR.
+    Directive directive = Directive::Ordinary;
+    std::vector<Value> values;
+};
+struct Document {
+    std::vector<Key> keys; // Parents precede their children.
+};
+
+// Hard complexity ceilings. A resource exceeding any ceiling fails atomically;
+// the caller's output Document is unchanged on every failure.
+constexpr size_t MaxSourceUnits = 65536;
+constexpr size_t MaxKeys = 512;
+constexpr size_t MaxValues = 1024;
+constexpr size_t MaxNesting = 20;
+constexpr size_t MaxNameUnits = 128;
+constexpr size_t MaxPathUnits = 2048;
+constexpr size_t MaxValueUnits = 8192;
+
+namespace detail {
+inline wchar_t Fold(wchar_t x) noexcept {
+    return x >= L'A' && x <= L'Z' ? wchar_t(x + (L'a' - L'A')) : x;
+}
+inline bool Same(std::wstring_view a, std::wstring_view b) noexcept {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i)
+        if (Fold(a[i]) != Fold(b[i])) return false;
+    return true;
+}
+inline bool Hex(wchar_t ch) noexcept {
+    return (ch >= L'0' && ch <= L'9') ||
+           (Fold(ch) >= L'a' && Fold(ch) <= L'f');
+}
+inline bool Guid(std::wstring_view s) noexcept {
+    if (s.size() != 38 || s.front() != L'{' || s.back() != L'}') return false;
+    for (size_t i = 1; i < 37; ++i) {
+        if (i == 9 || i == 14 || i == 19 || i == 24) {
+            if (s[i] != L'-') return false;
+        } else if (!Hex(s[i])) return false;
+    }
+    return true;
+}
+inline bool Name(std::wstring_view s) noexcept {
+    if (s.empty() || s.size() > MaxNameUnits || Same(s, L".") ||
+        Same(s, L"..") || Same(s, L"OpenATL.COMOwner")) return false;
+    if (s.front() == L'{' && s.back() == L'}') return Guid(s);
+    for (wchar_t ch : s) {
+        if ((ch >= L'A' && ch <= L'Z') || (ch >= L'a' && ch <= L'z') ||
+            (ch >= L'0' && ch <= L'9') || ch == L'.' || ch == L'_' ||
+            ch == L'-' || ch == L' ') continue;
+        return false;
+    }
+    return true;
+}
+inline bool ValidSubstitution(std::wstring_view value) noexcept {
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (value[i] != L'%') continue;
+        if (i + 8 > value.size() || !Same(value.substr(i, 8), L"%MODULE%"))
+            return false;
+        i += 7;
+    }
+    return true;
+}
+} // namespace detail
+
+class Parser final {
+public:
+    Error Parse(std::wstring_view source, Document& output) noexcept {
+        if (source.empty()) return Error::Syntax;
+        if (source.size() > MaxSourceUnits) return Error::Limit;
+        try {
+            source_ = source;
+            at_ = 0;
+            valueCount_ = 0;
+            error_ = Error::Ok;
+            document_ = Document{};
+            Advance();
+            if (error_ != Error::Ok) return error_;
+            if (!IsWord(L"HKCR")) return Error::Unsupported;
+            Advance();
+            if (!Consume(Kind::Open)) return Status();
+            if (!Entries(std::wstring{}, 0)) return Status();
+            if (token_.type != Kind::End || document_.keys.empty())
+                return Error::Syntax;
+            output = std::move(document_);
+            return Error::Ok;
+        } catch (const std::bad_alloc&) { return Error::AllocationFailure; }
+          catch (...) { return Error::Unsupported; }
+    }
+private:
+    enum class Kind { End, Word, Quoted, Open, Close, Equal, Invalid };
+    struct Token { Kind type = Kind::End; std::wstring text; } token_;
+    std::wstring_view source_;
+    size_t at_ = 0;
+    size_t valueCount_ = 0;
+    Error error_ = Error::Ok;
+    Document document_;
+
+    Error Status() const noexcept { return error_ == Error::Ok ? Error::Syntax : error_; }
+    bool IsWord(std::wstring_view name) const noexcept {
+        return token_.type == Kind::Word && detail::Same(token_.text, name);
+    }
+    void Fail(Error error) noexcept { if (error_ == Error::Ok) error_ = error; }
+    bool Consume(Kind kind) {
+        if (token_.type != kind) { Fail(Error::Syntax); return false; }
+        Advance(); return error_ == Error::Ok;
+    }
+    void Advance() {
+        if (error_ != Error::Ok) return;
+        token_ = Token{};
+        const auto n = source_.size();
+        while (at_ < n) {
+            wchar_t c = source_[at_];
+            if (c == L' ' || c == L'\t' || c == L'\r' || c == L'\n') { ++at_; continue; }
+            if (c == L';' || (c == L'/' && at_ + 1 < n && source_[at_ + 1] == L'/')) {
+                while (at_ < n && source_[at_] != L'\n') ++at_;
+                continue;
+            }
+            break;
+        }
+        if (at_ == n) return;
+        wchar_t ch = source_[at_];
+        // A complete {xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx} denotes a key,
+        // not the opening brace of a RGS scope.
+        if (ch == L'{' && at_ + 38 <= n && detail::Guid(source_.substr(at_, 38))) {
+            token_.type = Kind::Word;
+            token_.text.assign(source_.substr(at_, 38));
+            at_ += 38;
+            return;
+        }
+        if (ch == L'{' || ch == L'}' || ch == L'=') {
+            token_.type = ch == L'{' ? Kind::Open : ch == L'}' ? Kind::Close : Kind::Equal;
+            ++at_;
+            return;
+        }
+        if (ch == L'\'') {
+            token_.type = Kind::Quoted;
+            ++at_;
+            bool closed = false;
+            while (at_ < n) {
+                wchar_t value = source_[at_++];
+                if (value == L'\'') {
+                    if (at_ < n && source_[at_] == L'\'') { ++at_; token_.text += L'\''; }
+                    else { closed = true; break; }
+                } else if (value == L'\0' || value == L'\r' || value == L'\n') {
+                    Fail(Error::Syntax); return;
+                } else token_.text += value;
+                if (token_.text.size() > MaxValueUnits) { Fail(Error::Limit); return; }
+            }
+            if (!closed) Fail(Error::Syntax);
+            return;
+        }
+        if ((ch >= L'A' && ch <= L'Z') || (ch >= L'a' && ch <= L'z') ||
+            (ch >= L'0' && ch <= L'9') || ch == L'_' || ch == L'-') {
+            token_.type = Kind::Word;
+            size_t begin = at_++;
+            while (at_ < n) {
+                wchar_t c = source_[at_];
+                if ((c >= L'A' && c <= L'Z') || (c >= L'a' && c <= L'z') ||
+                    (c >= L'0' && c <= L'9') || c == L'.' || c == L'_' || c == L'-')
+                    ++at_;
+                else break;
+                if (at_ - begin > MaxNameUnits) { Fail(Error::Limit); return; }
+            }
+            token_.text.assign(source_.substr(begin, at_ - begin));
+            return;
+        }
+        Fail(Error::Unsupported);
+        token_.type = Kind::Invalid;
+    }
+    bool ReadStringValue(std::wstring& out) {
+        if (!Consume(Kind::Equal)) return false;
+        if (!IsWord(L"s")) { Fail(Error::Unsupported); return false; }
+        Advance();
+        if (token_.type != Kind::Quoted) { Fail(Error::Syntax); return false; }
+        if (!detail::ValidSubstitution(token_.text)) { Fail(Error::Unsupported); return false; }
+        out = std::move(token_.text);
+        Advance(); return error_ == Error::Ok;
+    }
+    bool RecordValue(size_t target, std::wstring name, std::wstring text) {
+        if (valueCount_++ == MaxValues) { Fail(Error::Limit); return false; }
+        for (const Value& prior : document_.keys[target].values) {
+            if (detail::Same(prior.name, name)) { Fail(Error::Duplicate); return false; }
+        }
+        document_.keys[target].values.push_back({std::move(name), std::move(text)});
+        return true;
+    }
+    bool Entries(std::wstring parent, size_t depth) {
+        if (depth > MaxNesting) { Fail(Error::Limit); return false; }
+        while (token_.type != Kind::Close) {
+            if (token_.type == Kind::End) { Fail(Error::Syntax); return false; }
+            Directive directive = Directive::Ordinary;
+            if (IsWord(L"NoRemove")) { directive = Directive::NoRemove; Advance(); }
+            else if (IsWord(L"ForceRemove")) { directive = Directive::ForceRemove; Advance(); }
+            if (IsWord(L"val")) {
+                if (directive != Directive::Ordinary || parent.empty() || document_.keys.empty()) {
+                    Fail(Error::Syntax); return false;
+                }
+                Advance();
+                if (token_.type != Kind::Word && token_.type != Kind::Quoted) {
+                    Fail(Error::Syntax); return false;
+                }
+                std::wstring name = std::move(token_.text);
+                if (!detail::Name(name)) { Fail(Error::InvalidName); return false; }
+                Advance();
+                std::wstring value;
+                if (!ReadStringValue(value)) return false;
+                size_t index = document_.keys.size();
+                while (index != 0) {
+                    --index;
+                    if (detail::Same(document_.keys[index].path, parent))
+                        break;
+                }
+                if (!detail::Same(document_.keys[index].path, parent)) {
+                    Fail(Error::Syntax); return false;
+                }
+                if (!RecordValue(index, std::move(name), std::move(value))) return false;
+                continue;
+            }
+            if (token_.type != Kind::Word && token_.type != Kind::Quoted) {
+                Fail(Error::Syntax); return false;
+            }
+            std::wstring name = std::move(token_.text);
+            if (!detail::Name(name)) { Fail(Error::InvalidName); return false; }
+            Advance();
+            std::wstring path;
+            if (!parent.empty()) { path.assign(parent); path += L'\\'; }
+            path += name;
+            if (path.size() > MaxPathUnits) { Fail(Error::Limit); return false; }
+            for (const Key& k : document_.keys) {
+                if (detail::Same(k.path, path)) { Fail(Error::Duplicate); return false; }
+            }
+            if (document_.keys.size() == MaxKeys) { Fail(Error::Limit); return false; }
+            size_t index = document_.keys.size();
+            document_.keys.push_back({std::move(path), directive, {}});
+            if (token_.type == Kind::Equal) {
+                std::wstring value;
+                if (!ReadStringValue(value) || !RecordValue(index, L"", std::move(value)))
+                    return false;
+            }
+            if (token_.type == Kind::Open) {
+                Advance();
+                if (!Entries(document_.keys[index].path, depth + 1)) return false;
+            }
+        }
+        Advance();
+        return error_ == Error::Ok;
+    }
+};
+
+// Produce a stable expanded plan without mutating the original document.
+// The calling installer must still validate module path ownership itself.
+inline Error ExpandModule(std::wstring_view text, std::wstring_view module,
+                          std::wstring& output) noexcept;
+
+inline Error ResolveModule(const Document& source, std::wstring_view module,
+                           Document& output) noexcept {
+    try {
+        Document expanded = source;
+        for (Key& key : expanded.keys) {
+            for (Value& value : key.values) {
+                std::wstring text;
+                Error e = ExpandModule(value.text, module, text);
+                if (e != Error::Ok) return e;
+                value.text = std::move(text);
+            }
+        }
+        output = std::move(expanded);
+        return Error::Ok;
+    } catch (const std::bad_alloc&) { return Error::AllocationFailure; }
+      catch (...) { return Error::Unsupported; }
+}
+
+inline Error Parse(std::wstring_view text, Document& output) noexcept {
+    Parser parser;
+    return parser.Parse(text, output);
+}
+
+// Substitute the *only* supported ATL variable. Expansion is an explicit,
+// bounded operation: no environment variables, registry/COM access or shell.
+inline Error ExpandModule(std::wstring_view text, std::wstring_view module,
+                          std::wstring& output) noexcept {
+    if (module.empty() || module.size() > MaxPathUnits) return Error::InvalidName;
+    if (!detail::ValidSubstitution(text)) return Error::Unsupported;
+    try {
+        std::wstring expanded;
+        for (size_t i = 0; i < text.size();) {
+            if (text[i] == L'%') { expanded.append(module); i += 8; }
+            else { expanded += text[i++]; }
+            if (expanded.size() > MaxValueUnits) return Error::Limit;
+        }
+        output = std::move(expanded);
+        return Error::Ok;
+    } catch (const std::bad_alloc&) { return Error::AllocationFailure; }
+      catch (...) { return Error::Unsupported; }
+}
+
+}} // namespace OpenATL::RGS
+#endif // OPENATL_RGS_PARSER_H
