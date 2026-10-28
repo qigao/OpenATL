@@ -224,6 +224,42 @@ static int check_failed_creation_retirement() {
     return 0;
 }
 
+
+// A WM_CREATE handler is allowed to reject creation (-1), causing Win32
+// to synchronously send WM_NCDESTROY and OnFinalMessage. That callback may
+// delete the C++ owner before CreateWindowEx returns. No failed-return path
+// can read the deleted owner again.
+class SelfDeletingCreate : public ATL::CWindowImpl<SelfDeletingCreate> {
+public:
+    inline static int finalized=0;
+    inline static int destroyed=0;
+    DECLARE_WND_CLASS(L"OpenATL_SelfDeleting_Create")
+    BEGIN_MSG_MAP(SelfDeletingCreate)
+        MESSAGE_HANDLER(WM_CREATE, OnCreate)
+    END_MSG_MAP()
+    LRESULT OnCreate(UINT,WPARAM,LPARAM,BOOL&) { return -1; }
+    void OnFinalMessage(HWND) override {
+        ++finalized;
+        delete this;
+    }
+    ~SelfDeletingCreate() { ++destroyed; }
+};
+static int check_self_deleting_create() {
+    const int finalized=SelfDeletingCreate::finalized;
+    const int destroyed=SelfDeletingCreate::destroyed;
+    auto* owner=new SelfDeletingCreate();
+    RECT area{0,0,90,50};
+    HWND hwnd=owner->Create(nullptr,area,L"RejectedWin32Create",WS_POPUP,0);
+    if (hwnd!=nullptr)
+        return reject(98,"WM_CREATE_did_not_fail");
+    if (SelfDeletingCreate::finalized!=finalized+1 ||
+        SelfDeletingCreate::destroyed!=destroyed+1 ||
+        ATL::_AtlWinModule.m_pCreateWndList!=nullptr ||
+        Thunk::testLivePages!=0)
+        return reject(99,"self_deleted_owner_retained_after_failed_create");
+    return 0;
+}
+
 int main() {
     for(int i=0;i<24;++i) {
         int status=fault_new(1,10); if(status)return status;
@@ -239,6 +275,7 @@ int main() {
         status=fault_window_or_dialog(4,true); if(status)return status;
     }
     if (int rc=check_failed_creation_retirement()) return rc;
+    if (int rc=check_self_deleting_create()) return rc;
     std::puts("THUNK_FAULT_OK alloc=1 rx=1 flush=1 reinit_rw=1 free=1 recovery=1 no_rwx=1 window_denied=1 dialog_denied=1");
     return 0;
 }
