@@ -9,6 +9,7 @@
 #include <list>
 #include <string>
 #include <utility>
+#include "openatl/text_encoding.h"
 
 #if !defined(UNICODE) || !defined(_UNICODE)
 #error "OpenATL requires UNICODE/_UNICODE; MBCS is unsupported"
@@ -21,44 +22,39 @@ public:
     CConversionScope(const CConversionScope&) = delete;
     CConversionScope& operator=(const CConversionScope&) = delete;
 
-    LPWSTR ToWide(LPCSTR text) {
-        if (text == nullptr) return nullptr;
-        const UINT codepage = ::GetACP();
-        const int length = ::MultiByteToWideChar(
-            codepage, MB_ERR_INVALID_CHARS, text, -1, nullptr, 0);
-        if (length <= 0) return nullptr;
-        std::wstring converted(static_cast<size_t>(length), L'\0');
-        if (::MultiByteToWideChar(codepage, MB_ERR_INVALID_CHARS, text, -1,
-                                  converted.data(), length) != length)
-            return nullptr;
-        converted.resize(static_cast<size_t>(length - 1));
-        wide_.push_back(std::move(converted));
-        return wide_.back().data();
-    }
-    LPSTR ToAnsi(LPCWSTR text) {
-        if (text == nullptr) return nullptr;
-        const UINT codepage = ::GetACP();
-        // CP_UTF8/GB18030 require null substitution pointers; other ACPs
-        // must reject best-fit/default-character replacement explicitly.
-        const bool fullUnicode = codepage == CP_UTF8 || codepage == 54936u;
-        const DWORD flags = fullUnicode ? WC_ERR_INVALID_CHARS
-                                        : WC_NO_BEST_FIT_CHARS;
-        BOOL substituted = FALSE;
-        LPBOOL usedDefault = fullUnicode ? nullptr : &substituted;
-        const int length = ::WideCharToMultiByte(
-            codepage, flags, text, -1, nullptr, 0, nullptr, usedDefault);
-        if (length <= 0 || substituted) return nullptr;
-        std::string converted(static_cast<size_t>(length), '\0');
-        substituted = FALSE;
-        if (::WideCharToMultiByte(codepage, flags, text, -1,
-                                  converted.data(), length, nullptr, usedDefault)
-                != length || substituted)
-            return nullptr;
-        converted.resize(static_cast<size_t>(length - 1));
-        ansi_.push_back(std::move(converted));
-        return ansi_.back().data();
-    }
+    LPWSTR ToWide(LPCSTR text) { return StoreWide(::GetACP(), text); }
+    LPSTR ToAnsi(LPCWSTR text) { return StoreNarrow(::GetACP(), text); }
+    LPWSTR ToWideUtf8(LPCSTR text) { return StoreWide(CP_UTF8, text); }
+    LPSTR ToUtf8(LPCWSTR text) { return StoreNarrow(CP_UTF8, text); }
 private:
+    static void ConversionError(HRESULT hr) noexcept {
+        ::SetLastError(HRESULT_FACILITY(hr) == FACILITY_WIN32 ?
+                       HRESULT_CODE(hr) : ERROR_INVALID_DATA);
+    }
+    LPWSTR StoreWide(UINT codePage, LPCSTR text) {
+        if (!text) return nullptr;
+        std::wstring converted;
+        HRESULT hr = OpenATL::Unicode::CodePageToUtf16(codePage, text, converted);
+        if (FAILED(hr)) { ConversionError(hr); return nullptr; }
+        try {
+            wide_.push_back(std::move(converted));
+            return wide_.back().data();
+        } catch (const std::bad_alloc&) {
+            ConversionError(E_OUTOFMEMORY); return nullptr;
+        }
+    }
+    LPSTR StoreNarrow(UINT codePage, LPCWSTR text) {
+        if (!text) return nullptr;
+        std::string converted;
+        HRESULT hr = OpenATL::Unicode::Utf16ToCodePage(codePage, text, converted);
+        if (FAILED(hr)) { ConversionError(hr); return nullptr; }
+        try {
+            ansi_.push_back(std::move(converted));
+            return ansi_.back().data();
+        } catch (const std::bad_alloc&) {
+            ConversionError(E_OUTOFMEMORY); return nullptr;
+        }
+    }
     // list elements and their character buffers stay stable when a second
     // conversion occurs. No process-global, TLS or provider fallback state.
     std::list<std::wstring> wide_;

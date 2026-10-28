@@ -18,6 +18,8 @@ TARGETS = (
     "openatl_gui_runtime",
     "openatl_atl_core",
     "openatl_atl_path",
+    "openatl_unicode",
+    "openatl_unicode_utf8",
     "openatl_atl_extensions",
     "openatl_atl_mapping",
     "openatl_atl_image",
@@ -34,6 +36,8 @@ CASES = (
     ("openatl_gui_runtime", (), "WTL10 GUI runtime PASS: no COM apartment, W^X thunk x64/ARM64, message maps, resource dialog, NCDESTROY, OnFinalMessage, MRU"),
     ("openatl_atl_core", (), "ATL_CORE_OK file=1 string=1 sync=1 registry=1 no_com=1"),
     ("openatl_atl_path", (), "ATL_PATH_OK unicode=1 file=1 relative=1 root=1"),
+    ("openatl_unicode", (), "OPENATL_UNICODE_OK utf8=1 utf16=1 acp=1 ownership=1 salts=0"),
+    ("openatl_unicode_utf8", ("--utf8-acp",), "OPENATL_UNICODE_OK utf8=1 utf16=1 acp=1 ownership=1 salts=0"),
     ("openatl_atl_extensions", (), "ATL_EXTENSIONS_OK heap=1 filetime=1 array=1 list=1 no_com=1"),
     ("openatl_atl_mapping", (), "ATL_MAPPING_OK file=1 offset=1 copy=1 shared=1 cleanup=1 no_com=1"),
     ("openatl_atl_image", (), "ATL_IMAGE_OK dib=1 attach=1 draw=1 orientation=1 codec=1 stream=1 shortwrite=1 shortread=1 budget=1 alpha=1 cleanup=1 no_com=1"),
@@ -70,7 +74,7 @@ def main() -> int:
         if actual != manifest[filename].lower():
             raise SystemExit(f"ARM64 SHA256 mismatch for {filename}")
         arguments = [sys.executable, str(pe_validator), str(executable), "aarch64"]
-        if filename in ("openatl_gui_runtime.exe", "openatl_wtl10_sdi.exe"):
+        if filename in ("openatl_gui_runtime.exe", "openatl_unicode_utf8.exe", "openatl_wtl10_sdi.exe"):
             arguments.append("--require-resources")
         subprocess.run(arguments, check=True, timeout=20)
     sdi_ui = Path(__file__).with_name("sdi_interactive.py")

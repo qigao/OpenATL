@@ -86,6 +86,20 @@ APIs are included explicitly from `openatl/com_server.h` and
 `openatl/com_registration.h`.
 A basic WTL window must not need to initialize COM.
 
+## Unicode text
+
+`OpenATL::ATL` provides strict, counted UTF-8/UTF-16/ACP conversions through
+`openatl/text_encoding.h`, plus checked `AssignUtf8`, `AssignAnsi` and `ToUtf8`
+methods on `CString`/`CComBSTR`. Existing narrow constructors and `A2W`/`W2A`
+keep ACP semantics, with invalid input rejected consistently. Owned conversion
+outputs preserve embedded NULs and retain their old value on failure.
+
+For explicit Unicode 17 NFC, full case folding and whitespace processing,
+enable `OPENATL_USE_SALTS_UNICODE=ON` with a matching installed `SALTS_ROOT`
+and include `openatl/unicode.h`. This remains the same `OpenATL::ATL` target;
+the default Windows conversion path has no Salts dependency. See the
+[encoding, error and SDK contracts](docs/UNICODE.md).
+
 ## Expanded ATL API surface
 
 The new headers implement **ATL-compatible interfaces directly in OpenATL**.

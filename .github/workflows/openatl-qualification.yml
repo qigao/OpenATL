@@ -87,7 +87,7 @@ jobs:
           }
           $toolchain=(Resolve-Path cmake/toolchains/llvm-mingw.cmake).Path
           $sample=(Resolve-Path tools/wtl10-test).Path
-          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_wtl10_sdi')
+          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_wtl10_sdi')
           foreach($arch in @('x86_64','aarch64')) {
             $triplet=if($arch -eq 'x86_64'){'x64-openatl-mingw'}else{'arm64-openatl-mingw'}
             $build="build-llvm-$arch"
@@ -108,7 +108,7 @@ jobs:
             foreach($target in $targets) {
               $file="$build/$target.exe"
               $args_=@('tests/wtl10/verify_pe_machine.py',$file,$arch)
-              if($target -in @('openatl_gui_runtime','openatl_wtl10_sdi')) { $args_+='--require-resources' }
+              if($target -in @('openatl_gui_runtime','openatl_unicode_utf8','openatl_wtl10_sdi')) { $args_+='--require-resources' }
               Run python $args_
               $manifest["$target.exe"]=(Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
             }
@@ -217,12 +217,12 @@ jobs:
           if(!$identity -or !(Select-String -Path $identity.FullName -Pattern 'CMAKE_CXX_COMPILER_ID "MSVC"' -Quiet)) {
             throw 'MSVC cl.exe was not the actual compiler'
           }
-          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_wtl10_sdi')
+          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_wtl10_sdi')
           $manifest=@{}
           foreach($target in $targets) {
             $file="$build/$target.exe"
             $args_=@('tests/wtl10/verify_pe_machine.py',$file,$machine)
-            if($target -in @('openatl_gui_runtime','openatl_wtl10_sdi')) { $args_+='--require-resources' }
+            if($target -in @('openatl_gui_runtime','openatl_unicode_utf8','openatl_wtl10_sdi')) { $args_+='--require-resources' }
             Run python $args_
             $manifest["$target.exe"]=(Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
           }
@@ -236,6 +236,33 @@ jobs:
           } else {
             $manifest | ConvertTo-Json -Depth 3 | Set-Content "$build/manifest.json" -Encoding utf8
           }
+      - name: Published Salts Unicode SDK x64 qualification
+        if: matrix.target == 'x64'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Run([string]$tool,[string[]]$argv) {
+            & $tool @argv
+            if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
+          }
+          $url='https://github.com/qigao/salts/releases/download/v2.3.0-rc.17/Salts.Native.2.3.0-rc.17.nupkg'
+          Run curl.exe @('-fLsS','-o','tools/salts-sdk.zip',$url)
+          $hash=(Get-FileHash tools/salts-sdk.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($hash -ne 'dfda2bb9fbbbbf8b13f8ba941d3b4eb302814fd90da5869c6b22111f322e68c3') {
+            throw 'Published Salts SDK checksum mismatch'
+          }
+          Expand-Archive tools/salts-sdk.zip -DestinationPath tools/salts-sdk
+          $env:SALTS_ROOT=(Resolve-Path tools/salts-sdk/sdk/windows-x64).Path.Replace('\','/')
+          $env:PATH="$env:SALTS_ROOT/bin;$env:PATH"
+          $sample=(Resolve-Path tools/wtl10-test).Path
+          Run cmake @('-S','.','-B','build-msvc-salts','-G','Ninja',
+            '-DCMAKE_BUILD_TYPE=Release','-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL',
+            '-DVCPKG_TARGET_TRIPLET=x64-windows-static','-DOPENATL_BUILD_QUALIFICATION=ON',
+            '-DOPENATL_USE_SALTS_UNICODE=ON','-DOPENATL_REQUIRE_CET_RUNTIME=OFF',
+            "-DOPENATL_WTL_DEMO_DIR=$sample")
+          Run cmake @('--build','build-msvc-salts','--parallel','2')
+          Run ctest @('--test-dir','build-msvc-salts','--output-on-failure',
+            '--repeat','until-fail:5','--exclude-regex','^openatl[.]cet_')
       - uses: actions/upload-artifact@v4
         if: matrix.target == 'arm64'
         with:
@@ -357,8 +384,8 @@ jobs:
             else
               python3 tests/wtl10/verify_pe_mitigations.py "$build/openatl_mitigation_runtime.exe" "$arch" --require-cfg
             fi
-            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image openatl_thunk_fault openatl_mitigation_runtime openatl_unload_runner openatl_unload_native openatl_com_client openatl_com_server_tests openatl_wtl10_sdi; do
-              if [ "$target" = openatl_gui_runtime ] || [ "$target" = openatl_wtl10_sdi ]; then
+            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_unicode openatl_unicode_utf8 openatl_atl_extensions openatl_atl_mapping openatl_atl_image openatl_thunk_fault openatl_mitigation_runtime openatl_unload_runner openatl_unload_native openatl_com_client openatl_com_server_tests openatl_wtl10_sdi; do
+              if [ "$target" = openatl_gui_runtime ] || [ "$target" = openatl_unicode_utf8 ] || [ "$target" = openatl_wtl10_sdi ]; then
                 python3 tests/wtl10/verify_pe_machine.py "$build/$target.exe" "$arch" --require-resources
               else
                 python3 tests/wtl10/verify_pe_machine.py "$build/$target.exe" "$arch"

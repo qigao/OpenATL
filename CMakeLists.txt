@@ -51,6 +51,31 @@ target_compile_definitions(openatl_atl INTERFACE
 # register any class; callers still opt into those operations explicitly.
 target_link_libraries(openatl_atl INTERFACE ole32 oleaut32 uuid advapi32)
 
+option(OPENATL_USE_SALTS_UNICODE "Enable explicit Unicode 17 text processing with an installed Salts SDK" OFF)
+if(OPENATL_USE_SALTS_UNICODE)
+  if(NOT DEFINED ENV{SALTS_ROOT} OR "$ENV{SALTS_ROOT}" STREQUAL "" OR
+     NOT IS_DIRECTORY "$ENV{SALTS_ROOT}")
+    message(FATAL_ERROR "OPENATL_USE_SALTS_UNICODE requires SALTS_ROOT pointing to a matching installed SDK")
+  endif()
+  find_package(Salts 2.3 CONFIG REQUIRED PATHS "$ENV{SALTS_ROOT}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+  file(REAL_PATH "$ENV{SALTS_ROOT}" _openatl_salts_root)
+  file(REAL_PATH "${Salts_DIR}" _openatl_salts_config)
+  cmake_path(IS_PREFIX _openatl_salts_root "${_openatl_salts_config}" NORMALIZE _openatl_salts_owned)
+  if(NOT _openatl_salts_owned OR NOT TARGET Salts::Unicode)
+    message(FATAL_ERROR "The configured SALTS_ROOT must supply Salts::Unicode; cached or alternate SDKs are unsupported")
+  endif()
+  target_link_libraries(openatl_atl INTERFACE Salts::Unicode)
+  # Salts platform headers use Winsock2. Exclude the legacy Winsock header
+  # before any consumer includes windows.h, regardless of header order.
+  target_compile_definitions(openatl_atl INTERFACE OPENATL_USE_SALTS_UNICODE=1 WIN32_LEAN_AND_MEAN)
+endif()
+
+# Qualification defaults to static CRT. An SDK-consuming profile can select
+# its matching CRT at the standard CMake configuration owner.
+if(MSVC AND NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 option(OPENATL_BUILD_QUALIFICATION "Compile native UI, ATL utility and COM client/server tests" OFF)
 if(OPENATL_BUILD_QUALIFICATION)
   # WTL is a vcpkg manifest dependency, not an OpenATL library or target.
@@ -125,6 +150,22 @@ if(OPENATL_BUILD_QUALIFICATION)
   add_executable(openatl_atl_path tests/atl_conformance/atl_path.cpp)
   target_link_libraries(openatl_atl_path PRIVATE OpenATL::ATL)
   add_test(NAME openatl.atl_path COMMAND openatl_atl_path)
+
+  add_executable(openatl_unicode tests/atl_conformance/unicode.cpp)
+  target_link_libraries(openatl_unicode PRIVATE OpenATL::ATL)
+  add_test(NAME openatl.unicode COMMAND openatl_unicode)
+  add_executable(openatl_unicode_utf8 tests/atl_conformance/unicode.cpp)
+  target_link_libraries(openatl_unicode_utf8 PRIVATE OpenATL::ATL)
+  if(MSVC)
+    target_link_options(openatl_unicode_utf8 PRIVATE /MANIFEST:EMBED
+      "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/tests/atl_conformance/unicode_utf8.manifest")
+  else()
+    set(_unicode_manifest_rc "${CMAKE_CURRENT_BINARY_DIR}/openatl_unicode_utf8.rc")
+    file(WRITE "${_unicode_manifest_rc}"
+      "1 24 \"${CMAKE_CURRENT_SOURCE_DIR}/tests/atl_conformance/unicode_utf8.manifest\"\n")
+    target_sources(openatl_unicode_utf8 PRIVATE "${_unicode_manifest_rc}")
+  endif()
+  add_test(NAME openatl.unicode_utf8_acp COMMAND openatl_unicode_utf8 --utf8-acp)
 
   # Additional source-owned ATL-style heap, time and typed array utilities.
   # ole32 is used only by the native test to detect accidental COM init.
@@ -234,11 +275,9 @@ if(OPENATL_BUILD_QUALIFICATION)
 
   add_subdirectory(tests/com_server)
 
-  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_com_server_fixture openatl_com_server_tests openatl_thunk_fault openatl_mitigation_runtime openatl_unload_fixture openatl_unload_runner openatl_unload_probe openatl_unload_native openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
+  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_unicode openatl_unicode_utf8 openatl_com_server_fixture openatl_com_server_tests openatl_thunk_fault openatl_mitigation_runtime openatl_unload_fixture openatl_unload_runner openatl_unload_probe openatl_unload_native openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)
     if(MSVC)
-      set_property(TARGET ${_qualified} PROPERTY
-        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
       target_compile_options(${_qualified} PRIVATE /W3 /EHsc)
       target_link_options(${_qualified} PRIVATE /INCREMENTAL:NO /DYNAMICBASE /NXCOMPAT)
     else()
@@ -279,8 +318,6 @@ if(OPENATL_BUILD_QUALIFICATION)
       ole32 oleaut32 uuid comctl32 msimg32 uxtheme gdi32 comdlg32
       shell32 shlwapi dwmapi user32 advapi32)
     if(MSVC)
-      set_property(TARGET openatl_wtl10_sdi PROPERTY
-        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
       target_compile_options(openatl_wtl10_sdi PRIVATE /W3 /EHsc)
       target_link_options(openatl_wtl10_sdi PRIVATE /INCREMENTAL:NO /DYNAMICBASE /NXCOMPAT)
     else()
