@@ -204,6 +204,20 @@ public: \
         (void)_atlFirst; \
         return E_NOINTERFACE; \
     }
+// Standard ATL-style automatic COM object-map declaration. The referenced
+// CComObject<T> creator binds the existing single OpenATL::COM::Module,
+// preserving object/factory/server-lock ownership. The registration record
+// is static binary-owned metadata; no COM call or heap allocation occurs
+// in its constructor under the Windows loader lock.
+#define _OPENATL_AUTO_CAT_IMPL(a, b) a##b
+#define _OPENATL_AUTO_CAT(a, b) _OPENATL_AUTO_CAT_IMPL(a, b)
+#define OBJECT_ENTRY_AUTO(clsid, type) \
+    namespace { \
+        ATL::detail::AutoObjectEntry _OPENATL_AUTO_CAT(_openatlAutoEntry_, __COUNTER__)( \
+            (clsid), static_cast<OpenATL::COM::Creator>( \
+                &ATL::CComObject<type>::CreateInstance)); \
+    }
+
 #define DECLARE_NOT_AGGREGATABLE(x) \
     using _CreatorClass = ATL::CComCreator<ATL::CComObject<x>>;
 #define DECLARE_PROTECT_FINAL_CONSTRUCT() \
