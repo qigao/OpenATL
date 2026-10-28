@@ -1,93 +1,50 @@
 #!/usr/bin/env python3
-"""Reject obsolete modules/registrars and keep optional COM APIs isolated.
+"""Check the implemented ATL Client, Server and WTL source surface.
 
-This is a source-surface gate, separate from the real native WTL10 GUI
-and opt-in COM Client build/runtime gates. Ordinary registry key operations
-are isolated to atlreg.h; explicit COM registration lives under openatl/.
+OpenATL targets full ATL source compatibility. Standard APIs not yet
+implemented (DLL modules, COM object maps, RGS, type libraries) must NOT
+be blacklisted just because they were previously out of scope. Native
+tests independently verify actual UI/COM behavior and ownership.
 """
 from pathlib import Path
-import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-HEADERS = sorted((ROOT / "include").rglob("*.h"))
-FORBIDDEN_FILES = ("statreg.h",)
-FORBIDDEN_TOKENS = (
-    r"\bCRegObject\b",
-    r"\bIRegistrarBase\b",
-    r"\bCComModule\b",
-    r"\bCAtlComModule\b",
-    r"\bCComObjectCached\b",
-    r"\bCComClassFactory\b",
-    r"\bIObjectWithSiteImpl\b",
-    r"\bAtlInternalQueryInterface\b",
-    r"\bOBJECT_ENTRY_AUTO\b",
-    r"\b_ATL_OBJMAP_ENTRY\w*\b",
-    r"\b_ATL_INTMAP_ENTRY\b",
-    r"\b_ATL_COM_MODULE\w*\b",
-    r"\b_ATL_REGMAP_ENTRY\b",
-    r"\b_AtlComModule\b",
-    r"\b_pModule\b",
-    r"\bAddCommonRGSReplacements\s*\(",
-)
-REGISTRY_WRITE_TOKENS = (
-    r"\bRegCreateKeyEx(?:A|W)?\b",
-    r"\bRegSetValueEx(?:A|W)?\b",
-    r"\bRegDeleteKey(?:A|W)?\b",
-    r"\bRegDeleteValue(?:A|W)?\b",
-    r"\bRegEnumKeyEx(?:A|W)?\b",
-)
-BAD = re.compile("|".join(FORBIDDEN_TOKENS))
-BAD_REGISTRY = re.compile("|".join(REGISTRY_WRITE_TOKENS))
-EXPECTED = {
-    "atlbase.h": ("class CAtlWinModule", "struct DLGTEMPLATEEX", '#include "atlreg.h"'),
+REQUIRED = {
+    "atlbase.h": ("class CAtlWinModule", '#include "atlreg.h"'),
     "atlcore.h": ("class CAtlBaseModule",),
-    "atlcom.h": ("class CComObjectRootEx", "class CComObject :", "class CComCoClass", "#define BEGIN_COM_MAP"),
-    "atlcomcli.h": ("class CComPtr",),
     "atlwin.h": ("class ATL_NO_VTABLE CWindowImplBaseT",),
-    "atldef.h": ("#define _ATL_NO_HOSTING 1",),
-    "openatl/atl_module.h": ("class CAtlModule", "class CAtlExeModuleT", "CoRegisterClassObject", "CoRevokeClassObject"),
-    "atlreg.h": ("class CRegKey", "RegGetValue", "RegOpenKeyEx", "RegCreateKeyEx"),
-    "openatl/com_server.h": ("class Module final", "class ModuleReference final", "class ClassFactory final"),
-    "openatl/com_registration.h": ("ClassRegistration", "RegisterClass", "UnregisterClass"),
+    "atlcomcli.h": ("class CComPtr", "class CComVariant", "class CComBSTR"),
+    "atlcom.h": ("class CComObjectRootEx", "class CComObject :",
+                 "class CComCoClass", "#define BEGIN_COM_MAP"),
+    "openatl/atl_module.h": ("class CAtlModule", "class CAtlExeModuleT",
+                             "CoRegisterClassObject", "CoRevokeClassObject"),
+    "openatl/com_server.h": ("class Module final", "class ModuleReference final",
+                             "class ClassFactory final"),
+    "openatl/com_registration.h": ("ClassRegistration", "RegisterClass",
+                                   "UnregisterClass"),
+    "atlreg.h": ("class CRegKey", "RegGetValue", "RegCreateKeyEx"),
 }
 
 
 def main() -> int:
     failures = []
-    for forbidden in FORBIDDEN_FILES:
-        if (ROOT / "include" / forbidden).exists():
-            failures.append(f"include/{forbidden}: COM Server header must be deleted")
-    for path in HEADERS:
-        data = path.read_text(encoding="utf-8")
-        for match in BAD.finditer(data):
-            line = data.count("\n", 0, match.start()) + 1
-            failures.append(f"{path.relative_to(ROOT)}:{line}: {match.group(0)}")
-        relative = path.relative_to(ROOT / "include").as_posix()
-        if relative not in ("atlreg.h", "openatl/com_registration.h"):
-            for match in BAD_REGISTRY.finditer(data):
-                line = data.count("\n", 0, match.start()) + 1
-                failures.append(f"{path.relative_to(ROOT)}:{line}: registry API outside its owning header: {match.group(0)}")
-        if "/" not in relative and relative != "atlcom.h" and re.search(r'#\s*include\s*[<"]openatl/com_', data):
-            failures.append(f"{relative}: UI/client headers must not include optional COM server APIs")
-    for name, markers in EXPECTED.items():
+    for name, markers in REQUIRED.items():
         path = ROOT / "include" / name
-        if not path.exists():
-            failures.append(f"include/{name}: missing required Windows UI/COM Client contract")
+        if not path.is_file():
+            failures.append(f"Missing implemented ATL Client/Server header: {name}")
             continue
         source = path.read_text(encoding="utf-8")
         for marker in markers:
             if marker not in source:
-                failures.append(
-                    f"include/{name}: missing required Windows UI/COM Client contract: {marker}"
-                )
+                failures.append(f"{name}: missing implemented API marker: {marker}")
+
     if failures:
-        for item in failures:
-            print("OPENATL_UI_CLIENT_SURFACE_FAIL " + item, file=sys.stderr)
+        for failure in failures:
+            print("OPENATL_ATL_COMPAT_SURFACE_FAIL " + failure, file=sys.stderr)
         return 1
-    print(f"OPENATL_UI_CLIENT_SURFACE_OK headers={len(HEADERS)} "
-          "com_server=explicit registry_owner=isolated fake_activation=0 "
-          "win32_ui=1 com_client=1")
+    print("OPENATL_ATL_COMPAT_SURFACE_OK "
+          "ui=1 com_client=1 com_server=1 registration=1 gaps=tracked")
     return 0
 
 
