@@ -185,6 +185,23 @@ static int synchronization() {
         ATL::CScopedCriticalSectionLock lock(section);
         if(!lock.IsLocked())return failure(46,"scoped_lock");
     }
+    ATL::CHandle invalid(INVALID_HANDLE_VALUE);
+    if(invalid.m_h!=NULL)
+        return failure(47,"invalid_handle_not_normalized");
+    {
+        // Generic CHandle move is a unique transfer, never a shallow copy.
+        ATL::CHandle moved(std::move(static_cast<ATL::CHandle&>(gate)));
+        if(gate.m_h!=NULL || moved.m_h==NULL)
+            return failure(48,"handle_move_owner");
+        ATL::CHandle movedAgain;
+        movedAgain=std::move(moved);
+        if(moved.m_h!=NULL || movedAgain.m_h==NULL)
+            return failure(49,"handle_move_assignment");
+        movedAgain.Close();
+        if(movedAgain.m_h!=NULL)
+            return failure(50,"handle_close_success");
+        movedAgain.Close();
+    }
     return 0;
 }
 // Registry acceptance uses a process-unique HKCU leaf and NEVER deletes an
