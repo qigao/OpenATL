@@ -10,7 +10,9 @@ been added.
 
 Exact-head CI must run all tests together on one binary set:
 - Real Windows x64 MSVC and llvm-mingw full CTest repeated five times,
-  including CFG/CET FAST_FAIL subcode 0x39 on the actual WndProc thunk.
+  with CFG/CET image checks on both. Hosted LLVM-MinGW excludes HSP runtime
+  cases; MSVC and dedicated hardware qualification retain the actual
+  WndProc thunk and FAST_FAIL subcode 0x39 proof.
 - Real Windows ARM64 MSVC and llvm-mingw, SHA256+PE verified before
   executing the native fixtures and genuine SDI dialogs.
 - DLL owner and caller-lease shutdown/reload regression with live blocked
@@ -29,5 +31,6 @@ Unicode and malformed byte sequences; CTempBuffer uses matched C++17
 aligned new/delete for over-aligned heap types and tests zero/negative
 fixed-buffer capacity. The Windows CET gate explicitly requests hardware
 HSP at child creation; its actual process policy and FAST_FAIL=0x39
-remain mandatory, independent of the parent runner's default HSP state.
+remain mandatory when running hardware qualification, independent of the
+parent runner's default HSP state. Hosted LLVM-MinGW CI does not run HSP.
 See Issue #15 for hosted-runner variability.

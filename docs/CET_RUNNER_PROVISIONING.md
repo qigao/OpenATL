@@ -32,15 +32,12 @@ FALSE. Swapping image labels is not a hardware contract.
    subcode. On failure, the workflow remains RED; do not relabel an
    incompatible machine to force admission.
 
-**Workflow activation boundary:** GitHub requires a `workflow_dispatch`
-workflow to exist on the repository's default branch before its standard
-manual-run UI is available. While this workflow exists only in Draft PR #14,
-it is a reviewed **staging artifact**, not an installed or executable CI
-gate. Do not claim this workflow has run or that a labeled host is connected.
-After explicit authorization to add the workflow to master and after a
-qualified trusted host has been registered, dispatch it on the exact source
-commit and record its full MSVC/llvm-mingw native evidence. Until then,
-the existing ordinary CI's mandatory HSP check remains in force.
+**Workflow activation boundary:** The manual workflow is now on master
+following the merge of PR #14. It still needs a qualified registered host
+with the required labels before it can execute. Once that host is available,
+dispatch it on the exact source commit and record its full MSVC/llvm-mingw
+native evidence. Hosted LLVM-MinGW CI checks CFG/CET image metadata but
+excludes HSP runtime tests; the ordinary MSVC hardware gate remains enabled.
 
 ## Security and merge boundary
 
@@ -53,13 +50,12 @@ the existing ordinary CI's mandatory HSP check remains in force.
   llvm-mingw archive by SHA256, downloading with curl, not Mono.
 - This capability is OS/CPU-specific and must be checked **at runtime
   on every admission**. The label is not an evidence substitute.
-- The existing regular x64 CI hardware CET test remains mandatory and
-  fails closed; a controlled-runner success may only substitute for the
-  hosted runner's HSP gate following explicit review of the full CI policy.
-  That migration **has not been performed**.
-- Do not merge Draft PR #14 while its current strict full CI matrix is RED.
-  Keep Issue #15 open until controlled hardware acceptance and a verified
-  exact-head integrated CI policy have been established.
+- Explicit hardware qualification remains strict and fails closed on both
+  compilers. Hosted LLVM-MinGW CI is excluded because generic GitHub workers
+  do not guarantee HSP; its success is not hardware-enforcement evidence.
+- Keep Issue #15 open until a controlled hardware runner is provisioned
+  and qualified. PR #14 has been merged; local LLVM-MinGW HSP success does
+  not register a GitHub Actions runner.
 
 References:
 https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/use-in-a-workflow

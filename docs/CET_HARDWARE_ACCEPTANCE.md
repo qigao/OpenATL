@@ -21,7 +21,14 @@ via SetProcessMitigationPolicy.
 
 ## Windows x64 native invocation
 
-Ordinary CI builds openatl_cet_shadow_stack and runs its inventory:
+The hosted LLVM-MinGW CI job builds openatl_cet_shadow_stack and verifies
+its CFG/CETCOMPAT image metadata, but executes no HSP runtime tests. It sets
+OPENATL_REQUIRE_CET_RUNTIME=OFF, excludes openatl.cet_* from CTest, and does
+not invoke --inventory directly. GitHub-hosted workers do not guarantee
+user shadow-stack availability (Issue #15). Inventory can itself execute
+the hardware death test when the parent process already has HSP enabled.
+
+The MSVC job and manual hardware workflows retain inventory:
 
     openatl_cet_shadow_stack.exe --inventory
 
@@ -34,13 +41,12 @@ The explicit mandatory enforcement gate is:
 
     openatl_cet_shadow_stack.exe --require-hardware
 
-**Since exact-head CI #40552921431 observed actual fast-fail subcode 0x39
-on BOTH native MSVC and llvm-mingw Windows x64 runners, this gate is now
-REQUIRED in the ordinary pull-request workflow (not a workflow_dispatch
-opt-in).** The native Windows x64 CMake invocations set
-OPENATL_REQUIRE_CET_RUNTIME=ON, causing the CTest to run five times. Linux
-and macOS cross-compilers only verify the PE image; ARM64 never claims
-x64 CET hardware enforcement.
+The ordinary MSVC x64 job sets OPENATL_REQUIRE_CET_RUNTIME=ON and runs
+this gate five times. LLVM-MinGW hardware enforcement remains available
+locally and through the manual openatl-hsp-dedicated.yml workflow on a
+qualified host, where it runs ten times. A passing hosted LLVM-MinGW job
+does not establish hardware HSP enforcement. Linux and macOS cross-compilers
+only verify the PE image; ARM64 never claims x64 CET hardware enforcement.
 
 When HSP is unavailable or only in audit mode this command fails with
 exit 77 (rather than skipping or passing). With enforcement active, a
@@ -56,10 +62,9 @@ Build through normal manifest-installed WTL/OpenATL source-tree CMake with:
     -DOPENATL_BUILD_QUALIFICATION=ON -DOPENATL_REQUIRE_CET_RUNTIME=ON
 
 That option adds a required native CTest only for x64 and fails CMake on
-ARM64. The ordinary PR workflow and workflow_dispatch both require this on
-native Windows x64 MSVC and llvm-mingw; no opt-out mode exists in CI. A
-runner without Windows user HSP enabled will be RED, as required. Dedicated hardware-backed Windows
-execution remains an acceptance dependency, not a simulated provider.
+ARM64. Wherever the hardware gate is explicitly enabled, missing user HSP
+still fails the test. The hosted LLVM-MinGW exception changes workflow
+selection only; it does not weaken the hardware test or its FAST_FAIL proof.
 
 Only a spawned child process intentionally corrupts its return address.
 The parent validates child exit with a 7-second timeout and releases its

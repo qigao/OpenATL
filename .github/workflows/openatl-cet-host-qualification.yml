@@ -1,7 +1,7 @@
 name: OpenATL Windows 2025 hardware CET host qualification
 
 # This is an explicit host-capability experiment. Main OpenATL PR CI
-# always retains its own non-optional hardware CET death-test gate.
+# retains the MSVC hardware gate; hosted LLVM-MinGW checks image metadata.
 # Hosted x64 Windows image labels do not guarantee shadow-stack availability.
 on:
   workflow_dispatch:
