@@ -357,6 +357,7 @@ bool dll_module() {
 }
 }
 
+namespace {
 bool auto_object_map() {
     CHECK(noCom() && !ATL::_pAtlModule && autoLive == 0);
     {
