@@ -1,8 +1,13 @@
 # OpenATL
 
-**OpenATL is a Windows UI library for ATL-style Win32 windowing, official
-WTL 10, optional COM *client* helpers, and an opt-in in-process COM server.**
-Its supported scope is:
+**OpenATL is a source-compatible implementation of the Windows Active
+Template Library (ATL), including COM Client, COM Server, and Win32/WTL 10.**
+The present implementation is a growing, tested subset of the complete ATL
+API—not an intentionally client-only library. The earlier exclusions of COM
+Server functionality are void. See [project charter](docs/PROJECT_SCOPE.md)
+and [ATL compatibility matrix](docs/ATL_COMPATIBILITY.md).
+
+The implemented foundation includes:
 
 - Win32 GUI: `CWindowImpl`, `CDialogImpl`, message maps, common controls,
   resources and WTL10 frames, without `CoInitializeEx()`.
@@ -17,7 +22,8 @@ Its supported scope is:
   explicitly initializes a COM apartment. BSTR self-assignment and
   self-append, embedded-NUL comparisons, length overflow rejection,
   VARIANT copy/Detach ownership and COM identity-query failure handling
-  have native Windows tests; this client target adds no registration or server.
+  have native Windows tests. COM Client and COM Server are both required,
+  while individual applications choose which API family they use.
 
 The independent `OpenATL::COM` server API supplies explicit class/interface
 tables, `IClassFactory`, reference and module-lock accounting, and explicit
@@ -30,8 +36,10 @@ The optional `atlcom.h` implements familiar nonaggregated ATL object templates
 and COM maps: `CComObjectRootEx`, `CComObject`, `CComCoClass`, `CComCreator`,
 `BEGIN_COM_MAP`, `COM_INTERFACE_ENTRY` and explicit-IID/branch variants.
 See the [ATL compatibility matrix](docs/ATL_COMPATIBILITY.md) for supported
-semantics and limits. `CComModule`, object-map auto-registration, RGS,
-type-library helpers and aggregation remain unsupported. Windowed ActiveX
+semantics and limits. `CAtlDllModuleT`, automatic object maps, RGS,
+type-library helpers and aggregation are not yet implemented, but are
+required compatibility work rather than forbidden features. `CComModule`
+is currently absent and will be evaluated against actual ATL consumers. Windowed ActiveX
 containment and typed Automation event sinks are described in
 [the hosting contract](docs/ACTIVEX_HOST.md); resource-based ActiveX dialogs
 and windowless hosting remain pending. MFC is not a dependency.
@@ -174,8 +182,8 @@ Windows ARM64 and Linux/macOS Windows PE cross-builds.
 API declarations and naming compatibility do not require copying Microsoft
 ATL or RATL implementation code. The existing OpenATL file notices and
 third-party source provenance remain unchanged. These ATL utilities do not
-depend on the optional server/registration API. No Installed SDK or `scripts/`
-directory is added.
+depend on the COM Server/registration API. No Installed SDK or `scripts/`
+directory is currently included.
 
 ## Dependencies and licensing
 
@@ -193,8 +201,9 @@ The in-tree `atlwin.h` includes W^X thunk hardening and test-only
 fault injection. No external OpenATL checkout or runtime patch is used.
 CFG/CET and concurrency qualification is scoped to the native test fixtures;
 downstream products must validate their own lifetime and mitigation contracts.
-OpenATL installation is permanently out of scope; managed WTL sources and
-adapted headers remain build dependencies.
+The current source-tree build is qualified; installed/exported integration
+may be developed with independent acceptance under issue #4. Managed WTL
+sources and adapted headers remain build dependencies.
 
 ## CI structure
 
@@ -237,5 +246,6 @@ Other entries are not overwritten or recursively deleted.
 
 **Source-tree qualification is bounded by the documented APIs and tests.**
 Downstream product acceptance remains explicit. No WTL8
-fallback, no Salts production ABI or compiler switch. **Installed SDK is
-permanently out of scope**; there is no future installation gate.
+fallback, no Salts production ABI or compiler switch. An installed SDK is
+not currently implemented; packaging is an open engineering decision (#4),
+not prohibited by the ATL compatibility goal.
