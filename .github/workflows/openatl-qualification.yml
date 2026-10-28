@@ -214,7 +214,16 @@ jobs:
           $machine=if($arch -eq 'x64'){'x86_64'}else{'aarch64'}
           $build="build-msvc-$arch"
           $sample=(Resolve-Path tools/wtl10-test).Path
-          Run cmake @('--preset',"msvc-$arch","-DOPENATL_WTL_DEMO_DIR=$sample")
+          $cmakeArgs=@('--preset',"msvc-$arch","-DOPENATL_WTL_DEMO_DIR=$sample")
+          if($arch -eq 'x64') {
+            # GitHub's generic windows-2022 image has no guaranteed hardware
+            # Shadow Stack. Preserve strict HSP proof in the dedicated
+            # hardware-only workflow; this hosted job qualifies the PE image,
+            # UI/COM native behavior and does NOT claim hardware HSP admission.
+            $cmakeArgs+='-DOPENATL_REQUIRE_CET_RUNTIME=OFF'
+            Write-Host '::notice::Hardware CET/HSP is UNQUALIFIED on generic hosted Windows; strict independent admission requires openatl-hsp-dedicated.yml and a real HSP runner (#15).'
+          }
+          Run cmake $cmakeArgs
           Run cmake @('--build','--preset',"msvc-$arch",'--parallel','2')
           $peCheck=@('tests/wtl10/verify_pe_mitigations.py',"$build/openatl_mitigation_runtime.exe",$machine,'--require-cfg')
           if($machine -eq 'x86_64') { $peCheck+='--require-cet' }

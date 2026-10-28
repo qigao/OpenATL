@@ -10,8 +10,8 @@ in each build tree on every build host. Downstream ports are not required.
 | --- | --- | --- | --- |
 | llvm-mingw 20261020 | Windows x64 | Windows x64 | 27 CTests 5×: UI/utilities/client, Unicode, server core + STA/MTA activation, unload/community SDI, official GuidGen and three RATL examples; CFG/CET image checks, hosted HSP runtime excluded |
 | llvm-mingw 20261020 | Windows x64 → Windows ARM64 | ARM64 | PE machine/SHA256 → genuine ARM64 UI/utilities/client 5× |
-| llvm-mingw 20261020 | Linux and macOS | Windows x64 + ARM64 | independently cross-build GUI/utilities/client PE + SDI/.rc |
-| MSVC 2022 `cl.exe` / SDK `rc.exe` | Windows x64 | x64 | 30 CTests 5×, including Unicode, server core + STA/MTA activation, HSP, unload/community SDI, official GuidGen/MemDlg and three RATL examples; separate published Salts Unicode SDK profile |
+| llvm-mingw 20261020 | Linux and macOS | Windows x64 + ARM64 | Linux cross-build required; macOS runner currently unavailable and explicitly unqualified until `OPENATL_MACOS_RUNNER_AVAILABLE=true` and exact-head cross-build passes (#25) |
+| MSVC 2022 `cl.exe` / SDK `rc.exe` | Windows x64 | x64 | Native Unicode, server core + STA/MTA activation, unload/community SDI, official GuidGen/MemDlg and three RATL examples (5×); CFG/CET PE metadata, no generic-runner HSP claim; separate Salts Unicode SDK profile |
 | MSVC 2022 HostX64→ARM64 | Windows x64 | ARM64 | PE machine/SHA256 → genuine ARM64 UI/utilities/client 5× |
 
 MSVC developer-shell action is pinned to
@@ -36,10 +36,12 @@ server compatibility. See [server contracts](COM_SERVER.md) and
 [hardware HSP scope](CET_HARDWARE_ACCEPTANCE.md). Product release acceptance
 remains application-specific.
 
-**Build boundary:** OpenATL is permanently source-tree-only. There is
-no OpenATL install/export/package config, Installed SDK, or installed-consumer
-test. External WTL sources are checksum-pinned; adapted headers live under
-`<OpenATL binary directory>/wtl/include`. That is not an OpenATL SDK.
+**Current build boundary:** OpenATL is presently consumed via source-tree
+CMake, without installed/exported config or installed-consumer CI. This is
+today's implemented build, not a permanent prohibition. An installed profile
+can be evaluated and qualified under #4. WTL sources remain checksum-pinned;
+the build-local adapted headers live under
+`<OpenATL binary directory>/wtl/include`.
 Windows SDK means Microsoft's target OS headers and resource tools.
 
 RATL examples are rebuilt from pinned external source and tested on x64; their

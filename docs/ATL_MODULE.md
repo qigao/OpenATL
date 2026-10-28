@@ -1,9 +1,11 @@
-# Modern application module protocol
+# ATL application modules — current implementation and server roadmap
 
 `CAtlModule` / `CAtlModuleT<T>` own module locks and termination callbacks;
 `CAtlExeModuleT<T>` additionally owns a COM initialization on its construction
-thread and optional explicit class-factory registrations. The obsolete
-`CComModule` and automatic object maps remain absent.
+thread and optional explicit class-factory registrations. Standard
+`CAtlDllModuleT` and automatic object maps are still unimplemented, and are
+required compatibility work. `CComModule` is absent today, not banned
+from future consideration.
 
 One application module may be alive per binary image. Construction publishes
 the borrowed `_pAtlModule` pointer before application workers start. Module
@@ -50,6 +52,7 @@ the module still revokes its own OS class registrations on every Run exit.
 The default loop uses GetMessage/TranslateMessage/DispatchMessage and reports
 GetMessage errors. Registration commands are limited to 32767 UTF-16 code
 units including the terminator, then tokenized as Windows arguments;
-default persistent server/AppID/type-library registration is unsupported and
-returns `E_NOTIMPL`. No RGS, automatic object maps, idle-shutdown monitor,
-service module or complete ATL EXE-server framework is claimed.
+default persistent server/AppID/type-library registration is unimplemented
+and returns `E_NOTIMPL`. RGS, automatic object maps, idle-shutdown monitoring,
+service modules and complete ATL EXE-server behavior are required compatibility
+candidates, not permanent exclusions. No fake success is permitted.

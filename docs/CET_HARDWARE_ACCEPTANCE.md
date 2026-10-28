@@ -41,12 +41,16 @@ The explicit mandatory enforcement gate is:
 
     openatl_cet_shadow_stack.exe --require-hardware
 
-The ordinary MSVC x64 job sets OPENATL_REQUIRE_CET_RUNTIME=ON and runs
-this gate five times. LLVM-MinGW hardware enforcement remains available
-locally and through the manual openatl-hsp-dedicated.yml workflow on a
-qualified host, where it runs ten times. A passing hosted LLVM-MinGW job
-does not establish hardware HSP enforcement. Linux and macOS cross-compilers
-only verify the PE image; ARM64 never claims x64 CET hardware enforcement.
+The ordinary hosted MSVC x64 job now sets
+OPENATL_REQUIRE_CET_RUNTIME=OFF because generic windows-2022 workers do
+not guarantee hardware/user Shadow Stack (issue #15). This hosted run
+checks CFG/CET PE metadata, native UI/COM and the HSP inventory, but
+explicitly **does not qualify hardware HSP**. The strict mandatory
+enforcement gate remains available locally and through the dedicated
+openatl-hsp-dedicated.yml workflow, where MSVC and llvm-mingw each execute
+ten real enforced HSP tests on a qualified host. A passing generic hosted
+job does not establish hardware HSP enforcement. Linux/macOS cross-builds
+only verify PE metadata; ARM64 never claims x64 CET hardware enforcement.
 
 When HSP is unavailable or only in audit mode this command fails with
 exit 77 (rather than skipping or passing). With enforcement active, a
