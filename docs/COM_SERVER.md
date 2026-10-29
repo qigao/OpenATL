@@ -296,6 +296,39 @@ The original Microsoft COMMap/AtlSafeArray project compile/link
 admission, real TypeLib deployment, BYREF/EXCEPINFO edge cases and
 `DECLARE_LIBID` integration remain separately tracked under #22/#37.
 
+## Actual file-backed TypeLib loading and module LIBID
+
+The `CComTypeInfoHolder::GetTIFromFile(absolutePath, IID, LIBID, major,
+minor, ITypeInfo**)` extension loads a real binary Windows TypeLib using
+`LoadTypeLibEx(..., REGKIND_NONE)` (never `REGKIND_DEFAULT` or
+`REGKIND_REGISTER`). It validates the typelib's GUID and exact version
+using `ITypeLib::GetLibAttr`, then resolves the requested IID with
+`GetTypeInfoOfGuid`. Missing files, mismatched LIBID/version/IID,
+incomplete/relative paths and null output pointers fail without exposing a
+partial interface. Every result uses ordinary COM ownership and the helper
+does not cache COM pointers across apartment or module retirement.
+
+The native test creates an **actual binary .tlb** in a GUID-owned temporary
+path with Windows' `CreateTypeLib2`, adds an Automation method using
+`ICreateTypeInfo`, calls `SaveAllChanges`, then exercises the **on-disk**
+loaded `ITypeInfo::GetIDsOfNames`, version/LIBID/IID rejection, and proves
+`LoadRegTypeLib` still fails because no typelib was installed globally.
+The temporary file is removed via its owning fixture.
+
+`DECLARE_LIBID(LIBID_...)` now provides the original ATL-derived module
+`InitLibId()`, which `CAtlModuleT<T>` invokes during module construction
+without any COM initialization. Its source-compatible static
+`CAtlModule::m_libid` is per-image module metadata, not an authorization
+for registry writes. A native module test asserts the exact LIBID and
+`GetLibID` output/null-pointer contracts.
+
+**Scope:** on-disk `REGKIND_NONE` load is independently useful and *not*
+the same as image-embedded resource TLB resolution. Automatic
+`0xffff/0xffff` loading from an image, genuine installed typelib lookup,
+MIDL codegen, full ATL `RegisterTypeLib`/`UnRegisterTypeLib` ownership,
+and original Microsoft COMMap native project builds are still missing.
+No static bypass or handwritten ITypeInfo provider is introduced.
+
 ## Integration and validation
 
 Link the single `OpenATL::ATL` target. It supplies `ole32`, `oleaut32`,

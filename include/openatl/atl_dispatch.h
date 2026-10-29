@@ -11,11 +11,69 @@
 #include <oaidl.h>
 #include <oleauto.h>
 #include <type_traits>
+#include <new>
+#include <string>
+#include <string_view>
 
 namespace ATL {
 
 class CComTypeInfoHolder {
 public:
+
+    // Load a caller-specified *actual* .tlb/typelib file without registering
+    // anything. Unlike LoadTypeLib or REGKIND_DEFAULT, REGKIND_NONE must not
+    // mutate HKCR/HKLM/HKCU. Verify library identity/version before exposing
+    // a borrowed type library's owned ITypeInfo pointer.
+    HRESULT GetTIFromFile(std::wstring_view path, const IID* iid,
+                          const GUID* libid, WORD major, WORD minor,
+                          ITypeInfo** output) const noexcept {
+        if (!output) return E_POINTER;
+        *output = nullptr;
+        if (!iid || !libid || ::IsEqualGUID(*iid, GUID_NULL) ||
+            ::IsEqualGUID(*libid, GUID_NULL) ||
+            major == 0xffff || minor == 0xffff || path.empty() ||
+            path.size() > 8192 || path.find(L'\0') != path.npos)
+            return E_INVALIDARG;
+        const bool drive = path.size() >= 3 &&
+            ((path[0] >= L'A' && path[0] <= L'Z') ||
+             (path[0] >= L'a' && path[0] <= L'z')) &&
+            path[1] == L':' && path[2] == L'\\';
+        const bool unc = path.size() >= 5 && path[0] == L'\\' &&
+            path[1] == L'\\' && path[2] != L'\\';
+        if (!drive && !unc) return E_INVALIDARG;
+        try {
+            const std::wstring requested(path);
+            const DWORD needed = ::GetFullPathNameW(requested.c_str(), 0,
+                                                    nullptr, nullptr);
+            if (!needed) return HRESULT_FROM_WIN32(::GetLastError());
+            if (needed > 8193) return E_INVALIDARG;
+            std::wstring normalized(needed, L'\0');
+            const DWORD length = ::GetFullPathNameW(
+                requested.c_str(), needed, &normalized[0], nullptr);
+            if (!length) return HRESULT_FROM_WIN32(::GetLastError());
+            if (length >= needed) return HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER);
+            normalized.resize(length);
+            ATL::CComPtr<ITypeLib> library;
+            HRESULT hr = ::LoadTypeLibEx(normalized.c_str(),
+                                         REGKIND_NONE, &library.p);
+            if (FAILED(hr)) return hr;
+            if (!library.p) return E_UNEXPECTED;
+            TLIBATTR* attr = nullptr;
+            hr = library->GetLibAttr(&attr);
+            if (FAILED(hr)) return hr;
+            if (!attr) return E_UNEXPECTED;
+            const bool correct = ::IsEqualGUID(attr->guid, *libid) &&
+                attr->wMajorVerNum == major && attr->wMinorVerNum == minor;
+            library->ReleaseTLibAttr(attr);
+            if (!correct) return TYPE_E_ELEMENTNOTFOUND;
+            hr = library->GetTypeInfoOfGuid(*iid, output);
+            if (SUCCEEDED(hr) && !*output) return E_UNEXPECTED;
+            if (FAILED(hr)) *output = nullptr;
+            return hr;
+        } catch (const std::bad_alloc&) { return E_OUTOFMEMORY; }
+          catch (...) { return E_UNEXPECTED; }
+    }
+
     HRESULT GetTI(const IID* iid, const GUID* libid, WORD major, WORD minor,
                   LCID locale, ITypeInfo** output) const noexcept {
         if (!output) return E_POINTER;
@@ -46,7 +104,9 @@ public:
 // default is the real registered TypeLib loader). A custom holder needs
 // GetTI(iid, libid, major, minor, LCID, ITypeInfo**) -> HRESULT.
 // This does not implement ATL's image-typelib 0xffff/0xffff mode yet.
-template<class T, const IID* piid, const GUID* plibid,
+// The module-scoped LIBID is populated by DECLARE_LIBID on CAtlModuleT<T>.
+template<class T, const IID* piid = &__uuidof(T),
+         const GUID* plibid = &CAtlModule::m_libid,
          WORD wMajor = 1, WORD wMinor = 0,
          class tihclass = CComTypeInfoHolder>
 class ATL_NO_VTABLE IDispatchImpl : public T {

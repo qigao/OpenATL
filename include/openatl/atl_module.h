@@ -25,6 +25,10 @@ using _ATL_TERMFUNC = void (WINAPI*)(DWORD_PTR);
 
 class CAtlModule {
 public:
+    // Per-image ATL library identity. DECLARE_LIBID initializes this before
+    // any TypeLib request on an actual application module; it is metadata,
+    // not a registry registration or a second COM factory provider.
+    inline static GUID m_libid{};
     CAtlModule() noexcept {
         if (_pAtlModule) std::terminate();
         _pAtlModule = this;
@@ -88,9 +92,16 @@ private:
 template<class T>
 class CAtlModuleT : public CAtlModule {
 public:
+    CAtlModuleT() noexcept { InitLibIdIfPresent<T>(0); }
     // Persistent registration requires an application-owned installer policy.
     HRESULT RegisterServer(BOOL = FALSE, const CLSID* = nullptr) noexcept { return E_NOTIMPL; }
     HRESULT UnregisterServer(BOOL = FALSE, const CLSID* = nullptr) noexcept { return E_NOTIMPL; }
+private:
+    template<class U>
+    static auto InitLibIdIfPresent(int) noexcept
+        -> decltype(U::InitLibId(), void()) { U::InitLibId(); }
+    template<class U>
+    static void InitLibIdIfPresent(...) noexcept {}
 };
 
 namespace detail {

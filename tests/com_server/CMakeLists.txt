@@ -37,7 +37,7 @@ execute_process(COMMAND "${Python3_EXECUTABLE}"
 
 add_executable(openatl_com_server_tests
   server.cpp atl_compat.cpp atl_module.cpp atl_dispatch.cpp
-  rgs_parser_tests.cpp rgs_registry_tests.cpp interfaces.h)
+  atl_typelib_file.cpp rgs_parser_tests.cpp rgs_registry_tests.cpp interfaces.h)
 target_include_directories(openatl_com_server_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 # Inline RGS registration functions must have identical definitions in
 # EVERY translation unit of the test executable. Otherwise the test-only
