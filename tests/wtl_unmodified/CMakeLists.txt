@@ -26,5 +26,10 @@ if(MSVC)
   target_compile_options(openatl_wtl_unmodified_headers PRIVATE /W3 /EHsc)
 else()
   target_compile_options(openatl_wtl_unmodified_headers PRIVATE -Wall -Wextra)
+  if(MINGW)
+    # The native Windows llvm-mingw test must never depend on a runner-local
+    # libc++/winpthread DLL. Match all existing PE acceptance binaries.
+    target_link_options(openatl_wtl_unmodified_headers PRIVATE -static)
+  endif()
 endif()
 add_test(NAME openatl.wtl_unmodified_no_com COMMAND openatl_wtl_unmodified_headers)
