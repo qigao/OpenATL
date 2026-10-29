@@ -109,11 +109,11 @@ bool RunExtendedPropertyRoundtrip(const std::wstring& root, ATL::CRegKey& key) {
     CHECK_PROPERTY(typed.OpenRegKey(root.c_str(), false) == ERROR_SUCCESS);
     std::array<BYTE, 4> smallBlob{};
     smallBlob.fill(0xa5);
-    WTL::CRegProperty::BinaryProp small{};
-    small.pBinary = smallBlob.data();
-    small.uSize = static_cast<ULONG>(smallBlob.size());
-    CHECK_PROPERTY(typed.ReadProp(L"Blob", small) == ERROR_OUTOFMEMORY);
-    CHECK_PROPERTY(small.uSize == smallBlob.size());
+    WTL::CRegProperty::BinaryProp smallBinary{};
+    smallBinary.pBinary = smallBlob.data();
+    smallBinary.uSize = static_cast<ULONG>(smallBlob.size());
+    CHECK_PROPERTY(typed.ReadProp(L"Blob", smallBinary) == ERROR_OUTOFMEMORY);
+    CHECK_PROPERTY(smallBinary.uSize == smallBlob.size());
     for (BYTE b : smallBlob) CHECK_PROPERTY(b == 0xa5);
 
     wchar_t originalText[] = L"WTL-CharArray-\u03bb\u6d4b\u8bd5";
