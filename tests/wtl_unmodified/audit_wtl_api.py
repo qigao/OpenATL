@@ -63,6 +63,28 @@ def main() -> int:
     if "return (lRet == ERROR_SUCCESS) || (lRet == ERROR_FILE_NOT_FOUND);" not in misc[x:y]:
         raise ValueError("pinned WTL ReadOne optional-missing contract changed")
     print("WTL_REGISTRY_MISSING_CONTRACT_OK optional_missing=1 typed_error=preserved")
+    # Exact-release API details to qualify next: binary/font/character arrays
+    # and CRTP property-map macros. Bounded source dump from installed package,
+    # never a different WTL tag or an edited/adapted copy.
+    for label, start_token, end_token, max_lines in (
+        ("BINARY", "struct BinaryProp", "struct CharArrayProp", 24),
+        ("CHAR_ARRAY", "struct CharArrayProp", "CRegProperty()", 24),
+        ("FONT_READ", "LSTATUS ReadProp(LPCTSTR lpstrRegValue, HFONT& hFont)", "LSTATUS WriteProp(LPCTSTR lpstrRegValue, HFONT& hFont)", 42),
+        ("FONT_WRITE", "LSTATUS WriteProp(LPCTSTR lpstrRegValue, HFONT& hFont)", "LSTATUS ReadProp(LPCTSTR lpstrRegValue, BinaryProp& binProp)", 32),
+        ("BINARY_READ", "LSTATUS ReadProp(LPCTSTR lpstrRegValue, BinaryProp& binProp)", "LSTATUS WriteProp(LPCTSTR lpstrRegValue, BinaryProp& binProp)", 30),
+        ("BINARY_WRITE", "LSTATUS WriteProp(LPCTSTR lpstrRegValue, BinaryProp& binProp)", "LSTATUS ReadProp(LPCTSTR lpstrRegValue, CharArrayProp& caProp)", 25),
+        ("CHAR_READ", "LSTATUS ReadProp(LPCTSTR lpstrRegValue, CharArrayProp& caProp)", "LSTATUS WriteProp(LPCTSTR lpstrRegValue, CharArrayProp& caProp)", 30),
+        ("CHAR_WRITE", "LSTATUS WriteProp(LPCTSTR lpstrRegValue, CharArrayProp& caProp)", "LSTATUS ReadProp(LPCTSTR lpstrRegValue, ATL::CString& strProp)", 22),
+        ("MAP", "#define BEGIN_REGPROP_MAP", "class CRegPropertyImpl", 20),
+        ("IMPL", "class CRegPropertyImpl", "Global functions for stock GDI objects", 75),
+    ):
+        begin_idx = next((i for i, line in enumerate(section) if start_token in line), -1)
+        end_idx = next((i for i in range(max(begin_idx + 1, 0), len(section))
+                        if end_token in section[i]), -1)
+        if begin_idx < 0 or end_idx < begin_idx:
+            raise ValueError("pinned original WTL property source boundary missing: " + label)
+        for offset, content in enumerate(section[begin_idx:min(end_idx, begin_idx + max_lines)], begin_idx):
+            print(f"WTL_REGISTRY_SOURCE_{label} {start_line + offset}: {content[:180]}")
     return 0
 
 if __name__ == "__main__":
