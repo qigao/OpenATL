@@ -28,7 +28,14 @@ reconfigures after the existing adapted x86 suite, rebuilds *all eleven
 unchanged official WTL samples* plus native COM/UI tests, and repeats
 native CTest five times. Any missing original ATL API, compiler
 mismatch, or runtime failure is RED — do not silently return to the
-adapted path or skip the original mode. The llvm-mingw i686 job now also runs the identical zero-adapter,
+adapted path or skip the original mode. The first strict llvm-mingw attempt diagnosed the SDK-level
+`GetThemePartSize` mismatch: original WTL expects a `const RECT*`,
+while current llvm-mingw declares a mutable `RECT*`. OpenATL's
+MinGW-only `atlbase.h` now provides a C++ overload that copies the
+read-only input rectangle before delegating to the real Win32 API,
+without touching original WTL headers or creating a second UI provider.
+
+The llvm-mingw i686 job now also runs the identical zero-adapter,
 all-eleven-sample rebuild and 5x native CTest gate. WTL API/compiler
 issues must be fixed in OpenATL or a separately reviewed upstream WTL
 patch — never by deleting upstream WTL declarations.

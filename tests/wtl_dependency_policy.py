@@ -35,6 +35,10 @@ cmake_source=(ROOT/"cmake/OpenATLWTL.cmake").read_text("utf-8")
 if ('file(SHA256 "${_wtl_headers}/atlapp.h"' not in cmake_source or
         "WTL original CAppModule/CServerAppModule source identity mismatch" not in cmake_source):
     fail.append("build-local atlapp.h must be byte-identical to vcpkg original")
+atlbase_src=(ROOT/"include/atlbase.h").read_text("utf-8")
+if ('inline HRESULT WINAPI GetThemePartSize(' not in atlbase_src or
+        'input ? &copied : nullptr' not in atlbase_src):
+    fail.append("const RECT Win32/llvm-mingw ABI overload required without rewriting WTL")
 if ('option(OPENATL_WTL_FULL_ORIGINAL' not in cmake_source
         or 'target_include_directories(openatl_atl INTERFACE "${_wtl_source}")' not in cmake_source
         or 'if(OPENATL_WTL_FULL_ORIGINAL)' not in cmake_source
