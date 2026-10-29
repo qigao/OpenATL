@@ -5,7 +5,7 @@ from the successful single-provider vcpkg transport integration (#43).
 
 ## Sources and ownership
 
-The exact pinned `qigao/vcpkg-cache` `wtl@10.0.10320#6` package supplies
+The candidate pinned `qigao/vcpkg-cache` `wtl@10.0.10320#7` package supplies
 the original complete WTL headers, 11 original samples, AppWizard and
 the upstream MS-PL license. OpenATL itself supplies all ATL/COM Client/
 COM Server implementation under `include/`; Microsoft ATL is forbidden.
@@ -17,6 +17,14 @@ This probe must compile and run as real Windows code. It does not mutate
 package files, rewrite original WTL header bodies, skip existing samples
 or accept a second provider. The existing adapted qualification remains
 an independent mandatory regression suite.
+
+**Temporary Draft qualification pin:** This branch uses the exact pending
+[vcpkg-cache PR #237](https://github.com/qigao/vcpkg-cache/pull/237)
+HEAD `16d756378ded9c6e928d834b05610bbd9aa7508b` for WTL #7. Only a *merged* `vcpkg-cache
+master` commit may replace that pin before PR #45 can be considered
+for any merge. The new port keeps the original ZIP SHA512 and preserves
+WTL APIs while adding minimal standard-C++ Clang parsing/capacity fixes.
+Production master still depends on previously merged WTL #6.
 
 ## Whole-project original header admission
 

@@ -6,7 +6,7 @@ import subprocess
 import sys
 ROOT=Path(__file__).resolve().parents[1]
 SHA="086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309"
-CACHE="8ab7be066a1fa2b49522fffcf3d70c419b26a797"
+CACHE="16d756378ded9c6e928d834b05610bbd9aa7508b"
 manifest=json.loads((ROOT/"vcpkg.json").read_text("utf-8"))
 cmake=(ROOT/"cmake/OpenATLWTL.cmake").read_text("utf-8")
 adapter=(ROOT/"cmake/wtl/PrepareWtl.cmake").read_text("utf-8")
@@ -15,7 +15,7 @@ tracked=set(subprocess.check_output(["git","-C",str(ROOT),"ls-files","-z"]).deco
 fail=[]
 if "third_party/wtl/WTL10_10320_Final.zip" in tracked or (ROOT/"third_party/wtl/WTL10_10320_Final.zip").exists():
     fail.append("repository WTL ZIP duplicated vcpkg source")
-if manifest.get("dependencies") != ["wtl"] or manifest.get("overrides") != [{"name":"wtl","version":"10.0.10320","port-version":6}]:
+if manifest.get("dependencies") != ["wtl"] or manifest.get("overrides") != [{"name":"wtl","version":"10.0.10320","port-version":7}]:
     fail.append("WTL vcpkg manifest/version is not exact")
 for token in (SHA, "openatl-wtl-source.txt", "provider=vcpkg-cache/ports/wtl",
               "Samples/GuidGen/GuidGen.cpp", "AppWizard/Setup.js", "file(COPY"):
@@ -24,6 +24,12 @@ for token in ("FetchContent", "third_party/wtl", "downloads.sourceforge.net", "f
     if token in cmake: fail.append("Forbidden alternate WTL provider: "+token)
 if "function(_openatl_replace_once" not in adapter or "bug329 patch missing" not in adapter:
     fail.append("remaining compiler-compatibility adapter/port-patch contract missing")
+for required in ("WTL #7 original list-sort bound patch not installed",
+                 "WTL #7 original Clang ribbon template patch missing",
+                 "WTL #7 original const DECIMAL patch missing",
+                 "WTL #7 original command-bar bound patch not installed"):
+    if required not in adapter:
+        fail.append("vcpkg WTL #7 Clang source patch must not be reapplied in OpenATL")
 if "function(_openatl_replace_between" in adapter:
     fail.append("feature-deleting WTL block-replacement helper must be retired")
 for source in ("class CAppModule : public ATL::CComModule",
@@ -119,5 +125,5 @@ if (not link_src.is_file()
 if fail:
     for item in fail: print("WTL_VCPKG_POLICY_FAIL "+item,file=sys.stderr)
     raise SystemExit(1)
-print("WTL_VCPKG_POLICY_OK version=10.0.10320#6 single-source=1 "
+print("WTL_VCPKG_POLICY_OK version=10.0.10320#7 single-source=1 "
       "SHA512=pinned adapter-feature-parity=UNQUALIFIED")

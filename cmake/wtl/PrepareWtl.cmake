@@ -76,12 +76,15 @@ foreach(_token IN ITEMS "ATL::CRegKey" "_ParseColorString"
   endif()
 endforeach()
 
-# The list sorter uses a CRTP enum as an array bound, as the command bar does.
+# The pinned WTL #7 port already carries the Clang constexpr fix.
+# The build-local adapter must not rewrite an upstream-corrected header.
 set(_wtl_ui_header "${_wtl_headers}/atlctrlx.h")
 file(READ "${_wtl_ui_header}" _wtl_ui_text)
-_openatl_replace_once("pszTemp[pT->m_cchCmpTextMax]" "pszTemp[T::m_cchCmpTextMax]"
-  "list sorter compile-time text capacity")
-file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+string(FIND "${_wtl_ui_text}" "pszTemp[T::m_cchCmpTextMax]" _wtl_sort_bound)
+string(FIND "${_wtl_ui_text}" "pszTemp[pT->m_cchCmpTextMax]" _wtl_legacy_sort_bound)
+if(_wtl_sort_bound EQUAL -1 OR NOT _wtl_legacy_sort_bound EQUAL -1)
+  message(FATAL_ERROR "WTL #7 original list-sort bound patch not installed")
+endif()
 
 # Restore upstream WTL PrintDlgEx with OpenATL's actual IObjectWithSiteImpl
 # and COM Client runtime; do not delete IPrintDialogCallback public APIs.
@@ -134,25 +137,28 @@ foreach(_header IN ITEMS atlmisc.h atlframe.h atlctrls.h atlctrlw.h)
   endif()
 endforeach()
 foreach(_method IN ITEMS UIAddElement UIRemoveElement)
-  string(REPLACE "this->${_method}<" "this->template ${_method}<" _wtl_ui_text "${_wtl_ui_text}")
+  string(REGEX MATCHALL "this->template ${_method}<" _wtl_ribbon_calls "${_wtl_ui_text}")
+  list(LENGTH _wtl_ribbon_calls _wtl_ribbon_count)
+  string(FIND "${_wtl_ui_text}" "this->${_method}<" _wtl_old_ribbon)
+  if(NOT _wtl_ribbon_count EQUAL 2 OR NOT _wtl_old_ribbon EQUAL -1)
+    message(FATAL_ERROR "WTL #7 original Clang ribbon template patch missing")
+  endif()
 endforeach()
-_openatl_replace_once("return ::VarI4FromDec(pDecimal, &val);"
-  "DECIMAL copy = *pDecimal;\n\t\treturn ::VarI4FromDec(&copy, &val);"
-  "MinGW SDK input-only decimal")
-file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+string(FIND "${_wtl_ui_text}" "VarI4FromDec(pDecimal != NULL ? &copy : NULL, &val)" _wtl_decimal)
+if(_wtl_decimal EQUAL -1)
+  message(FATAL_ERROR "WTL #7 original const DECIMAL patch missing")
+endif()
 
 unset(_wtl_ui_header)
 unset(_wtl_ui_text)
 
-# Express CRTP enum bounds through the type: pT->enum is not a constant
-# expression for Clang when it appears in an initialized array declaration.
+# Upstream-pinned #7 package already supplies the three constexpr
+# command-bar array bounds. Reject stale/second source rewriting here.
 set(_wtl_ui_header "${_wtl_headers}/atlctrlw.h")
 file(READ "${_wtl_ui_header}" _wtl_ui_text)
-string(REGEX MATCHALL "szString\\[pT->_nMaxMenuItemTextLength\\]" _wtl_bounds "${_wtl_ui_text}")
+string(REGEX MATCHALL "szString\\[T::_nMaxMenuItemTextLength\\]" _wtl_bounds "${_wtl_ui_text}")
 list(LENGTH _wtl_bounds _wtl_bound_count)
-if(NOT _wtl_bound_count EQUAL 3)
-  message(FATAL_ERROR "WTL command-bar constant-bound source changed")
+string(FIND "${_wtl_ui_text}" "szString[pT->_nMaxMenuItemTextLength]" _wtl_stale_bounds)
+if(NOT _wtl_bound_count EQUAL 3 OR NOT _wtl_stale_bounds EQUAL -1)
+  message(FATAL_ERROR "WTL #7 original command-bar bound patch not installed")
 endif()
-string(REPLACE "szString[pT->_nMaxMenuItemTextLength]" "szString[T::_nMaxMenuItemTextLength]"
-  _wtl_ui_text "${_wtl_ui_text}")
-file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
