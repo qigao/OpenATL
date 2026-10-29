@@ -20,107 +20,26 @@ function(_openatl_replace_once needle value label)
     set(_wtl_ui_text "${_prefix}${value}${_tail}" PARENT_SCOPE)
 endfunction()
 
-function(_openatl_replace_between start_marker end_marker value label)
-    string(FIND "${_wtl_ui_text}" "${start_marker}" _begin)
-    if(_begin EQUAL -1)
-        message(FATAL_ERROR "WTL UI-only missing start ${label}")
-    endif()
-    string(LENGTH "${start_marker}" _size)
-    math(EXPR _after "${_begin} + ${_size}")
-    string(SUBSTRING "${_wtl_ui_text}" ${_after} -1 _tail)
-    string(FIND "${_tail}" "${start_marker}" _duplicate)
-    if(NOT _duplicate EQUAL -1)
-        message(FATAL_ERROR "WTL UI-only duplicate start ${label}")
-    endif()
-    string(FIND "${_tail}" "${end_marker}" _end_rel)
-    if(_end_rel EQUAL -1)
-        message(FATAL_ERROR "WTL UI-only missing end ${label}")
-    endif()
-    math(EXPR _end "${_after} + ${_end_rel}")
-    string(SUBSTRING "${_wtl_ui_text}" 0 ${_begin} _prefix)
-    string(SUBSTRING "${_wtl_ui_text}" ${_end} -1 _suffix)
-    set(_wtl_ui_text "${_prefix}${value}${_suffix}" PARENT_SCOPE)
-endfunction()
-
-_openatl_replace_once(
-    "ATL::_pAtlModule->m_csStaticDataInitAndTypeInfo"
-    "ATL::_AtlWinModule.m_csWindowCreate"
-    "Win32 UI critical-section owner")
-_openatl_replace_between(
+# Original WTL10 CAppModule and CServerAppModule are now retained verbatim
+# from the single vcpkg source. OpenATL::CComModule implements the native
+# module/object map identity, lifetime, locks and class-registration cookies.
+# The original StartMonitor worker is NOT yet admitted for detached/concurrent
+# shutdown safety. Do not rewrite the public class to fake this acceptance.
+foreach(_token IN ITEMS
     "class CAppModule : public ATL::CComModule"
-    "// Message loop map methods"
-    [==[
-class CAppModule
-{
-public:
-	DWORD m_dwMainThreadID = 0;
-	ATL::CSimpleMap<DWORD, CMessageLoop*>* m_pMsgLoopMap = NULL;
-	ATL::CSimpleArray<HWND>* m_pSettingChangeNotify = NULL;
-
-	// OpenATL UI-only: real Win32 module lifecycle, no COM object map.
-	HRESULT Init(HINSTANCE hInstance)
-	{
-		if(hInstance == NULL)
-			return E_INVALIDARG;
-		if(m_pMsgLoopMap != NULL)
-			return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
-
-		typedef ATL::CSimpleMap<DWORD, CMessageLoop*> _mapClass;
-		_mapClass* pMap = NULL;
-		ATLTRY(pMap = new _mapClass);
-		if(pMap == NULL)
-			return E_OUTOFMEMORY;
-
-		m_dwMainThreadID = ::GetCurrentThreadId();
-		m_pMsgLoopMap = pMap;
-		m_pSettingChangeNotify = NULL;
-		ATL::_AtlBaseModule.m_hInst = hInstance;
-		ATL::_AtlBaseModule.m_hInstResource = hInstance;
-		return S_OK;
-	}
-
-	// Source compatibility for WTL's ordinary empty object-map call.
-	HRESULT Init(void* objectMap, HINSTANCE hInstance, const GUID* libraryId = NULL)
-	{
-		if(objectMap != NULL || libraryId != NULL)
-			return E_NOTIMPL;
-		return Init(hInstance);
-	}
-
-	void Term()
-	{
-		if(m_pMsgLoopMap != NULL)
-		{
-			TermSettingChangeNotify();
-			delete m_pMsgLoopMap;
-			m_pMsgLoopMap = NULL;
-		}
-	}
-
-	HINSTANCE GetModuleInstance() const
-	{
-		return ATL::_AtlBaseModule.GetModuleInstance();
-	}
-
-	HINSTANCE GetResourceInstance() const
-	{
-		return ATL::_AtlBaseModule.GetResourceInstance();
-	}
-
-]==]
-    "CAppModule lifecycle")
-_openatl_replace_between(
-    "// CServerAppModule - module class for a COM server application"
-    "typedef ATL::CRegKey CRegKeyEx;"
-    ""
-    "COM Server class and legacy registration block")
-if(NOT _wtl_ui_text MATCHES "HRESULT Init\\(HINSTANCE hInstance\\)" OR
-   _wtl_ui_text MATCHES "class CAppModule : public ATL::CComModule" OR
-   _wtl_ui_text MATCHES "class CServerAppModule" OR
-   _wtl_ui_text MATCHES "ATL::_pAtlModule")
-    message(FATAL_ERROR "WTL UI-only source still exposes COM Server")
-endif()
-file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+    "class CServerAppModule : public CAppModule"
+    "ATL::_pAtlModule->m_csStaticDataInitAndTypeInfo"
+    "MonitorShutdown()"
+    "StartMonitor()"
+    "m_hEventShutdown"
+    "m_nLockCnt")
+  string(FIND "${_wtl_ui_text}" "${_token}" _found)
+  if(_found EQUAL -1)
+    message(FATAL_ERROR "WTL original application/COM server ABI missing: ${_token}")
+  endif()
+endforeach()
+# Do not write atlapp.h to the build-local directory. Its digest is checked
+# byte-for-byte against the installed vcpkg original after adapter processing.
 
 # The Microsoft compiler accepts a CWindow -> HWND -> CButton copy
 # initialization used by BmpView. Supply that conversion directly on Clang;

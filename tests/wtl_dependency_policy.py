@@ -22,11 +22,22 @@ for token in (SHA, "openatl-wtl-source.txt", "provider=vcpkg-cache/ports/wtl",
     if token not in cmake: fail.append("WTL source gate missing: "+token)
 for token in ("FetchContent", "third_party/wtl", "downloads.sourceforge.net", "file(DOWNLOAD"):
     if token in cmake: fail.append("Forbidden alternate WTL provider: "+token)
-if "function(_openatl_replace_between" not in adapter or "bug329 patch missing" not in adapter:
-    fail.append("build-local compatibility adapter/port patch contract missing")
+if "function(_openatl_replace_once" not in adapter or "bug329 patch missing" not in adapter:
+    fail.append("remaining compiler-compatibility adapter/port-patch contract missing")
+if "function(_openatl_replace_between" in adapter:
+    fail.append("feature-deleting WTL block-replacement helper must be retired")
+for source in ("class CAppModule : public ATL::CComModule",
+               "class CServerAppModule : public CAppModule",
+               "WTL original application/COM server ABI missing"):
+    if source not in adapter:
+        fail.append("original WTL application/COM server class requirement missing: "+source)
+cmake_source=(ROOT/"cmake/OpenATLWTL.cmake").read_text("utf-8")
+if ('file(SHA256 "${_wtl_headers}/atlapp.h"' not in cmake_source or
+        "WTL original CAppModule/CServerAppModule source identity mismatch" not in cmake_source):
+    fail.append("build-local atlapp.h must be byte-identical to vcpkg original")
 # Feature deletions must not reappear in the build-local WTL include copy.
-# The old CAppModule/Server rewrite remains under #44 and cannot be
-# retired until the full direct-header feature-parity gate is qualified.
+# Original CAppModule/Server are now retained byte-identically, but
+# concurrent original StartMonitor remains unqualified until owner/join proof.
 for forbidden in ("legacy hyperlink registry color access",
                   "registry-only CRegProperty module",
                   '"COM callback-based PrintDlgEx")'):

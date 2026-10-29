@@ -44,9 +44,14 @@ The original vcpkg `atlmisc.h` includes `WTL::CRegProperty` and
 `CRegPropertyImpl<T>`. This Draft branch has now stopped deleting that
 section from the build-local WTL adapter, alongside the original
 `CPrintDialogEx` callback and HyperLink color registry handling.
-The merged `master` is unchanged; the remaining CAppModule/Server
-rewrites and other compiler-specific adapter edits still block complete
-unmodified-header production adoption. `reg_property.cpp` is compiled ONLY against the
+The merged `master` remains unchanged. In this Draft branch,
+`atlapp.h` is now byte-identical in the build-local include directory
+and the installed original WTL package: no `CAppModule` inheritance
+replacement, no `CServerAppModule` class deletion, and no
+`ATL::_pAtlModule` owner rewrite. The checksum is rechecked even on a
+warm CMake configure. Other narrower compiler-specific adapter edits
+remain. Crucially, retaining an original public server class is **not**
+proof that its detached `StartMonitor` thread can be safely retired. `reg_property.cpp` is compiled ONLY against the
 original installed WTL source and calls `CRegProperty::WriteOne/ReadOne`
 for DWORD, bool and counted Unicode text. Every native test round creates
 a GUID-unique registry key under HKCU and verifies Win32 `REG_DWORD` values.
