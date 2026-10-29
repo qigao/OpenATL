@@ -31,10 +31,16 @@ if manifest.get("dependencies") != ["wtl"] or manifest.get("overrides") != [{"na
     fail.append("WTL vcpkg manifest/version is not exact")
 for token in (SHA, "openatl-wtl-source.txt", "provider=vcpkg-cache/ports/wtl",
               "Samples/GuidGen/GuidGen.cpp", "AppWizard/Setup.js",
-              'target_include_directories(openatl_atl INTERFACE "${_wtl_source}")':
+              'target_include_directories(openatl_atl INTERFACE "${_wtl_source}")'):
     if token not in cmake: fail.append("WTL source gate missing: "+token)
 for token in ("FetchContent", "third_party/wtl", "downloads.sourceforge.net", "file(DOWNLOAD"):
     if token in cmake: fail.append("Forbidden alternate WTL provider: "+token)
+if ('option(OPENATL_WTL_FULL_ORIGINAL' not in cmake or
+        'if(NOT OPENATL_WTL_FULL_ORIGINAL)' not in cmake or
+        "Original vcpkg WTL is mandatory" not in cmake or
+        "The full original WTL source admission is qualification-only" in
+             (ROOT/"CMakeLists.txt").read_text("utf-8")):
+    fail.append("only original installed vcpkg WTL may be configured in consumer mode")
 if adapter_path.exists() or "cmake/wtl/PrepareWtl.cmake" in tracked:
     fail.append("legacy build-local WTL adapter must be completely deleted")
 for token in ("file(COPY", "file(REMOVE_RECURSE", "PrepareWtl.cmake",
