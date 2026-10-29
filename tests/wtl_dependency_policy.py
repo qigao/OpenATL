@@ -24,6 +24,19 @@ for token in ("FetchContent", "third_party/wtl", "downloads.sourceforge.net", "f
     if token in cmake: fail.append("Forbidden alternate WTL provider: "+token)
 if "function(_openatl_replace_between" not in adapter or "bug329 patch missing" not in adapter:
     fail.append("build-local compatibility adapter/port patch contract missing")
+# Feature deletions must not reappear in the build-local WTL include copy.
+# The old CAppModule/Server rewrite remains under #44 and cannot be
+# retired until the full direct-header feature-parity gate is qualified.
+for forbidden in ("legacy hyperlink registry color access",
+                  "registry-only CRegProperty module",
+                  '"COM callback-based PrintDlgEx")'):
+    if forbidden in adapter:
+        fail.append("feature-deleting WTL adapter remains: "+forbidden)
+for required in ("WTL original hyperlink color query missing",
+                 "WTL original PrintDlgEx callback missing",
+                 "WTL original registry property map missing"):
+    if required not in adapter:
+        fail.append("original WTL public API restoration removed: "+required)
 if workflow.count(CACHE) != 4 or workflow.count("setup-vcpkg-curl-cache.py") != 4:
     fail.append("WTL vcpkg setup must cover all four native/cross CI build jobs")
 if "wtltest-ui-only.patch" in workflow or "--preset" not in workflow:

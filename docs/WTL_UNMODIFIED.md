@@ -41,8 +41,12 @@ an independent mandatory regression suite.
 ## Original WTL10 registry-property behavior (HKCU sandbox)
 
 The original vcpkg `atlmisc.h` includes `WTL::CRegProperty` and
-`CRegPropertyImpl<T>`; the existing adapted production headers still
-delete that section. `reg_property.cpp` is compiled ONLY against the
+`CRegPropertyImpl<T>`. This Draft branch has now stopped deleting that
+section from the build-local WTL adapter, alongside the original
+`CPrintDialogEx` callback and HyperLink color registry handling.
+The merged `master` is unchanged; the remaining CAppModule/Server
+rewrites and other compiler-specific adapter edits still block complete
+unmodified-header production adoption. `reg_property.cpp` is compiled ONLY against the
 original installed WTL source and calls `CRegProperty::WriteOne/ReadOne`
 for DWORD, bool and counted Unicode text. Every native test round creates
 a GUID-unique registry key under HKCU and verifies Win32 `REG_DWORD` values.

@@ -145,20 +145,17 @@ _openatl_replace_once(
     "MinGW SDK GetThemePartSize input rectangle")
 file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
 
-# Legacy IE-registry color lookup adds no required UI capability.
+# Retain upstream WTL's CHyperLink registry color lookup and string parser.
+# OpenATL::CRegKey owns the Win32 key; this section is no longer deleted.
 set(_wtl_ui_header "${_wtl_headers}/atlctrlx.h")
 file(READ "${_wtl_ui_header}" _wtl_ui_text)
-string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
-_openatl_replace_between(
-    "\t\t// set link colors"
-    "\tbool CalcLabelRect()"
-    "\t}\n\n\t"
-    "legacy hyperlink registry color access")
-if(_wtl_ui_text MATCHES "ATL::CRegKey" OR
-   _wtl_ui_text MATCHES "_ParseColorString")
-    message(FATAL_ERROR "WTL UI-only: registry hyperlink code still present")
-endif()
-file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+foreach(_token IN ITEMS "ATL::CRegKey" "_ParseColorString"
+                         "Anchor Color" "Anchor Color Visited")
+  string(FIND "${_wtl_ui_text}" "${_token}" _found)
+  if(_found EQUAL -1)
+    message(FATAL_ERROR "WTL original hyperlink color query missing: ${_token}")
+  endif()
+endforeach()
 
 # The list sorter uses a CRTP enum as an array bound, as the command bar does.
 set(_wtl_ui_header "${_wtl_headers}/atlctrlx.h")
@@ -167,53 +164,39 @@ _openatl_replace_once("pszTemp[pT->m_cchCmpTextMax]" "pszTemp[T::m_cchCmpTextMax
   "list sorter compile-time text capacity")
 file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
 
-# Preserve standard common printing, page setup and property sheets;
-# only the COM callback-based PrintDlgEx implementation requires atlcom.h.
+# Restore upstream WTL PrintDlgEx with OpenATL's actual IObjectWithSiteImpl
+# and COM Client runtime; do not delete IPrintDialogCallback public APIs.
 set(_wtl_ui_header "${_wtl_headers}/atldlgs.h")
 file(READ "${_wtl_ui_header}" _wtl_ui_text)
-string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
-_openatl_replace_between(
-    "#include <atlcom.h>"
-    "// CPageSetupDialogImpl - Page Setup dialog"
-    "namespace WTL\n{\n\n"
-    "COM callback-based PrintDlgEx")
-if(_wtl_ui_text MATCHES "#include <atlcom.h>" OR
-   _wtl_ui_text MATCHES "class ATL_NO_VTABLE CPrintDialogExImpl" OR
-   _wtl_ui_text MATCHES "public ATL::IObjectWithSiteImpl" OR
-   NOT _wtl_ui_text MATCHES "class CPageSetupDialog")
-    message(FATAL_ERROR "WTL UI-only: common-dialog/COM separation invalid")
-endif()
-file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
+foreach(_token IN ITEMS "#include <atlcom.h>"
+                         "class ATL_NO_VTABLE CPrintDialogExImpl"
+                         "public ATL::IObjectWithSiteImpl"
+                         "class CPrintDialogEx" "class CPageSetupDialog")
+  string(FIND "${_wtl_ui_text}" "${_token}" _found)
+  if(_found EQUAL -1)
+    message(FATAL_ERROR "WTL original PrintDlgEx callback missing: ${_token}")
+  endif()
+endforeach()
 
 # Preserve MRU menu operations and per-user registry persistence.
 # These are ordinary app settings via OpenATL::CRegKey, not COM registration.
 set(_wtl_ui_header "${_wtl_headers}/atlmisc.h")
 file(READ "${_wtl_ui_header}" _wtl_ui_text)
 string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
-# This SourceForge release has a separate CRegProperty registry-backed
-# serializer, independent of the real MRU and CFindFile UI helpers.
-_openatl_replace_between(
-    "// CRegProperty and CRegPropertyImpl<> - properties stored in registry"
-    "// Global functions for stock GDI objects"
-    ""
-    "registry-only CRegProperty module")
-# Fail closed if upstream changes the MRU API or resurrects the
-# unrelated CRegProperty serializer. Registry access remains owned by CRegKey.
-if(NOT _wtl_ui_text MATCHES "ReadFromRegistry\\(" OR
-   NOT _wtl_ui_text MATCHES "WriteToRegistry\\(" OR
-   NOT _wtl_ui_text MATCHES "ATL::CRegKey" OR
-   _wtl_ui_text MATCHES "class CRegProperty")
-    message(FATAL_ERROR "WTL UI-only: MRU persistence missing or registry serializer returned")
-endif()
-if(NOT _wtl_ui_text MATCHES "CRecentDocumentListBase")
-    message(FATAL_ERROR "WTL UI-only: CRecentDocumentListBase menu helper missing")
-endif()
-if(NOT _wtl_ui_text MATCHES "CFindFile")
-    message(FATAL_ERROR "WTL UI-only: CFindFile helper missing")
-endif()
-if(NOT _wtl_ui_text MATCHES "AtlGetStockPen")
-    message(FATAL_ERROR "WTL UI-only: stock Win32 GDI helper missing")
-endif()
+# Keep the complete upstream CRegProperty and CRegPropertyImpl<T>
+# serializer, CRTP property map, binary/font/Unicode operations.
+# Existing MRU and CFindFile public APIs remain unchanged.
+foreach(_token IN ITEMS "class CRegProperty" "class CRegPropertyImpl"
+                         "#define BEGIN_REGPROP_MAP"
+                         "#define REG_PROPERTY" "#define END_REGPROP_MAP"
+                         "ReadFromRegistry(" "WriteToRegistry("
+                         "ATL::CRegKey" "CRecentDocumentListBase"
+                         "CFindFile" "AtlGetStockPen")
+  string(FIND "${_wtl_ui_text}" "${_token}" _found)
+  if(_found EQUAL -1)
+    message(FATAL_ERROR "WTL original registry property map missing: ${_token}")
+  endif()
+endforeach()
 # Official bug329 WTL patch already applied by the pinned vcpkg overlay.
 string(FIND "${_wtl_ui_text}" "ATL::CString strResult(_T(\"file://\"));" _wtl_bug329)
 if(_wtl_bug329 EQUAL -1)
