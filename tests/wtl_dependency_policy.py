@@ -6,7 +6,7 @@ import subprocess
 import sys
 ROOT=Path(__file__).resolve().parents[1]
 SHA="086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309"
-CACHE="88328df0817885719868178c635a02570c7779b3"
+CACHE="8ab7be066a1fa2b49522fffcf3d70c419b26a797"
 manifest=json.loads((ROOT/"vcpkg.json").read_text("utf-8"))
 cmake=(ROOT/"cmake/OpenATLWTL.cmake").read_text("utf-8")
 adapter=(ROOT/"cmake/wtl/PrepareWtl.cmake").read_text("utf-8")
@@ -35,6 +35,11 @@ native_script=(ROOT/"tests/wtl10/native_arm64.py").read_text("utf-8")
 if ('"openatl_wtl_unmodified_headers"' not in native_script or
         "OPENATL_WTL_ORIGINAL_MAP_OK" not in native_script):
     fail.append("native ARM64 must execute original WTL class factory/cookie contract")
+direct = (ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")
+if ("OriginalPrintDialogCallbackNoCom" not in direct or
+        "IPrintDialogCallback" not in direct or
+        "IObjectWithSite" not in direct):
+    fail.append("real original WTL PrintDlgEx/site behavior must be verified")
 if fail:
     for item in fail: print("WTL_VCPKG_POLICY_FAIL "+item,file=sys.stderr)
     raise SystemExit(1)
