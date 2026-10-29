@@ -51,11 +51,10 @@ and COM maps: `CComObjectRootEx`, `CComObject`, `CComCoClass`, `CComCreator`,
 See the [ATL compatibility matrix](docs/ATL_COMPATIBILITY.md) for supported
 semantics and limits. `CAtlDllModuleT` is implemented for explicit class
 tables; static `OBJECT_ENTRY_AUTO` factory discovery is supported.
-The original WTL 10.0.10320 header and sample source archive is vendored
-under `third_party/wtl/`, with strict SHA512, Git blob provenance and its
-MS-PL license preserved. CMake unpacks this local source for the original
-WTL10 suite; the build no longer downloads WTL from SourceForge. See
-[WTL provenance](third_party/wtl/README.md).
+WTL 10.0.10320 is installed solely by the pinned
+[qigao/vcpkg-cache WTL overlay](https://github.com/qigao/vcpkg-cache/pull/235).
+This port retains its complete original Samples, AppWizard, headers and MS-PL,
+and does not depend on Microsoft ATL. OpenATL remains source-tree ATL.
 
 Class-directed `UpdateRegistry` and a bounded original `REGISTRY` resource
 path are implemented. `ATL::IDispatchImpl` queries real Windows type
@@ -89,40 +88,20 @@ target_link_libraries(my_app PRIVATE OpenATL::ATL)
 OpenATL commit in the consuming project. `OpenATL::ATL` supplies ATL and WTL
 include paths, C++17/Unicode definitions, and common Windows UI/COM/registry
 link dependencies. Consumers can include `<atlbase.h>`, `<atlcom.h>`,
-`<atlapp.h>`, `<atlframe.h>`, etc. directly. No overlay ports, WTL install,
-manual header lookup, `OpenATL::WTL` target or Microsoft ATL installation is
-needed. Products using optional image codecs still link `gdiplus` explicitly.
+`<atlapp.h>`, `<atlframe.h>`, etc. directly. No Microsoft ATL or second WTL provider is installed.
+The consumer must install `wtl` from the exact qigao/vcpkg-cache
+overlay before CMake configure. Standard vcpkg toolchain users supply
+`VCPKG_INSTALLED_DIR` / `VCPKG_TARGET_TRIPLET`; source-tree
+MSVC/llvm-mingw builds use `OPENATL_WTL_VCPKG_INSTALLED_DIR` and
+`OPENATL_WTL_VCPKG_TRIPLET` instead. CMake verifies the installed
+source stamp and complete sample/license resources. Build-local WTL API
+adaptation remains **unqualified for full feature parity**; the vcpkg
+package's original public headers are not modified in place.
+OpenATL is not itself an installed SDK.
 
-During the first CMake configuration, OpenATL unpacks the **checked-in**
-original WTL `10.0.10320` release ZIP with the **same SHA512 previously
-verified from SourceForge**, copies its headers into the build directory and
-applies the source-owned adapter. Neither first nor warm configuration
-requires SourceForge, GitHub or any external WTL source download. The
-upstream ZIP and consumer files are never patched. Missing or corrupted
-vendored inputs fail configuration; no alternate WTL source provider is
-selected. vcpkg remains available for the application's other
-dependencies; OpenATL does not change the application's vcpkg configuration.
-OpenATL itself remains a source-tree CMake INTERFACE target with no
-install/export/package-config workflow.
-
-For repository qualification, use the versioned presets. From an x64 VS
-developer shell:
-
-```sh
-cmake --preset msvc-x64
-cmake --build --preset msvc-x64
-ctest --preset msvc-x64
-```
-
-For llvm-mingw, set `OPENATL_LLVM_MINGW_BIN` to the compiler `bin` directory,
-then use `llvm-x86_64` or `llvm-aarch64`. MSVC ARM64 uses `msvc-arm64` from an
-ARM64-targeting VS developer shell. The optional full SDI sample is selected
-with `OPENATL_WTL_DEMO_DIR`. CI builds the pinned sample without source edits.
-Generic hosted LLVM and MSVC tests cannot guarantee hardware HSP;
-a separate strict hardware CET workflow qualifies that property on a vetted
-native Windows x64 runner (#15), without treating its absence as success.
-`OPENATL_ATL_INCLUDE_DIR` and
-`OPENATL_WTL_INCLUDE_DIR` overrides are obsolete and rejected.
+For qualification, use pinned CMake presets and the original Windows
+native and Linux/macOS cross-build CTest jobs. A WTL package installation
+alone does not qualify any unmodified WTL or Microsoft ATL consumer.
 
 ## Unicode text
 

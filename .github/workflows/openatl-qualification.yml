@@ -35,6 +35,35 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/vcpkg-cache
+          ref: 88328df0817885719868178c635a02570c7779b3
+          path: tools/vcpkg-cache
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Bootstrap exact canonical vcpkg (curl-only, no Mono)
+        shell: pwsh
+        run: |
+          python tools/vcpkg-cache/scripts/setup-vcpkg-curl-cache.py tools/vcpkg-cache
+          if ($LASTEXITCODE -ne 0) { throw 'pinned vcpkg bootstrap failed' }
+      - name: Install pinned WTL10 from the selected vcpkg overlay
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=if($IsWindows){Join-Path $env:VCPKG_ROOT 'vcpkg.exe'}else{Join-Path $env:VCPKG_ROOT 'vcpkg'}
+          $installed=Join-Path $env:GITHUB_WORKSPACE 'build/wtl-vcpkg-installed'
+          $args_=@('install',"--x-manifest-root=$env:GITHUB_WORKSPACE",
+                   "--x-install-root=$installed",'--triplet=qigao-wtl10-headers',
+                   "--overlay-ports=$env:VCPKG_OVERLAY_PORTS",
+                   "--overlay-triplets=$env:VCPKG_OVERLAY_TRIPLETS")
+          & $exe @args_
+          if ($LASTEXITCODE -ne 0) { throw 'single-provider WTL install failed' }
+          $source=Join-Path $installed 'qigao-wtl10-headers/share/wtl/openatl-wtl-source.txt'
+          if (!(Test-Path $source)) { throw 'WTL source stamp missing' }
+          "OPENATL_WTL_VCPKG_INSTALLED_DIR=$installed" >> $env:GITHUB_ENV
+          "OPENATL_WTL_VCPKG_TRIPLET=qigao-wtl10-headers" >> $env:GITHUB_ENV
       - name: Fetch SHA256-pinned llvm-mingw
         shell: pwsh
         run: |
@@ -151,6 +180,35 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/vcpkg-cache
+          ref: 88328df0817885719868178c635a02570c7779b3
+          path: tools/vcpkg-cache
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Bootstrap exact canonical vcpkg (curl-only, no Mono)
+        shell: pwsh
+        run: |
+          python tools/vcpkg-cache/scripts/setup-vcpkg-curl-cache.py tools/vcpkg-cache
+          if ($LASTEXITCODE -ne 0) { throw 'pinned vcpkg bootstrap failed' }
+      - name: Install pinned WTL10 from the selected vcpkg overlay
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=if($IsWindows){Join-Path $env:VCPKG_ROOT 'vcpkg.exe'}else{Join-Path $env:VCPKG_ROOT 'vcpkg'}
+          $installed=Join-Path $env:GITHUB_WORKSPACE 'build/wtl-vcpkg-installed'
+          $args_=@('install',"--x-manifest-root=$env:GITHUB_WORKSPACE",
+                   "--x-install-root=$installed",'--triplet=qigao-wtl10-headers',
+                   "--overlay-ports=$env:VCPKG_OVERLAY_PORTS",
+                   "--overlay-triplets=$env:VCPKG_OVERLAY_TRIPLETS")
+          & $exe @args_
+          if ($LASTEXITCODE -ne 0) { throw 'single-provider WTL install failed' }
+          $source=Join-Path $installed 'qigao-wtl10-headers/share/wtl/openatl-wtl-source.txt'
+          if (!(Test-Path $source)) { throw 'WTL source stamp missing' }
+          "OPENATL_WTL_VCPKG_INSTALLED_DIR=$installed" >> $env:GITHUB_ENV
+          "OPENATL_WTL_VCPKG_TRIPLET=qigao-wtl10-headers" >> $env:GITHUB_ENV
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
         with:
           arch: x86
@@ -190,6 +248,35 @@ jobs:
             vc_arch: amd64_arm64
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/vcpkg-cache
+          ref: 88328df0817885719868178c635a02570c7779b3
+          path: tools/vcpkg-cache
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Bootstrap exact canonical vcpkg (curl-only, no Mono)
+        shell: pwsh
+        run: |
+          python tools/vcpkg-cache/scripts/setup-vcpkg-curl-cache.py tools/vcpkg-cache
+          if ($LASTEXITCODE -ne 0) { throw 'pinned vcpkg bootstrap failed' }
+      - name: Install pinned WTL10 from the selected vcpkg overlay
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=if($IsWindows){Join-Path $env:VCPKG_ROOT 'vcpkg.exe'}else{Join-Path $env:VCPKG_ROOT 'vcpkg'}
+          $installed=Join-Path $env:GITHUB_WORKSPACE 'build/wtl-vcpkg-installed'
+          $args_=@('install',"--x-manifest-root=$env:GITHUB_WORKSPACE",
+                   "--x-install-root=$installed",'--triplet=qigao-wtl10-headers',
+                   "--overlay-ports=$env:VCPKG_OVERLAY_PORTS",
+                   "--overlay-triplets=$env:VCPKG_OVERLAY_TRIPLETS")
+          & $exe @args_
+          if ($LASTEXITCODE -ne 0) { throw 'single-provider WTL install failed' }
+          $source=Join-Path $installed 'qigao-wtl10-headers/share/wtl/openatl-wtl-source.txt'
+          if (!(Test-Path $source)) { throw 'WTL source stamp missing' }
+          "OPENATL_WTL_VCPKG_INSTALLED_DIR=$installed" >> $env:GITHUB_ENV
+          "OPENATL_WTL_VCPKG_TRIPLET=qigao-wtl10-headers" >> $env:GITHUB_ENV
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
         with:
           arch: ${{ matrix.vc_arch }}
@@ -340,6 +427,35 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/vcpkg-cache
+          ref: 88328df0817885719868178c635a02570c7779b3
+          path: tools/vcpkg-cache
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Bootstrap exact canonical vcpkg (curl-only, no Mono)
+        shell: pwsh
+        run: |
+          python tools/vcpkg-cache/scripts/setup-vcpkg-curl-cache.py tools/vcpkg-cache
+          if ($LASTEXITCODE -ne 0) { throw 'pinned vcpkg bootstrap failed' }
+      - name: Install pinned WTL10 from the selected vcpkg overlay
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=if($IsWindows){Join-Path $env:VCPKG_ROOT 'vcpkg.exe'}else{Join-Path $env:VCPKG_ROOT 'vcpkg'}
+          $installed=Join-Path $env:GITHUB_WORKSPACE 'build/wtl-vcpkg-installed'
+          $args_=@('install',"--x-manifest-root=$env:GITHUB_WORKSPACE",
+                   "--x-install-root=$installed",'--triplet=qigao-wtl10-headers',
+                   "--overlay-ports=$env:VCPKG_OVERLAY_PORTS",
+                   "--overlay-triplets=$env:VCPKG_OVERLAY_TRIPLETS")
+          & $exe @args_
+          if ($LASTEXITCODE -ne 0) { throw 'single-provider WTL install failed' }
+          $source=Join-Path $installed 'qigao-wtl10-headers/share/wtl/openatl-wtl-source.txt'
+          if (!(Test-Path $source)) { throw 'WTL source stamp missing' }
+          "OPENATL_WTL_VCPKG_INSTALLED_DIR=$installed" >> $env:GITHUB_ENV
+          "OPENATL_WTL_VCPKG_TRIPLET=qigao-wtl10-headers" >> $env:GITHUB_ENV
       - name: Install SHA256-pinned llvm-mingw
         shell: bash
         env:

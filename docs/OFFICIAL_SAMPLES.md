@@ -1,14 +1,11 @@
 # Official sample coverage
 
-The full WTL 10.0.10320 source archive and its eleven unchanged official
-samples are now vendored at
-[`third_party/wtl/WTL10_10320_Final.zip`](../third_party/wtl/WTL10_10320_Final.zip).
-CMake verifies its **repository-owned SHA512** and extracts it locally;
-it never downloads SourceForge at configure time. Original `MS-PL.txt`
-remains inside the source archive and is copied into the build tree. The GitHub mirror's exact archive SHA512 matches the previously locked
-SourceForge release, so no WTL upstream bytes changed. See
-[WTL provenance](../third_party/wtl/README.md).
-Full official source compilation and native UI tests remain mandatory.
+The full WTL 10.0.10320 release (headers, all 11 unchanged Samples,
+AppWizard, MS-PL license) is now supplied by the pinned
+[qigao/vcpkg-cache WTL overlay](https://github.com/qigao/vcpkg-cache/pull/235),
+not by a second ZIP in OpenATL. The port downloads a SHA512-verified GitHub
+release archive and installs the original sample sources. The build uses
+those samples unchanged and must pass all existing native CI gates.
 
 Official samples are a separate acceptance boundary from the community SDI
 fixture (`kkhaike/wtltest`) and OpenATL's own conformance tests. Passing that
@@ -92,7 +89,7 @@ than reasons to silently omit those projects.
 ## WTL 10.0.10320 release
 
 The sources/resources below come directly from the `Samples/` directory in the
-same byte-identical WTL 10.0.10320 archive now vendored in OpenATL. They are
+same SHA512-pinned WTL 10.0.10320 archive installed by vcpkg. They are
 built unchanged through `tests/official_samples/CMakeLists.txt`, linked only
 to `OpenATL::ATL`, and driven by native behavior tests registered in CTest.
 The build supplies the common-controls v6 manifest as a separate resource;
