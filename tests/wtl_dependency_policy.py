@@ -35,6 +35,12 @@ cmake_source=(ROOT/"cmake/OpenATLWTL.cmake").read_text("utf-8")
 if ('file(SHA256 "${_wtl_headers}/atlapp.h"' not in cmake_source or
         "WTL original CAppModule/CServerAppModule source identity mismatch" not in cmake_source):
     fail.append("build-local atlapp.h must be byte-identical to vcpkg original")
+atlwin_src=(ROOT/"include/atlwin.h").read_text("utf-8")
+if ("std::is_base_of_v<CWindow, T>" not in atlwin_src or
+        "operator T() const" not in atlwin_src or
+        "OriginalWtlBorrowConversion()" not in
+             (ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")):
+    fail.append("MinGW unchanged WTL CButton/CEdit borrowed-window conversion required")
 atlbase_src=(ROOT/"include/atlbase.h").read_text("utf-8")
 if ('inline HRESULT WINAPI GetThemePartSize(' not in atlbase_src or
         'input ? &copied : nullptr' not in atlbase_src):

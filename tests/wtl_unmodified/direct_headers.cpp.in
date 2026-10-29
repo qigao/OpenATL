@@ -82,6 +82,18 @@ bool RunRegPropertyTests();
 bool RunOriginalHyperlinkRegistryTests();
 bool RunLegacyObjectMapTests();
 
+#if defined(__MINGW32__)
+// The unchanged WTL BmpView sample performs these same implicit borrow
+// conversions. The resulting control wrappers must not acquire HWND.
+bool OriginalWtlBorrowConversion() {
+    ATL::CWindow borrowed{static_cast<HWND>(nullptr)};
+    WTL::CButton button = borrowed;
+    WTL::CEdit edit = borrowed;
+    return static_cast<HWND>(button) == nullptr &&
+           static_cast<HWND>(edit) == nullptr;
+}
+#endif
+
 int main(int argc, char** argv)
 {
     // The hyperlink test runs in its own process because Win32's
@@ -89,6 +101,9 @@ int main(int argc, char** argv)
     if (argc == 2 && std::strcmp(argv[1], "--hyperlink") == 0)
         return RunOriginalHyperlinkRegistryTests() ? 0 : 13;
     if (argc != 1) return 14;
+#if defined(__MINGW32__)
+    if (!OriginalWtlBorrowConversion()) return 15;
+#endif
     HINSTANCE image = ::GetModuleHandleW(nullptr);
     if (!image) return 1;
     {

@@ -12,6 +12,7 @@
 #include <olectl.h>
 #include <shellapi.h>
 #include <errno.h>
+#include <type_traits>
 
 // WM_FORWARDMSG - used by WTL for message forwarding
 #ifndef WM_FORWARDMSG
@@ -375,6 +376,21 @@ public:
     }
 
     operator HWND() const noexcept { return m_hWnd; }
+
+#if defined(__MINGW32__)
+    // Original WTL's CButtonT/CEditT wrappers borrow HWND without owning it.
+    // Clang rejects MSVC's two-implicit-conversions shortcut:
+    // CWindow -> HWND -> CButtonT. A constrained, single C++ conversion
+    // preserves the exact original WTL source and its borrowed HWND identity.
+    // Do not offer conversion to owning windows or arbitrary target types.
+    template<class T, typename std::enable_if_t<
+        std::is_base_of_v<CWindow, T> &&
+        !std::is_same_v<T, CWindow> &&
+        std::is_constructible_v<T, HWND>, int> = 0>
+    operator T() const noexcept(std::is_nothrow_constructible_v<T, HWND>) {
+        return T(m_hWnd);
+    }
+#endif
 
     static LRESULT SendMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam) noexcept
     {
