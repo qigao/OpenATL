@@ -77,17 +77,32 @@ if(CMAKE_HOST_WIN32)
     "${_openatl_midl_sdk_bin}" DIRECTORY)
   get_filename_component(_openatl_midl_sdk_root
     "${_openatl_midl_sdk_bin_root}" DIRECTORY)
-  # midl.exe defaults to cl.exe. Native llvm-mingw runs without MSVC's
-  # environment: use clang-cl from the SAME checksum-pinned LLVM toolchain
-  # as the build. MIDL still processes unchanged Microsoft source bytes.
+  # Windows SDK MIDL defaults to MSVC cl.exe; native llvm-mingw has no
+  # MSVC toolchain. The pinned llvm-mingw distribution includes clang.exe
+  # but may omit the clang-cl.exe *driver alias*. A filesystem link in the
+  # SAME compiler bin directory changes argv[0] to select Clang's cl-driver
+  # mode, without another compiler, extra download or altered source IDL.
   set(_openatl_midl_cpp_args)
   if(MINGW)
-    find_program(OPENATL_COMMAP_CLANG_CL_EXECUTABLE
-      NAMES clang-cl.exe clang-cl
-      HINTS "$ENV{OPENATL_LLVM_MINGW_BIN}"
-      NO_DEFAULT_PATH REQUIRED)
-    list(APPEND _openatl_midl_cpp_args /cpp_cmd
-      "${OPENATL_COMMAP_CLANG_CL_EXECUTABLE}")
+    find_program(OPENATL_COMMAP_PINNED_CLANG_EXECUTABLE NAMES clang.exe
+      HINTS "$ENV{OPENATL_LLVM_MINGW_BIN}" NO_DEFAULT_PATH REQUIRED)
+    get_filename_component(_openatl_pinned_clang_bin
+      "${OPENATL_COMMAP_PINNED_CLANG_EXECUTABLE}" DIRECTORY)
+    set(_openatl_clang_cl_alias "${_openatl_pinned_clang_bin}/clang-cl.exe")
+    if(NOT EXISTS "${_openatl_clang_cl_alias}")
+      file(CREATE_LINK "${OPENATL_COMMAP_PINNED_CLANG_EXECUTABLE}"
+        "${_openatl_clang_cl_alias}" COPY_ON_ERROR RESULT _openatl_alias_result)
+      if(NOT _openatl_alias_result STREQUAL "0")
+        message(FATAL_ERROR "Unable to create pinned Clang cl-driver alias: ${_openatl_alias_result}")
+      endif()
+    endif()
+    file(SHA256 "${OPENATL_COMMAP_PINNED_CLANG_EXECUTABLE}" _openatl_clang_sha)
+    file(SHA256 "${_openatl_clang_cl_alias}" _openatl_clang_cl_sha)
+    if(NOT _openatl_clang_sha STREQUAL _openatl_clang_cl_sha)
+      message(FATAL_ERROR "MIDL clang-cl alias does not match pinned Clang SHA256")
+    endif()
+    message(STATUS "MIDL pinned clang-cl driver SHA256: ${_openatl_clang_sha}")
+    list(APPEND _openatl_midl_cpp_args /cpp_cmd "${_openatl_clang_cl_alias}")
   endif()
   set(_openatl_midl_include_flags)
   foreach(_atl_folder IN ITEMS um shared)
