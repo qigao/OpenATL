@@ -146,16 +146,29 @@ public:
     void __stdcall Document(IDispatch*, VARIANT* value) { if (value && value->vt == VT_BSTR) ++documents; }
     int documents = 0;
 };
+void BrowserPhase(int cycle, const char* phase) noexcept {
+    // Keep real IWebBrowser2 admission and its original 25s CTest budget.
+    // If a hosted Windows runner stalls inside a synchronous OLE call, log
+    // the exact phase before it rather than replacing the real control.
+    std::fprintf(stderr, "ACTIVEX_BROWSER cycle=%d phase=%s ticks=%llu\n",
+                 cycle, phase, static_cast<unsigned long long>(::GetTickCount64()));
+    std::fflush(stderr);
+}
 bool browser() {
+    BrowserPhase(-1, "start");
     ATL::CAtlModule module;
     for (int cycle = 0; cycle < 3; ++cycle) {
+        BrowserPhase(cycle, "begin");
         CHECK(module.GetLockCount() == 0);
         ATL::CAxWindow2 window;
         RECT rect{0, 0, 320, 200};
         CHECK(window.Create(nullptr, &rect, nullptr, WS_POPUP) != nullptr);
+        BrowserPhase(cycle, "window-created");
         ATL::CComPtr<IUnknown> raw;
         CHECK(ATL::AtlAxGetControl(window, &raw) == E_NOINTERFACE && !raw);
+        BrowserPhase(cycle, "creating-webbrowser-control");
         CHECK(window.CreateControlLic(L"about:blank") == S_OK);
+        BrowserPhase(cycle, "webbrowser-created");
         CHECK(module.GetLockCount() == 1);
         ATL::CComPtr<IWebBrowser2> browser;
         CHECK(window.QueryControl(&browser) == S_OK);
@@ -169,7 +182,9 @@ bool browser() {
         BrowserSink sink;
         CHECK(sink.DispEventAdvise(browser) == S_OK);
         ATL::CComVariant url(L"about:blank#openatl"), empty;
+        BrowserPhase(cycle, "navigating");
         CHECK(browser->Navigate2(&url, &empty, &empty, &empty, &empty) == S_OK);
+        BrowserPhase(cycle, "awaiting-document-complete");
         const ULONGLONG deadline = ::GetTickCount64() + 6000;
         while (!sink.documents && ::GetTickCount64() < deadline) {
             MSG msg{};
@@ -177,6 +192,7 @@ bool browser() {
             ::MsgWaitForMultipleObjects(0, nullptr, FALSE, 20, QS_ALLINPUT);
         }
         CHECK(sink.documents > 0);
+        BrowserPhase(cycle, "document-complete");
         ATL::CComPtr<IDispatch> document;
         CHECK(browser->get_Document(&document) == S_OK);
         ATL::CComQIPtr<IHTMLDocument2> html = document;
@@ -192,14 +208,18 @@ bool browser() {
         HWND handle = window;
         std::thread reader([&] { ATL::CComPtr<IUnknown> value; foreign = ATL::AtlAxGetControl(handle, &value); });
         reader.join(); CHECK(foreign == RPC_E_WRONG_THREAD);
+        BrowserPhase(cycle, "destroying-window");
         CHECK(window.DestroyWindow()); window.m_hWnd = nullptr;
+        BrowserPhase(cycle, "window-destroyed");
         ATL::CComPtr<IOleClientSite> site;
         CHECK(object->GetClientSite(&site) == S_OK && !site);
         raw.Release();
         CHECK(host->QueryControl(IID_IUnknown, reinterpret_cast<void**>(&raw)) == CO_E_OBJNOTCONNECTED && !raw);
         CHECK(module.GetLockCount() == 1);
+        BrowserPhase(cycle, "end");
     }
     CHECK(module.GetLockCount() == 0);
+    BrowserPhase(-1, "complete");
     return true;
 }
 }
