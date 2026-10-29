@@ -17,6 +17,7 @@ REQUIRED = {
     "atlcomcli.h": ("class CComPtr", "class CComVariant", "class CComBSTR"),
     "atlcom.h": ("class CComObjectRootEx", "class CComObject :",
                  "class CComCoClass", "#define BEGIN_COM_MAP",
+                 "#define COM_INTERFACE_ENTRY_CHAIN",
                  "#define OBJECT_ENTRY_AUTO", "#define DECLARE_NO_REGISTRY",
                  "#define DECLARE_REGISTRY_RESOURCEID"),
     "openatl/atl_module.h": ("class CAtlModule", "class CAtlExeModuleT",

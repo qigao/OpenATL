@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import subprocess
 import sys
 
@@ -61,6 +62,39 @@ CASES = (
     ("openatl_com_client", ("--uninitialized",), "ATL_COM_CLIENT_MODE_OK mode=uninitialized apartment=0 activation_denied=1"),
 )
 
+# The browser test itself retains all three genuine IWebBrowser2 activation /
+# navigation / retirement cycles. Permit ONLY its exact structured diagnostics;
+# all other native tests must continue to have completely empty stderr.
+_BROWSER_PHASES = (
+    "begin", "window-created", "creating-webbrowser-control",
+    "webbrowser-created", "navigating", "awaiting-document-complete",
+    "document-complete", "destroying-window", "window-destroyed", "end",
+)
+_BROWSER_LINE = re.compile(
+    r"^ACTIVEX_BROWSER cycle=(-?\d+) phase=([a-z-]+) ticks=(\d+)$"
+)
+
+def native_stderr_ok(name: str, args: tuple, stderr: str) -> bool:
+    if name != "openatl_activex" or args != ("browser",):
+        return not stderr.strip()
+    expected = [(-1, "start")]
+    for cycle in range(3):
+        expected.extend((cycle, phase) for phase in _BROWSER_PHASES)
+    expected.append((-1, "complete"))
+    lines = stderr.strip().splitlines()
+    if len(lines) != len(expected):
+        return False
+    previous_ticks = -1
+    for raw, (cycle, phase) in zip(lines, expected):
+        matched = _BROWSER_LINE.fullmatch(raw)
+        if not matched or (int(matched.group(1)), matched.group(2)) != (cycle, phase):
+            return False
+        ticks = int(matched.group(3))
+        if ticks < previous_ticks:
+            return False
+        previous_ticks = ticks
+    return True
+
 def main() -> int:
     if len(sys.argv) != 3 or sys.argv[2] not in ("llvm", "msvc"):
         raise SystemExit("Usage: python tests/wtl10/native_arm64.py ARTIFACT_DIR llvm|msvc")
@@ -91,7 +125,8 @@ def main() -> int:
                                   capture_output=True, text=True,
                                   errors="replace", timeout=20, check=False)
             last_line = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else ""
-            if proc.returncode != 0 or proc.stderr.strip() or last_line != expected:
+            if (proc.returncode != 0 or not native_stderr_ok(name, args, proc.stderr)
+                    or last_line != expected):
                 raise SystemExit(
                     f"Native ARM64 {name} {args} repeat {attempt} "
                     f"exit={proc.returncode} stdout={proc.stdout!r} "

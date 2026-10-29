@@ -59,6 +59,98 @@ public:
     }
     HRESULT STDMETHODCALLTYPE LockServer(BOOL) override { return E_NOTIMPL; }
 };
+
+inline constexpr CLSID chainClassId = {0xf9cb25d4, 0x2573, 0x4af4,
+    {0xa4, 0x2e, 0x1e, 0x0a, 0x21, 0xcc, 0x90, 0x20}};
+
+// Like Microsoft's COMMap CChainBase/COuter pattern, the derived object
+// exposes an outer interface, then chains an inherited base COM map.
+// Chaining must adjust MI pointers and never add an extra QI reference.
+class ChainBase : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>,
+                  public IPersist {
+public:
+    BEGIN_COM_MAP(ChainBase)
+        COM_INTERFACE_ENTRY(IPersist)
+    END_COM_MAP()
+    HRESULT STDMETHODCALLTYPE GetClassID(CLSID* output) override {
+        if (!output) return E_POINTER;
+        *output = chainClassId;
+        return S_OK;
+    }
+};
+class ChainOuter : public ChainBase, public IClassFactory {
+public:
+    BEGIN_COM_MAP(ChainOuter)
+        COM_INTERFACE_ENTRY(IClassFactory)
+        COM_INTERFACE_ENTRY_CHAIN(ChainBase)
+    END_COM_MAP()
+    HRESULT STDMETHODCALLTYPE CreateInstance(IUnknown*, REFIID,
+                                              void** output) override {
+        if (!output) return E_POINTER;
+        *output = nullptr;
+        return CLASS_E_CLASSNOTAVAILABLE;
+    }
+    HRESULT STDMETHODCALLTYPE LockServer(BOOL) override { return E_NOTIMPL; }
+};
+class ChainOnly : public ChainBase {
+public:
+    BEGIN_COM_MAP(ChainOnly)
+        COM_INTERFACE_ENTRY_CHAIN(ChainBase)
+    END_COM_MAP()
+};
+bool ComMapChain() {
+    {
+        ATL::CComObject<ChainOuter>* raw = nullptr;
+        CHECK(ATL::CComObject<ChainOuter>::CreateInstance(&raw) == S_OK);
+        CHECK(raw != nullptr && raw->AddRef() == 1);
+        ATL::CComPtr<IClassFactory> factory;
+        ATL::CComPtr<IPersist> inherited;
+        ATL::CComPtr<IUnknown> canonical, chainedIdentity;
+        CHECK(raw->QueryInterface(IID_IClassFactory,
+              reinterpret_cast<void**>(&factory.p)) == S_OK);
+        CHECK(raw->QueryInterface(IID_IPersist,
+              reinterpret_cast<void**>(&inherited.p)) == S_OK);
+        CHECK(inherited.p == static_cast<IPersist*>(
+              static_cast<ChainBase*>(raw)));
+        CHECK(static_cast<IUnknown*>(factory.p) !=
+              static_cast<IUnknown*>(inherited.p)); // Real MI adjustment.
+        CHECK(factory->QueryInterface(IID_IUnknown,
+              reinterpret_cast<void**>(&canonical.p)) == S_OK);
+        CHECK(inherited->QueryInterface(IID_IUnknown,
+              reinterpret_cast<void**>(&chainedIdentity.p)) == S_OK);
+        CHECK(canonical.p == chainedIdentity.p);
+        CHECK(canonical.p == raw->GetUnknown()); // Outer first entry wins.
+        CLSID clsid{};
+        CHECK(inherited->GetClassID(&clsid) == S_OK &&
+              IsEqualCLSID(clsid, chainClassId));
+        void* unsupported = reinterpret_cast<void*>(1);
+        CHECK(raw->QueryInterface(IID_IStream, &unsupported) == E_NOINTERFACE &&
+              !unsupported);
+        CHECK(raw->QueryInterface(IID_IPersist, nullptr) == E_POINTER);
+        chainedIdentity.Release();
+        canonical.Release();
+        inherited.Release();
+        factory.Release();
+        CHECK(raw->Release() == 0); // Chain did not AddRef twice.
+    }
+    {
+        ATL::CComObject<ChainOnly>* raw = nullptr;
+        CHECK(ATL::CComObject<ChainOnly>::CreateInstance(&raw) == S_OK);
+        CHECK(raw != nullptr && raw->AddRef() == 1);
+        ATL::CComPtr<IPersist> inherited;
+        CHECK(raw->QueryInterface(IID_IPersist,
+              reinterpret_cast<void**>(&inherited.p)) == S_OK);
+        ATL::CComPtr<IUnknown> identity;
+        CHECK(raw->QueryInterface(IID_IUnknown,
+              reinterpret_cast<void**>(&identity.p)) == S_OK);
+        CHECK(identity.p == static_cast<IUnknown*>(inherited.p) &&
+              identity.p == raw->GetUnknown());
+        identity.Release();
+        inherited.Release();
+        CHECK(raw->Release() == 0);
+    }
+    return true;
+}
 class Single : public ATL::CComObjectRootEx<ATL::CComSingleThreadModel>, public IPersist {
 public:
     BEGIN_COM_MAP(Single)
@@ -72,6 +164,7 @@ public:
 }
 
 bool RunAtlCompatibilityTests() {
+    CHECK(ComMapChain());
     using Object = ATL::CComObject<Compatible>;
     CHECK(Object::CreateInstance(static_cast<Object**>(nullptr)) == E_POINTER);
     Object* object = nullptr;
