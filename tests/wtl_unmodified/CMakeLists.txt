@@ -19,6 +19,8 @@ add_executable(openatl_wtl_unmodified_headers
 target_include_directories(openatl_wtl_unmodified_headers BEFORE PRIVATE
   "${_openatl_wtl_original_include}")
 target_link_libraries(openatl_wtl_unmodified_headers PRIVATE OpenATL::ATL)
+set_target_properties(openatl_wtl_unmodified_headers PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 target_compile_features(openatl_wtl_unmodified_headers PRIVATE cxx_std_17)
 if(MSVC)
   target_compile_options(openatl_wtl_unmodified_headers PRIVATE /W3 /EHsc)

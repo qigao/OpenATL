@@ -28,6 +28,13 @@ if workflow.count(CACHE) != 4 or workflow.count("setup-vcpkg-curl-cache.py") != 
     fail.append("WTL vcpkg setup must cover all four native/cross CI build jobs")
 if "wtltest-ui-only.patch" in workflow or "--preset" not in workflow:
     fail.append("official unchanged samples/native tests must remain configured")
+if (workflow.count("-DOPENATL_BUILD_WTL_UNMODIFIED=ON") != 5
+        or workflow.count("openatl_wtl_unmodified_headers") < 2):
+    fail.append("original WTL build must run on all CI compiler/RID profiles")
+native_script=(ROOT/"tests/wtl10/native_arm64.py").read_text("utf-8")
+if ('"openatl_wtl_unmodified_headers"' not in native_script or
+        "OPENATL_WTL_ORIGINAL_MAP_OK" not in native_script):
+    fail.append("native ARM64 must execute original WTL class factory/cookie contract")
 if fail:
     for item in fail: print("WTL_VCPKG_POLICY_FAIL "+item,file=sys.stderr)
     raise SystemExit(1)

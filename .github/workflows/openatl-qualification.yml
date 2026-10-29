@@ -114,7 +114,7 @@ jobs:
           "OPENATL_WINDOWS_SDK_BIN=$env:OPENATL_WINDOWS_SDK_BIN" |
             Out-File $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Windows SDK bin: $env:OPENATL_WINDOWS_SDK_BIN"
-          Run cmake @('--preset','llvm-i686')
+          Run cmake @('--preset','llvm-i686','-DOPENATL_BUILD_WTL_UNMODIFIED=ON')
           Run cmake @('--build','--preset','llvm-i686','--parallel','2')
           Run ctest @('--preset','llvm-i686','--repeat','until-fail:5')
       - name: CMake native x64 and cross ARM64, PE/resources, CTest x5
@@ -127,10 +127,10 @@ jobs:
           }
           $env:OPENATL_LLVM_MINGW_BIN=$env:OPENATL_LLVM_BIN
           $sample=(Resolve-Path tools/wtl10-test).Path
-          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_site','openatl_com_server_tests','openatl_activex','openatl_wtl10_sdi','openatl_official_guidgen')
+          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_site','openatl_wtl_unmodified_headers','openatl_com_server_tests','openatl_activex','openatl_wtl10_sdi','openatl_official_guidgen')
           foreach($arch in @('x86_64','aarch64')) {
             $build="build-llvm-$arch"
-            Run cmake @('--preset',"llvm-$arch","-DOPENATL_WTL_DEMO_DIR=$sample")
+            Run cmake @('--preset',"llvm-$arch","-DOPENATL_WTL_DEMO_DIR=$sample","-DOPENATL_BUILD_WTL_UNMODIFIED=ON")
             Run cmake @('--build','--preset',"llvm-$arch",'--parallel','2')
             $peCheck=@('tests/wtl10/verify_pe_mitigations.py',"$build/openatl_mitigation_runtime.exe",$arch,'--require-cfg')
             if($arch -eq 'x86_64') { $peCheck+='--require-cet' }
@@ -220,7 +220,7 @@ jobs:
             & $tool @argv
             if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
           }
-          Run cmake @('--preset','msvc-x86')
+          Run cmake @('--preset','msvc-x86','-DOPENATL_BUILD_WTL_UNMODIFIED=ON')
           Run cmake @('--build','--preset','msvc-x86','--parallel','2')
           $samples=@('Aero','Alpha','BmpView','GuidGen','MDIDocVw','MemDlg',
                      'MTPad','MTPad7','TabBrowser','Wizard97Test','WTLExplorer')
@@ -306,7 +306,7 @@ jobs:
           $machine=if($arch -eq 'x64'){'x86_64'}else{'aarch64'}
           $build="build-msvc-$arch"
           $sample=(Resolve-Path tools/wtl10-test).Path
-          $cmakeArgs=@('--preset',"msvc-$arch","-DOPENATL_WTL_DEMO_DIR=$sample")
+          $cmakeArgs=@('--preset',"msvc-$arch","-DOPENATL_WTL_DEMO_DIR=$sample","-DOPENATL_BUILD_WTL_UNMODIFIED=ON")
           if($arch -eq 'x64') {
             # GitHub's generic windows-2022 image has no guaranteed hardware
             # Shadow Stack. Preserve strict HSP proof in the dedicated
@@ -329,7 +329,7 @@ jobs:
           if(!$identity -or !(Select-String -Path $identity.FullName -Pattern 'CMAKE_CXX_COMPILER_ID "MSVC"' -Quiet)) {
             throw 'MSVC cl.exe was not the actual compiler'
           }
-          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_site','openatl_com_server_tests','openatl_activex','openatl_wtl10_sdi','openatl_official_guidgen','openatl_official_memdlg')
+          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_site','openatl_wtl_unmodified_headers','openatl_com_server_tests','openatl_activex','openatl_wtl10_sdi','openatl_official_guidgen','openatl_official_memdlg')
           foreach($name in @('console','dialog','window')) {
             Run python @('tests/wtl10/verify_pe_machine.py',"$build/openatl_ratl_$name.exe",$machine,'--require-resources')
           }
@@ -373,17 +373,6 @@ jobs:
           Run cmake @('--preset','msvc-salts',"-DOPENATL_WTL_DEMO_DIR=$sample")
           Run cmake @('--build','--preset','msvc-salts','--parallel','2')
           Run ctest @('--preset','msvc-salts','--repeat','until-fail:5')
-      - name: Unmodified vcpkg WTL headers on OpenATL (strict feature-parity gate)
-        if: matrix.target == 'x64'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference='Stop'
-          cmake --preset msvc-x64 -DOPENATL_BUILD_WTL_UNMODIFIED=ON
-          if($LASTEXITCODE -ne 0) { throw 'unmodified WTL configure failed' }
-          cmake --build --preset msvc-x64 --target openatl_wtl_unmodified_headers --parallel 2
-          if($LASTEXITCODE -ne 0) { throw 'original WTL public headers are not yet compatible with OpenATL' }
-          ctest --preset msvc-x64 -R '^openatl.wtl_unmodified_no_com$' --output-on-failure
-          if($LASTEXITCODE -ne 0) { throw 'original WTL native runtime contract failed' }
       - uses: actions/upload-artifact@v4
         if: matrix.target == 'arm64'
         with:
@@ -497,7 +486,7 @@ jobs:
           set -euo pipefail
           for arch in x86_64 aarch64; do
             build="build-llvm-$arch"
-            cmake --preset "llvm-$arch" "-DOPENATL_WTL_DEMO_DIR=$PWD/tools/wtl10-test"
+            cmake --preset "llvm-$arch" "-DOPENATL_WTL_DEMO_DIR=$PWD/tools/wtl10-test" "-DOPENATL_BUILD_WTL_UNMODIFIED=ON"
             cmake --build --preset "llvm-$arch" --parallel 2
             if [ "$arch" = x86_64 ]; then
               python3 tests/wtl10/verify_pe_mitigations.py "$build/openatl_mitigation_runtime.exe" "$arch" --require-cfg --require-cet
@@ -505,7 +494,7 @@ jobs:
             else
               python3 tests/wtl10/verify_pe_mitigations.py "$build/openatl_mitigation_runtime.exe" "$arch" --require-cfg
             fi
-            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_unicode openatl_unicode_utf8 openatl_atl_extensions openatl_atl_mapping openatl_atl_image openatl_thunk_fault openatl_mitigation_runtime openatl_unload_runner openatl_unload_native openatl_com_client openatl_com_server_tests openatl_activex openatl_wtl10_sdi openatl_official_guidgen openatl_ratl_console openatl_ratl_dialog openatl_ratl_window; do
+            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_unicode openatl_unicode_utf8 openatl_atl_extensions openatl_atl_mapping openatl_atl_image openatl_thunk_fault openatl_mitigation_runtime openatl_unload_runner openatl_unload_native openatl_com_client openatl_com_site openatl_wtl_unmodified_headers openatl_com_server_tests openatl_activex openatl_wtl10_sdi openatl_official_guidgen openatl_ratl_console openatl_ratl_dialog openatl_ratl_window; do
               if [ "$target" = openatl_gui_runtime ] || [ "$target" = openatl_unicode_utf8 ] || [ "$target" = openatl_wtl10_sdi ] || [ "$target" = openatl_official_guidgen ] || [[ "$target" == openatl_ratl_* ]]; then
                 python3 tests/wtl10/verify_pe_machine.py "$build/$target.exe" "$arch" --require-resources
               else

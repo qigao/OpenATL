@@ -36,12 +36,16 @@ an independent mandatory regression suite.
   explicit functionality gates.
 * Basic WTL UI must not silently initialize a COM apartment.
 
-The initial direct-source CI job is intentionally **fail-closed** until
-these contracts are implemented. Red from missing public APIs is useful
-evidence, not permission to restore the feature-deleting WTL adapter.
-The master `OpenATL::ATL` consumer target remains on its separately
-qualified adapter route until this direct source gate and the full
-native MSVC/llvm-mingw sample suite are GREEN on one exact HEAD.
+The direct-source gate runs in the **normal full source CI** for
+MSVC x86/x64/ARM64 and llvm-mingw x86/x64/ARM64, with Linux cross-build
+qualification and SHA256/PE-verified, **real native Windows ARM64 execution**.
+It is fail closed, never `continue-on-error`. Native CTest executes
+`openatl.wtl_unmodified_no_com` five times with the remaining official suite.
+It covers real legacy class-factory registration, COM activation, wrong-thread
+and duplicate-registration rejection, cookie rollback and COM apartment ownership.
+The production `OpenATL::ATL` target remains on its qualified adapted path
+until original WTL COM server/registration, PrintDlgEx and registry functionality
+is fully qualified on one exact HEAD.
 
 ## Reproduce
 
