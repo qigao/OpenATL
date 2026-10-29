@@ -5,6 +5,18 @@ from pathlib import Path
 import subprocess
 import sys
 ROOT=Path(__file__).resolve().parents[1]
+def wfOriginalArm64GateMissing(text):
+    for marker in (
+        "openatl-llvm-arm64-original",
+        "openatl-msvc-arm64-original",
+        "Native ARM64 WTL10 full-original llvm-mingw CTest equivalents x5",
+        "Native ARM64 WTL10 full-original MSVC CTest equivalents x5",
+        "OPENATL_WTL_ORIGINAL_ARM64_LLVM_BUILD_OK",
+        "OPENATL_WTL_ORIGINAL_ARM64_MSVC_BUILD_OK",
+    ):
+        if marker not in text:
+            return True
+    return False
 SHA="086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309"
 CACHE="8359cdbdf25c1f58cfc7230cc6318dc2fdb804fb"
 manifest=json.loads((ROOT/"vcpkg.json").read_text("utf-8"))
@@ -90,6 +102,12 @@ native_script=(ROOT/"tests/wtl10/native_arm64.py").read_text("utf-8")
 if ('"openatl_wtl_unmodified_headers"' not in native_script or
         "OPENATL_WTL_ORIGINAL_MAP_OK" not in native_script):
     fail.append("native ARM64 must execute original WTL class factory/cookie contract")
+original_manifest=ROOT/"tests/wtl10/original_arm64_manifest.py"
+if (not original_manifest.is_file()
+        or 'OPENATL_WTL_FULL_ORIGINAL:BOOL=ON' not in original_manifest.read_text("utf-8")
+        or 'OPENATL_WTL_ORIGINAL_ARM64_PE_OK' not in original_manifest.read_text("utf-8")
+        or wfOriginalArm64GateMissing(workflow)):
+    fail.append("independent original ARM64 PE/SHA artifacts and 5x native behavior required")
 direct = (ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")
 if ("OriginalPrintDialogCallbackNoCom" not in direct or
         "IPrintDialogCallback" not in direct or

@@ -75,6 +75,18 @@ cross-compiled native artifacts retain their existing separate hash and
 runtime admissions; an ARM64 *full-original* route is still a
 subsequent explicit parity gate.
 
+**Original ARM64 native proof (separate from adapted):** The full-original
+`OPENATL_WTL_FULL_ORIGINAL=ON` mode now builds independent Windows
+ARM64 output directories and artifacts for both MSVC and llvm-mingw.
+`tests/wtl10/original_arm64_manifest.py` fails unless the exact CMake
+cache confirms original WTL mode and no adapted `wtl/include/atlapp.h`
+exists, then verifies every expected ARM64 PE/resources and produces
+a SHA256 manifest. Separate Windows ARM64 artifacts are downloaded and
+the **existing real native ARM64 application/COM/GUI tests are executed
+five times on BOTH sets**. Neither original nor adapted SHA manifest
+can replace the other; a missing binary, unverified native test or
+non-ARM64 runner fails the corresponding exact-head CI.
+
 ## First direct-source acceptance
 
 * Restore `ATL::CComModule` and its correct class-object/lock/registry

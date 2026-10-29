@@ -205,6 +205,37 @@ jobs:
             build-llvm-aarch64/manifest.json
           if-no-files-found: error
           retention-days: 7
+      - name: Compile independent zero-adapter WTL10 llvm-mingw ARM64 and PE manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Run([string]$tool,[string[]]$argv) {
+            & $tool @argv
+            if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
+          }
+          $env:OPENATL_LLVM_MINGW_BIN=$env:OPENATL_LLVM_BIN
+          $demo=(Resolve-Path tools/wtl10-test).Path
+          Run cmake @('--preset','llvm-aarch64',
+                      '-B','build-llvm-aarch64-original',
+                      "-DOPENATL_WTL_DEMO_DIR=$demo",
+                      '-DOPENATL_WTL_FULL_ORIGINAL=ON',
+                      '-DOPENATL_BUILD_WTL_UNMODIFIED=ON')
+          Run cmake @('--build','build-llvm-aarch64-original','--parallel','2')
+          Run python @('tests/wtl10/original_arm64_manifest.py',
+                      'build-llvm-aarch64-original','llvm')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openatl-llvm-arm64-original
+          path: |
+            build-llvm-aarch64-original/*.exe
+            !build-llvm-aarch64-original/openatl_ratl_*.exe
+            build-llvm-aarch64-original/*.dll
+            build-llvm-aarch64-original/manifest.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Original WTL LLVM ARM64 qualification artifact created
+        shell: pwsh
+        run: Write-Host 'OPENATL_WTL_ORIGINAL_ARM64_LLVM_BUILD_OK source=vcpkg adapter=0 manifest=1'
 
   msvc-win32-official:
     name: MSVC x86 complete official WTL10 suite and native CTest
@@ -451,12 +482,45 @@ jobs:
             build-msvc-arm64/manifest.json
           if-no-files-found: error
           retention-days: 7
+      - name: Compile independent zero-adapter WTL10 MSVC ARM64 and PE manifest
+        if: matrix.target == 'arm64'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Run([string]$tool,[string[]]$argv) {
+            & $tool @argv
+            if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
+          }
+          $demo=(Resolve-Path tools/wtl10-test).Path
+          Run cmake @('--preset','msvc-arm64',
+                      '-B','build-msvc-arm64-original',
+                      "-DOPENATL_WTL_DEMO_DIR=$demo",
+                      '-DOPENATL_WTL_FULL_ORIGINAL=ON',
+                      '-DOPENATL_BUILD_WTL_UNMODIFIED=ON')
+          Run cmake @('--build','build-msvc-arm64-original','--parallel','2')
+          Run python @('tests/wtl10/original_arm64_manifest.py',
+                      'build-msvc-arm64-original','msvc')
+      - uses: actions/upload-artifact@v4
+        if: matrix.target == 'arm64'
+        with:
+          name: openatl-msvc-arm64-original
+          path: |
+            build-msvc-arm64-original/*.exe
+            !build-msvc-arm64-original/openatl_ratl_*.exe
+            build-msvc-arm64-original/*.dll
+            build-msvc-arm64-original/manifest.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Original WTL MSVC ARM64 qualification artifact created
+        if: matrix.target == 'arm64'
+        shell: pwsh
+        run: Write-Host 'OPENATL_WTL_ORIGINAL_ARM64_MSVC_BUILD_OK source=vcpkg adapter=0 manifest=1'
 
   windows-arm64-llvm:
     name: Real Windows ARM64 llvm-mingw CTest equivalents
     needs: windows-llvm
     runs-on: windows-11-vs2026-arm
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -465,12 +529,18 @@ jobs:
           path: llvm-arm64
       - name: Verify SHA256, ARM64 PE, real SDI, CET and unload tests x5
         run: python tests/wtl10/native_arm64.py llvm-arm64 llvm
+      - uses: actions/download-artifact@v4
+        with:
+          name: openatl-llvm-arm64-original
+          path: llvm-arm64-original
+      - name: Native ARM64 WTL10 full-original llvm-mingw CTest equivalents x5
+        run: python tests/wtl10/native_arm64.py llvm-arm64-original llvm
 
   windows-arm64-msvc:
     name: Real Windows ARM64 MSVC CTest equivalents
     needs: msvc-windows
     runs-on: windows-11-vs2026-arm
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -479,6 +549,12 @@ jobs:
           path: msvc-arm64
       - name: Verify SHA256, ARM64 PE, real SDI, CET and unload tests x5
         run: python tests/wtl10/native_arm64.py msvc-arm64 msvc
+      - uses: actions/download-artifact@v4
+        with:
+          name: openatl-msvc-arm64-original
+          path: msvc-arm64-original
+      - name: Native ARM64 WTL10 full-original MSVC CTest equivalents x5
+        run: python tests/wtl10/native_arm64.py msvc-arm64-original msvc
 
   linux-macos-cross:
     name: ${{ matrix.host }} Windows x64/ARM64 cross CMake
