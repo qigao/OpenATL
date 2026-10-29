@@ -124,9 +124,12 @@ concurrent external registry writes; use the strict owner-verified
 `RegisterClasses`/`UnregisterClasses` APIs when a shared descriptor
 batch and complete preflight are needed.
 
-**Still missing:** resource-driven `DECLARE_REGISTRY_RESOURCEID`/RGS execution,
-ATL's complete class registry/type-library APIs, and broad Microsoft ATL
-sample compatibility. The callbacks are not an RGS interpreter.
+**Further work:** the `DECLARE_REGISTRY_RESOURCEID(id)` path now loads the
+actual Windows `REGISTRY` resource and delegates to the existing bounded
+RGS parser/owner-verified executor through a scoped application policy.
+Full ATL RGS variants, automatic installation/elevation, complete TypeLib
+registration, and broad unchanged Microsoft ATL project compatibility
+remain unqualified.
 
 ## RGS grammar admission — read-only, source-owned
 
@@ -152,8 +155,9 @@ and `NoRemove` are AST directives until an application separately calls
 the opt-in `RegisterRgs` / `UnregisterRgs` methods with an opened
 caller-owned Classes root. The parser never opens HKCR/HKLM,
 recursively deletes keys, loads RGS DLL resources or initializes COM,
-and the executor does not claim `DECLARE_REGISTRY_RESOURCEID` or
-`CAtlRegistrar` compatibility. Subsequent native registrar work must
+and resource-driven `DECLARE_REGISTRY_RESOURCEID` is supported only for the
+bounded source-owned RGS subset under explicit installer policy, not arbitrary
+`CAtlRegistrar` compatibility. Subsequent wider registrar work must
 accept an **explicit caller-owned root** and reject foreign-key/value
 changes rather than treating `ForceRemove` as unqualified authorization
 to delete another program's data.
@@ -217,9 +221,52 @@ not used in production registration.
 This is **not an atomic Windows registry transaction**, and callers must
 exclude concurrent installer writers. No COM initialization or registry
 operation occurs during RGS parsing, `DllMain`, or object-map discovery.
-This still does **not** implement `DECLARE_REGISTRY_RESOURCEID` resource
-loading, automatic RGS execution from COM class declarations, actual
-TypeLib registration, or the full Microsoft ATL registrar grammar.
+The bounded executor can now be invoked from `DECLARE_REGISTRY_RESOURCEID`
+using the separate mandatory `ScopedRgsRegistrationContext` installed
+inside a synchronous DLL registration export. This does not register a
+TypeLib object or implement the complete Microsoft ATL registrar grammar.
+
+## Genuine `REGISTRY` resource-ID installation
+
+`openatl/rgs_resource.h` adds `ReadRgsResource(HMODULE image, unsigned id,
+RGS::Document&)` and `UpdateRegistryResource(id, BOOL)`. The first is a
+**read-only** loader using exactly `FindResourceW` with resource type
+`REGISTRY`, `SizeofResource`, `LoadResource`, and `LockResource`.
+It handles strict UTF-8 (including BOM) and BOM-declared UTF-16 LE/BE,
+rejecting malformed encoding, embedded NULs and over-budget resources before
+parsing. Failed loads leave an existing output document unchanged. There
+is **no** fallback to another resource type, file path or RGS engine.
+
+`DECLARE_REGISTRY_RESOURCEID(IDR_X)` in `atlcom.h` provides the ATL
+class's `static UpdateRegistry(BOOL)` hook, reusing the same immutable
+`OBJECT_ENTRY_AUTO` class list and `CAtlDllModuleT` registration ordering
+from #29. It requires an active `ScopedRgsRegistrationContext` created by
+the **application's own registration export** with an opened HKEY,
+the actual HMODULE containing the `REGISTRY` resource and an explicit
+owner tag. The scope retrieves and validates the module's absolute DLL path;
+its borrowed HKEY/HMODULE and owned strings exist only for that synchronous
+invocation on the same module and thread. Missing/invalid/nested scopes,
+wrong resource type, unknown ID and invalid resource contents fail with an
+HRESULT. Class-factory lookup and UI windows need no such scope or COM init.
+
+The native `openatl_com_server_fixture.dll` now embeds two actual
+`REGISTRY` resources with class-matching CLSIDs, plus two byte-identical
+Microsoft `Chain.rgs`/`Outer.rgs` resources in a Windows .rc file. Its
+two ATL classes use `DECLARE_REGISTRY_RESOURCEID`, not custom
+`UpdateRegistry` code or synthetic strings. The DLL exports explicitly
+open `HKCU\\Software\\Classes`, construct the scoped context inside the
+same DLL, and call the existing ATL module registrar. The STA/MTA client
+tests verify both registered classes, ProgID lookup, a deliberately foreign
+auxiliary ProgID conflict and cleanup; separate tests load the original
+Microsoft REGISTRY resources from this real DLL and exercise a GUID-isolated
+HKCU root.
+
+This is a restricted source-compatible resource-ID API, **not** a general
+RGS interpreter or automatic Registry/TypeLib installer. It preserves
+the existing owner markers and nonrecursive deletion semantics and does not
+authorize blind `ForceRemove` replacement. The caller must serialize
+installer writes; no actions run under DllMain. Original Microsoft ATL
+sample builds remain to be qualified in #22.
 
 ## Integration and validation
 

@@ -17,7 +17,8 @@ REQUIRED = {
     "atlcomcli.h": ("class CComPtr", "class CComVariant", "class CComBSTR"),
     "atlcom.h": ("class CComObjectRootEx", "class CComObject :",
                  "class CComCoClass", "#define BEGIN_COM_MAP",
-                 "#define OBJECT_ENTRY_AUTO", "#define DECLARE_NO_REGISTRY"),
+                 "#define OBJECT_ENTRY_AUTO", "#define DECLARE_NO_REGISTRY",
+                 "#define DECLARE_REGISTRY_RESOURCEID"),
     "openatl/atl_module.h": ("class CAtlModule", "class CAtlExeModuleT",
                              "class ATL_NO_VTABLE CAtlDllModuleT",
                              "struct AutoObjectEntry", "autoObjectEntries",
@@ -32,6 +33,9 @@ REQUIRED = {
     "openatl/rgs_registration.h": ("RegisterRgs(", "UnregisterRgs(",
                                    "PreflightNew", "registration_detail::remove",
                                    "OpenATL.COMOwner", "NoRemove"),
+    "openatl/rgs_resource.h": ("ScopedRgsRegistrationContext",
+                                "FindResourceW", "ReadRgsResource(",
+                                "UpdateRegistryResource(", "MB_ERR_INVALID_CHARS"),
     "atlreg.h": ("class CRegKey", "RegGetValue", "RegCreateKeyEx"),
 }
 
