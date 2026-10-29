@@ -40,6 +40,9 @@ if ("OriginalPrintDialogCallbackNoCom" not in direct or
         "IPrintDialogCallback" not in direct or
         "IObjectWithSite" not in direct):
     fail.append("real original WTL PrintDlgEx/site behavior must be verified")
+if ("server_monitor.cpp" not in (ROOT/"tests/wtl_unmodified/CMakeLists.txt").read_text("utf-8")
+        or "RunServerMonitorTests()" not in (ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")):
+    fail.append("original WTL server monitor bounded worker join must remain native test")
 if fail:
     for item in fail: print("WTL_VCPKG_POLICY_FAIL "+item,file=sys.stderr)
     raise SystemExit(1)

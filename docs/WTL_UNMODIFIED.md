@@ -38,6 +38,30 @@ an independent mandatory regression suite.
   functionality gates.
 * Basic WTL UI must not silently initialize a COM apartment.
 
+## Original CServerAppModule shutdown monitor — bounded evidence
+
+The unchanged WTL10 `CServerAppModule::StartMonitor()` launches a detached
+monitor worker then immediately discards the thread handle. It provides
+**no join proof**, and `m_bActivity` is a non-atomic field shared with
+`Unlock()`. Therefore merely compiling or calling `StartMonitor()` is not
+evidence of safe retirement. This path stays **UNQUALIFIED**, not silently
+replaced with a legacy fallback or counted as passing.
+
+The native `server_monitor.cpp` test instead launches **the original**
+`CServerAppModule::MonitorProc` with a retained Windows thread handle,
+using `CREATE_SUSPENDED`, one original shutdown event, and an explicit,
+bounded join *before* `Term()`. The owner thread creates a message queue
+before the monitor can post `WM_QUIT`. Cases cover idle exit, a held
+module lock blocking retirement, explicit owner-controlled lock release,
+shutdown event disposal and the original `WM_QUIT` post. The owner only
+writes `m_bActivity` before spawning the monitor; it intentionally uses
+`CComModule::Unlock` plus an explicit event signal to avoid racing the
+original non-atomic `CServerAppModule::Unlock`. A stuck worker fails
+closed rather than destroying live memory. This test qualifies a
+**quiescent, explicitly joined original monitor path**, not all original
+`StartMonitor` and concurrent `Unlock` schedules.
+
+
 The direct-source gate runs in the **normal full source CI** for
 MSVC x86/x64/ARM64 and llvm-mingw x86/x64/ARM64, with Linux cross-build
 qualification and SHA256/PE-verified, **real native Windows ARM64 execution**.

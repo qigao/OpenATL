@@ -76,6 +76,7 @@ bool OriginalPrintDialogCallbackNoCom()
     return ::CoGetApartmentType(&apartment, &qualifier) == CO_E_NOTINITIALIZED;
 }
 
+bool RunServerMonitorTests();
 bool RunLegacyObjectMapTests();
 
 int main()
@@ -103,6 +104,10 @@ int main()
     }
     // Real original WTL COM callback/site ownership, without showing UI.
     if (!OriginalPrintDialogCallbackNoCom()) return 10;
+    // Original WTL shutdown monitor, using a retained worker thread handle
+    // and a bounded join. The original detached StartMonitor remains an
+    // independent unqualified admission gate.
+    if (!RunServerMonitorTests()) return 11;
     // Real original ATL object-map registration, COM class activation,
     // wrong-thread rejection, reverse rollback and factory retirement.
     return RunLegacyObjectMapTests() ? 0 : 9;
