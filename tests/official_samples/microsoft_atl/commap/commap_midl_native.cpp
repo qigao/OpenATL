@@ -34,6 +34,27 @@ bool ToWide(const char* input, std::wstring& path) {
     return ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
         input, static_cast<int>(bytes), &path[0], count) == count;
 }
+void ReportTypeLibraryFailure(ITypeLib* library, const char* requested,
+                              HRESULT failure) noexcept {
+    std::fprintf(stderr, "MICROSOFT_COMMAP_TYPELIB_LOOKUP requested=%s hr=0x%08lx count=%u\\n",
+        requested, static_cast<unsigned long>(failure),
+        library ? library->GetTypeInfoCount() : 0);
+    if (!library) return;
+    for (UINT i = 0; i < library->GetTypeInfoCount(); ++i) {
+        ATL::CComPtr<ITypeInfo> type;
+        if (FAILED(library->GetTypeInfo(i, &type.p)) || !type.p) continue;
+        TYPEATTR* attr = nullptr;
+        if (FAILED(type->GetTypeAttr(&attr)) || !attr) continue;
+        std::fprintf(stderr,
+            "MICROSOFT_COMMAP_TYPE index=%u guid=%08lx-%04x-%04x kind=%u funcs=%u\\n",
+            i, static_cast<unsigned long>(attr->guid.Data1),
+            attr->guid.Data2, attr->guid.Data3,
+            static_cast<unsigned>(attr->typekind),
+            static_cast<unsigned>(attr->cFuncs));
+        type->ReleaseTypeAttr(attr);
+    }
+}
+
 bool ValidateOriginal(ITypeInfo* info, REFIID originalIID,
                       LPCOLESTR expectedName) {
     ORIGINAL_MIDL_CHECK(info && expectedName);
@@ -70,10 +91,16 @@ bool RunOriginalCommapTypeLibTest(const char* file) {
         ORIGINAL_MIDL_CHECK(library->GetTypeInfoCount() >= 4);
         ATL::CComTypeInfoHolder holder;
         ATL::CComPtr<ITypeInfo> chain, outer;
-        ORIGINAL_MIDL_CHECK(holder.GetTIFromFile(path, &IID_IChain,
-            &LIBID_COMMAPLib, 1, 0, &chain.p) == S_OK && chain.p);
-        ORIGINAL_MIDL_CHECK(holder.GetTIFromFile(path, &IID_IOuter,
-            &LIBID_COMMAPLib, 1, 0, &outer.p) == S_OK && outer.p);
+        const HRESULT chainStatus = holder.GetTIFromFile(
+            path, &IID_IChain, &LIBID_COMMAPLib, 1, 0, &chain.p);
+        if (FAILED(chainStatus) || !chain.p)
+            ReportTypeLibraryFailure(library.p, "IID_IChain", chainStatus);
+        ORIGINAL_MIDL_CHECK(chainStatus == S_OK && chain.p);
+        const HRESULT outerStatus = holder.GetTIFromFile(
+            path, &IID_IOuter, &LIBID_COMMAPLib, 1, 0, &outer.p);
+        if (FAILED(outerStatus) || !outer.p)
+            ReportTypeLibraryFailure(library.p, "IID_IOuter", outerStatus);
+        ORIGINAL_MIDL_CHECK(outerStatus == S_OK && outer.p);
         ORIGINAL_MIDL_CHECK(ValidateOriginal(chain.p, IID_IChain, L"Name2"));
         ORIGINAL_MIDL_CHECK(ValidateOriginal(outer.p, IID_IOuter, L"GetName"));
         chain.Release(); outer.Release();
