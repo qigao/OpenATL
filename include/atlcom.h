@@ -248,6 +248,19 @@ public: \
             static_cast<unsigned>(id), install); \
     }
 
+// Original ATL module LIBID declaration. CAtlModuleT<T> calls the derived
+// class's static InitLibId on construction; the source-compatible module
+// identity is then available to defaulted ATL IDispatchImpl<T> templates.
+// No type-library registry operation or implicit global COM initialization.
+#define DECLARE_LIBID(libid) \
+public: \
+    static void InitLibId() noexcept { ATL::CAtlModule::m_libid = (libid); } \
+    static HRESULT WINAPI GetLibID(GUID* output) noexcept { \
+        if (!output) return E_POINTER; \
+        *output = (libid); \
+        return S_OK; \
+    }
+
 // ATL's deliberate declaration that this class performs no persistent
 // registration. This is opt-in, unlike a missing/unsupported registrar.
 #define DECLARE_NO_REGISTRY() \

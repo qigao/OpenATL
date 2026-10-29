@@ -5,6 +5,8 @@
 #include <cstdio>
 #include <oleauto.h>
 
+bool RunAtlFileTypeLibTests();
+
 #define DISPATCH_CHECK(x) do { if (!(x)) { \
     std::fprintf(stderr,"ATL_DISPATCH_FAIL line=%d condition=%s\n", \
         __LINE__,#x); return false; } } while (0)
@@ -170,6 +172,7 @@ bool RunAtlDispatchTests() {
         DISPATCH_CHECK(scope.status == S_OK);
         DISPATCH_CHECK(TestRealOleTypeInfo());
         DISPATCH_CHECK(TestMissingTypeLibrary());
+        DISPATCH_CHECK(RunAtlFileTypeLibTests());
     }
     DISPATCH_CHECK(::CoGetContextToken(&token) == CO_E_NOTINITIALIZED);
     return true;

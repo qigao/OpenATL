@@ -1,6 +1,11 @@
 # ATL application modules — current implementation and server roadmap
 
 `CAtlModule` / `CAtlModuleT<T>` own module locks and termination callbacks;
+`DECLARE_LIBID(LIBID_...)` supplies the original ATL `InitLibId()`
+hook. The CRTP module constructor initializes the static per-image
+`CAtlModule::m_libid` metadata; this neither initializes COM nor writes
+type-library registration. The native source test validates GUID identity.
+
 `CAtlExeModuleT<T>` additionally owns a COM initialization on its construction
 thread and optional explicit class-factory registrations.
 `CAtlDllModuleT<T>` now supports the real DLL class-factory/unload exports
