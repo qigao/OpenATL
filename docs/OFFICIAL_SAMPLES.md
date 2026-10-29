@@ -119,6 +119,36 @@ before claiming these remote/native ARM64 results.
 The table above records the expanded compilation coverage. Runtime coverage
 in this section remains limited to GuidGen and MemDlg.
 
+## Pinned original Microsoft COMMap MIDL milestone
+
+The repository now retains the **unchanged** `General/commap/COMMap.idl`
+from `microsoft/VCSamples@9e1d4475555b76a17a3568369867f1d7b6cc6126`,
+with Git blob SHA `dcf19ff69001c6f2f242d15c917a5598b03d70ba`
+checked at CMake configure time on **all hosts**. The file is under
+`tests/official_samples/microsoft_atl/commap/COMMap.idl`, with the
+upstream MIT license and explicit Git checkout byte-preservation policy.
+
+On **actual Windows** hosts, the selected Windows SDK `midl.exe` is a
+required build tool. It generates `COMMap.h`, `COMMap_i.c`,
+and a true binary `COMMap.tlb` from this exact original IDL.
+The GUID implementation and generated header compile into the native
+COM test executable under both MSVC and llvm-mingw against repository-owned
+OpenATL headers. CTest loads the MIDL-generated TypeLib using
+`LoadTypeLibEx(REGKIND_NONE)`, verifies the real COMMap LIBID/version
+and original `IChain`/`IOuter` IID/member-name DISPIDs.
+There is no registry installation or `regsvr32` post-build action.
+
+Linux/macOS cross-host builds cannot run Windows SDK MIDL; they verify
+original source provenance and remain required for existing Windows PE
+cross-build tests. This does **not** qualify MIDL on Linux/macOS.
+
+This qualifies original **IDL code generation and binary TypeLib loading**,
+not original COMMap project compilation/link or native class activation.
+The unchanged COMMap still needs aggregation, cached tear-offs, automatic
+aggregation, TypeLib registration, broader `IDispatchImpl` and
+generated `aggreg/aggreg.idl`. All 37 original pure-ATL project
+entries remain **not-qualified**.
+
 ## Original ATL RGS grammar fixtures (not sample-build evidence)
 
 The exact, unchanged Chain/Outer, ArrayManager and MapCollection `.rgs`

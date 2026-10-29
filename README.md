@@ -59,7 +59,10 @@ binary TypeLib via `LoadTypeLibEx(REGKIND_NONE)` without any registry
 writes, validating GUID/version/IID, and `DECLARE_LIBID` initializes real
 ATL module LIBID metadata. Image-embedded TypeLib, installed TypeLib
 acceptance, full Automation semantics, aggregation and original Microsoft
-COMMap builds remain separate gates. `CComModule`
+COMMap DLL builds remain separate gates. Native Windows qualification also
+generates and reads a genuine TypeLib from the **unchanged original Microsoft
+COMMap.idl** through SDK MIDL. This is original-IDL input admission,
+not full project source compatibility. `CComModule`
 is currently absent and will be evaluated against actual ATL consumers. Windowed ActiveX
 containment and typed Automation event sinks are described in
 [the hosting contract](docs/ACTIVEX_HOST.md); resource-based ActiveX dialogs
