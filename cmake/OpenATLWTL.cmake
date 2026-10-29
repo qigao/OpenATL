@@ -1,6 +1,6 @@
-# Only the verified vcpkg WTL10 package is a source provider.
-# OpenATL supplies ATL. The strict qualification-only full-source mode
-# bypasses PrepareWtl.cmake ENTIRELY, for all targets/samples.
+# Canonical source: the single SHA512-pinned vcpkg-cache WTL10 package.
+# OpenATL supplies ATL/COM; all targets include the installed WTL directly.
+# No source copying, local rewrite, alternate provider or fallback exists.
 option(OPENATL_WTL_FULL_ORIGINAL
   "Use only SHA512-verified original vcpkg WTL10 headers; no local adapter" ON)
 function(_openatl_prepare_wtl)
