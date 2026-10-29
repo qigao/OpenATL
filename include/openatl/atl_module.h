@@ -95,8 +95,8 @@ private:
 // Original ATL object-map ABI. The source table remains owned by the caller;
 // this module owns only the COM factory references and registration cookies.
 // Null pclsid terminates the table; counts are bounded before any callback.
-using _ATL_CREATORFUNC = HRESULT (WINAPI)(void*, REFIID, LPVOID*);
-using _ATL_DESCRIPTIONFUNC = LPCTSTR (WINAPI)();
+typedef HRESULT (WINAPI _ATL_CREATORFUNC)(void*, REFIID, LPVOID*);
+typedef LPCTSTR (WINAPI _ATL_DESCRIPTIONFUNC)();
 struct _ATL_CATMAP_ENTRY;
 using _ATL_CATMAPFUNC = const _ATL_CATMAP_ENTRY* (*)();
 
