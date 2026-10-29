@@ -38,6 +38,20 @@ an independent mandatory regression suite.
   functionality gates.
 * Basic WTL UI must not silently initialize a COM apartment.
 
+## Original WTL10 registry-property behavior (HKCU sandbox)
+
+The original vcpkg `atlmisc.h` includes `WTL::CRegProperty` and
+`CRegPropertyImpl<T>`; the existing adapted production headers still
+delete that section. `reg_property.cpp` is compiled ONLY against the
+original installed WTL source and calls `CRegProperty::WriteOne/ReadOne`
+for DWORD, bool and counted Unicode text. Every native test round creates
+a GUID-unique registry key owned under HKCU, tests missing/wrong-type
+values, verifies Win32 `REG_DWORD` payloads and explicitly deletes the
+owned key. No HKCR/HKLM writes and no implicit COM apartment.
+The full `CRegPropertyImpl<T>` macro/property-map and binary/font
+serialization remain separate unqualified gates, even when this basic
+native property roundtrip passes.
+
 ## Original CServerAppModule shutdown monitor — bounded evidence
 
 The unchanged WTL10 `CServerAppModule::StartMonitor()` launches a detached

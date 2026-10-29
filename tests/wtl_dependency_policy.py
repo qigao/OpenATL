@@ -43,6 +43,9 @@ if ("OriginalPrintDialogCallbackNoCom" not in direct or
 if ("server_monitor.cpp" not in (ROOT/"tests/wtl_unmodified/CMakeLists.txt").read_text("utf-8")
         or "RunServerMonitorTests()" not in (ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")):
     fail.append("original WTL server monitor bounded worker join must remain native test")
+if ("reg_property.cpp" not in (ROOT/"tests/wtl_unmodified/CMakeLists.txt").read_text("utf-8")
+        or "RunRegPropertyTests()" not in (ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")):
+    fail.append("original CRegProperty real HKCU native behavior must remain qualified")
 audit_script=(ROOT/"tests/wtl_unmodified/audit_wtl_api.py")
 if (not audit_script.is_file() or
         "WTL_REGISTRY_API_INVENTORY_OK" not in audit_script.read_text("utf-8") or

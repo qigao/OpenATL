@@ -14,7 +14,8 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/direct_headers.cpp.in"
 add_executable(openatl_wtl_unmodified_headers
   "${CMAKE_CURRENT_BINARY_DIR}/direct_headers.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/legacy_map.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/server_monitor.cpp")
+  "${CMAKE_CURRENT_SOURCE_DIR}/server_monitor.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/reg_property.cpp")
 # Precede the link target's adapted build includes. Direct atlapp.h below is
 # an absolute vcpkg source path, and all nested WTL include searches stay here.
 target_include_directories(openatl_wtl_unmodified_headers BEFORE PRIVATE

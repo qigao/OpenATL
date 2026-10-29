@@ -51,6 +51,10 @@ def main() -> int:
           f"signatures={len(signatures)} hyperlink=1 mru=1")
     for line_no, line in signatures[:100]:
         print(f"WTL_REGISTRY_API {line_no}: {line[:190]}")
+    # Original WTL10 uses macro-based property maps. Keep their declared
+    # spelling in the audit before adding CRTP serialization admission.
+    macros = sorted(set(re.findall(r"(?m)^\s*#\s*define\s+([A-Z][A-Z0-9_]+)", misc[x:y])))
+    print("WTL_REGISTRY_MAP_MACROS " + ",".join(macros))
     if len(signatures) > 100:
         print(f"WTL_REGISTRY_API remaining={len(signatures) - 100}")
     return 0
