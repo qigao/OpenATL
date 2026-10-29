@@ -159,3 +159,27 @@ passing printer DC claim. The metadata-only probe now omits the optional
 `PD_RETURNDC` flag and retains strict Win32 HRESULT and bounds checks.
 A native printer-DC and modal UI test must still require an actual
 functional printer driver; its absence remains **UNQUALIFIED**.
+
+## Strict Win32 PrintDlgEx reference and HWND owner
+
+Microsoft PRINTDLGEXW requires a **valid hwndOwner** even with non-modal
+PD_RETURNDEFAULT. A console process generally has no active window; the
+original WTL GetDefaults() fallback to GetActiveWindow() may yield NULL
+and HRESULT_FROM_WIN32(ERROR_INVALID_HANDLE). The earlier probe also
+removed original WTL PD_NOPAGENUMS while leaving the page-range fields
+uninitialized, violating another documented input contract. These were
+**test fixture errors**, not evidence that ATL/WTL needed an API deletion.
+
+The revised fixture creates a real hidden Win32 owner window (and destroys it
+before COM apartment teardown), retains the original WTL page-range exclusion
+flags, and verifies that GetDefaults() clears PD_RETURNDEFAULT on return,
+as upstream actually does. The same STA then calls an independently initialized
+Win32 PRINTDLGEXW with the same owner, flags and starting page. Both calls must
+return the *same HRESULT* and, if successful, each must have valid, bounded
+DEVNAMES/DEVMODE with all allocated handles freed.
+
+A consistent failure is recorded explicitly as
+`metadata=UNQUALIFIED` and qualifies only **WTL-to-Win32 API parity**,
+not a functioning printer, native DC, or interactive DoModal. A mismatch
+or malformed successful result is a mandatory test RED. A native
+printer-backed DC and modal UI admission remains required under Issue #44.

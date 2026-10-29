@@ -9,6 +9,7 @@ from unittest.mock import patch
 import tempfile
 import unittest
 
+from native_arm64 import native_stdout_ok
 from manifest_contract import (current_checkout_sha, make_original_manifest, read_manifest,
                                verify_manifest, verify_installed_wtl_stamp,
                                WTL_STAMP)
@@ -91,6 +92,28 @@ class ManifestContractTests(unittest.TestCase):
                         "OPENATL_EXPECTED_CHECKOUT_SHA": expected,
                     }, clear=True), self.assertRaises(ValueError):
                         current_checkout_sha()
+
+    def test_print_defaults_win32_and_wtl_parity(self) -> None:
+        def stdout(default: int, raw: int, wtl: int, metadata: str) -> str:
+            return (f"WTL_PRINTER_READINESS default={default} win32=0x{raw:08x} "
+                    f"wtl=0x{wtl:08x} metadata={metadata} modal=UNQUALIFIED\n"
+                    "OPENATL_WTL_PRINT_DEFAULTS_PARITY_OK "
+                    "win32=1 cleanup=1 modal=UNQUALIFIED\n")
+        name = "openatl_wtl_unmodified_headers"
+        args = ("--print-defaults",)
+        self.assertTrue(native_stdout_ok(name, args, stdout(1, 0, 0, "QUALIFIED")))
+        # Matching errors qualify Win32 parity, never printer hardware/DC/UI.
+        self.assertTrue(native_stdout_ok(
+            name, args, stdout(1, 0x80070006, 0x80070006, "UNQUALIFIED")))
+        self.assertTrue(native_stdout_ok(
+            name, args, stdout(0, 0x80070002, 0x80070002, "UNQUALIFIED")))
+        for case in (stdout(1, 0, 0x80070006, "UNQUALIFIED"),
+                     stdout(1, 0x80070006, 0x80070002, "UNQUALIFIED"),
+                     stdout(1, 0, 0, "UNQUALIFIED"),
+                     stdout(1, 0x80070006, 0x80070006, "QUALIFIED"),
+                     stdout(0, 0, 0, "QUALIFIED")):
+            with self.subTest(case=case), self.assertFalse(
+                native_stdout_ok(name, args, case))
 
     def test_real_package_stamp_is_required(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

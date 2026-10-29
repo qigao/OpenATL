@@ -105,49 +105,99 @@ bool ValidateReturnedPrinter(const PRINTDLGEX& values) {
 
 bool RunOriginalPrintDefaultsProbe() {
     if (!NoComApartment()) return false;
-    // GetDefaultPrinterW distinguishes a host without a configured printer
-    // from PrintDlgEx returning an unexpected HRESULT with a real printer.
     bool hasDefault = false;
     if (!HasDefaultPrinter(hasDefault)) {
         std::fprintf(stderr, "WTL_PRINT_DEFAULTS_FAIL stage=winspool_default\n");
         return false;
     }
+
     const HRESULT apartment = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    if (FAILED(apartment)) return false;
-    bool good = true;
-    HRESULT printStatus = E_UNEXPECTED;
-    {
-        // Do not conflate the default-printer metadata contract with
-        // driver-dependent DC creation. A hosted default printer can be
-        // enumerated but fail PD_RETURNDC with ERROR_INVALID_HANDLE.
-        // Real DC creation is an independent printer-enabled native gate.
-        WTL::CPrintDialogEx dialog(PD_ALLPAGES | PD_NOWARNING);
-        PrinterResources resources(dialog.m_pdex);
-        if (dialog.m_pdex.hDevMode || dialog.m_pdex.hDevNames ||
-            dialog.m_pdex.hDC || dialog.m_pdex.lpCallback)
-            good = false;
-        if (good) {
-            printStatus = dialog.GetDefaults(); // real Win32 PrintDlgEx
-            if (!(dialog.m_pdex.Flags & PD_RETURNDEFAULT) ||
-                dialog.m_pdex.lpCallback || dialog.m_hWnd != nullptr)
-                good = false;
-            if (hasDefault) {
-                if (FAILED(printStatus) || !ValidateReturnedPrinter(dialog.m_pdex))
-                    good = false;
-            } else {
-                if (SUCCEEDED(printStatus)) good = false;
-            }
-        }
-        if (!resources.Release()) good = false;
-    }
-    ::CoUninitialize();
-    if (!good || !NoComApartment()) {
-        std::fprintf(stderr, "WTL_PRINT_DEFAULTS_FAIL stage=win32_printdlgex default=%d hr=0x%08lx\n",
-                     hasDefault ? 1 : 0, static_cast<unsigned long>(printStatus));
+    if (FAILED(apartment)) {
+        std::fprintf(stderr, "WTL_PRINT_DEFAULTS_FAIL stage=sta_apartment hr=0x%08lx\n",
+                     static_cast<unsigned long>(apartment));
         return false;
     }
-    std::printf("WTL_PRINTER_READINESS default=%d hr=0x%08lx modal=UNQUALIFIED\n",
-                hasDefault ? 1 : 0, static_cast<unsigned long>(printStatus));
-    std::puts("OPENATL_WTL_PRINT_DEFAULTS_PROBE_OK win32=1 cleanup=1 modal=UNQUALIFIED");
+    bool good = true;
+    HRESULT wtlStatus = E_UNEXPECTED;
+    HRESULT win32Status = E_UNEXPECTED;
+    bool wtlMetadata = false;
+    bool win32Metadata = false;
+
+    // PRINTDLGEXW.hwndOwner MUST be a valid HWND even with PD_RETURNDEFAULT.
+    // A console test has no active HWND; WTL's fallback GetActiveWindow()
+    // can return NULL, which Windows rejects with ERROR_INVALID_HANDLE.
+    HWND owner = ::CreateWindowExW(0, L"STATIC", L"OpenATL printer API owner",
+                                  WS_OVERLAPPED, 0, 0, 1, 1, nullptr, nullptr,
+                                  ::GetModuleHandleW(nullptr), nullptr);
+    if (!owner || !::IsWindow(owner)) good = false;
+    if (good) {
+        // Original WTL defaults include PD_NOPAGENUMS. Without that flag,
+        // Win32 requires non-null lpPageRanges and nMaxPageRanges > 0.
+        constexpr DWORD flags = PD_ALLPAGES | PD_USEDEVMODECOPIES |
+            PD_NOPAGENUMS | PD_NOSELECTION | PD_NOCURRENTPAGE | PD_NOWARNING;
+        {
+            WTL::CPrintDialogEx dialog(flags, owner);
+            PrinterResources memory(dialog.m_pdex);
+            if (dialog.m_pdex.hwndOwner != owner ||
+                dialog.m_pdex.Flags != flags ||
+                dialog.m_pdex.hDevNames || dialog.m_pdex.hDevMode ||
+                dialog.m_pdex.hDC || dialog.m_pdex.lpCallback)
+                good = false;
+            if (good) {
+                wtlStatus = dialog.GetDefaults(); // unchanged original WTL
+                // Upstream WTL removes PD_RETURNDEFAULT after calling Win32.
+                if ((dialog.m_pdex.Flags & PD_RETURNDEFAULT) ||
+                    dialog.m_pdex.hwndOwner != owner ||
+                    dialog.m_pdex.lpCallback || dialog.m_hWnd)
+                    good = false;
+                if (SUCCEEDED(wtlStatus))
+                    wtlMetadata = ValidateReturnedPrinter(dialog.m_pdex);
+            }
+            if (!memory.Release()) good = false;
+        }
+        // Independent documented Windows API reference; same valid input
+        // flags, HWND and COM apartment. Not a fallback renderer/provider.
+        {
+            PRINTDLGEXW system{};
+            system.lStructSize = sizeof(system);
+            system.hwndOwner = owner;
+            system.Flags = flags | PD_RETURNDEFAULT;
+            system.nStartPage = START_PAGE_GENERAL;
+            PrinterResources memory(system);
+            win32Status = ::PrintDlgExW(&system);
+            if (SUCCEEDED(win32Status))
+                win32Metadata = ValidateReturnedPrinter(system);
+            if (!memory.Release()) good = false;
+        }
+    }
+
+    if (owner) {
+        if (!::DestroyWindow(owner) || ::IsWindow(owner)) good = false;
+    }
+    ::CoUninitialize();
+    if (wtlStatus != win32Status) good = false;
+    if (SUCCEEDED(wtlStatus)) {
+        if (!hasDefault || !wtlMetadata || !win32Metadata) good = false;
+    } else if (wtlMetadata || win32Metadata) {
+        good = false;
+    }
+    if (!NoComApartment()) good = false;
+
+    if (!good) {
+        std::fprintf(stderr,
+                     "WTL_PRINT_DEFAULTS_FAIL stage=win32_parity default=%d "
+                     "wtl=0x%08lx raw=0x%08lx\n",
+                     hasDefault ? 1 : 0, static_cast<unsigned long>(wtlStatus),
+                     static_cast<unsigned long>(win32Status));
+        return false;
+    }
+    const bool metadataQualified = hasDefault && SUCCEEDED(wtlStatus);
+    std::printf("WTL_PRINTER_READINESS default=%d win32=0x%08lx wtl=0x%08lx "
+                "metadata=%s modal=UNQUALIFIED\n",
+                hasDefault ? 1 : 0, static_cast<unsigned long>(win32Status),
+                static_cast<unsigned long>(wtlStatus),
+                metadataQualified ? "QUALIFIED" : "UNQUALIFIED");
+    // A matching failed OS+WTL call proves parity only; device/GUI unqualified.
+    std::puts("OPENATL_WTL_PRINT_DEFAULTS_PARITY_OK win32=1 cleanup=1 modal=UNQUALIFIED");
     return true;
 }

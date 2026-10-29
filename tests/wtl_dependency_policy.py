@@ -146,6 +146,11 @@ if (not link_src.is_file()
 print_probe=ROOT/"tests/wtl_unmodified/print_defaults.cpp"
 if (not print_probe.is_file()
         or "dialog.GetDefaults()" not in print_probe.read_text("utf-8")
+        or "::PrintDlgExW(&system)" not in print_probe.read_text("utf-8")
+        or "::CreateWindowExW" not in print_probe.read_text("utf-8")
+        or "::DestroyWindow" not in print_probe.read_text("utf-8")
+        or "PD_NOPAGENUMS" not in print_probe.read_text("utf-8")
+        or "OPENATL_WTL_PRINT_DEFAULTS_PARITY_OK" not in print_probe.read_text("utf-8")
         or "GetDefaultPrinterW" not in print_probe.read_text("utf-8")
         or "GlobalFree" not in print_probe.read_text("utf-8")
         or "winspool" not in cmake_src
