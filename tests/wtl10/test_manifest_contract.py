@@ -112,8 +112,8 @@ class ManifestContractTests(unittest.TestCase):
                      stdout(1, 0, 0, "UNQUALIFIED"),
                      stdout(1, 0x80070006, 0x80070006, "QUALIFIED"),
                      stdout(0, 0, 0, "QUALIFIED")):
-            with self.subTest(case=case), self.assertFalse(
-                native_stdout_ok(name, args, case))
+            with self.subTest(case=case):
+                self.assertFalse(native_stdout_ok(name, args, case))
 
     def test_real_package_stamp_is_required(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
