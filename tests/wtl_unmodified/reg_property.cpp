@@ -81,9 +81,12 @@ bool RunPropertyRoundtrip() {
 
     // Missing and malformed entries must not be accepted as valid
     // DWORD/bool properties, even if a different registry type exists.
-    DWORD missing = 0;
-    CHECK_PROPERTY(!WTL::CRegProperty::ReadOne(
+    // WTL10 explicitly accepts an absent optional setting while preserving
+    // the caller's default. The underlying typed ReadProp retains the error.
+    DWORD missing = 0x9a13b5c7u;
+    CHECK_PROPERTY(WTL::CRegProperty::ReadOne(
         root.path.c_str(), L"NeverWritten", missing));
+    CHECK_PROPERTY(missing == 0x9a13b5c7u);
     ATL::CRegKey key;
     CHECK_PROPERTY(key.Open(HKEY_CURRENT_USER, root.path.c_str(),
                             KEY_READ | KEY_WRITE) == ERROR_SUCCESS);
@@ -91,6 +94,16 @@ bool RunPropertyRoundtrip() {
     DWORD wrongType = 0;
     CHECK_PROPERTY(!WTL::CRegProperty::ReadOne(
         root.path.c_str(), L"WrongType", wrongType));
+
+    WTL::CRegProperty typed;
+    CHECK_PROPERTY(typed.OpenRegKey(root.path.c_str(), false) == ERROR_SUCCESS);
+    DWORD untouched = 0x6b9c01efu;
+    CHECK_PROPERTY(typed.ReadProp(L"NeverWritten", untouched) == ERROR_FILE_NOT_FOUND);
+    CHECK_PROPERTY(untouched == 0x6b9c01efu);
+    CHECK_PROPERTY(typed.ReadProp(L"WrongType", untouched) == ERROR_INVALID_DATATYPE);
+    CHECK_PROPERTY(untouched == 0x6b9c01efu);
+    typed.CloseRegKey();
+
     DWORD type = 0;
     DWORD bytes = sizeof(DWORD);
     DWORD raw = 0;
@@ -108,6 +121,6 @@ bool RunRegPropertyTests() {
     for (int i = 0; i < 4; ++i) {
         if (!RunPropertyRoundtrip()) return false;
     }
-    std::puts("OPENATL_WTL_REGPROPERTY_OK rounds=4 dword=1 bool=1 unicode=1 type_error=1 cleanup=1 no_com=1");
+    std::puts("OPENATL_WTL_REGPROPERTY_OK rounds=4 dword=1 bool=1 unicode=1 optional_missing=1 type_error=1 cleanup=1 no_com=1");
     return true;
 }

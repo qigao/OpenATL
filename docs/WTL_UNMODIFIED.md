@@ -45,9 +45,12 @@ The original vcpkg `atlmisc.h` includes `WTL::CRegProperty` and
 delete that section. `reg_property.cpp` is compiled ONLY against the
 original installed WTL source and calls `CRegProperty::WriteOne/ReadOne`
 for DWORD, bool and counted Unicode text. Every native test round creates
-a GUID-unique registry key owned under HKCU, tests missing/wrong-type
-values, verifies Win32 `REG_DWORD` payloads and explicitly deletes the
-owned key. No HKCR/HKLM writes and no implicit COM apartment.
+a GUID-unique registry key under HKCU and verifies Win32 `REG_DWORD` values.
+Original WTL10 `ReadOne` deliberately treats `ERROR_FILE_NOT_FOUND`
+as an optional/default success without mutating the old destination value;
+`ReadProp` still returns the precise `ERROR_FILE_NOT_FOUND` status,
+and wrong types return `ERROR_INVALID_DATATYPE`. The test verifies both
+paths and deletes the key it owns. No HKCR/HKLM writes or implicit COM.
 The full `CRegPropertyImpl<T>` macro/property-map and binary/font
 serialization remain separate unqualified gates, even when this basic
 native property roundtrip passes.
