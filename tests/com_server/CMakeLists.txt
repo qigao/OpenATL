@@ -20,7 +20,8 @@ execute_process(COMMAND "${Python3_EXECUTABLE}"
   COMMAND_ERROR_IS_FATAL ANY)
 
 add_executable(openatl_com_server_tests
-  server.cpp atl_compat.cpp atl_module.cpp rgs_parser_tests.cpp interfaces.h)
+  server.cpp atl_compat.cpp atl_module.cpp
+  rgs_parser_tests.cpp rgs_registry_tests.cpp interfaces.h)
 target_include_directories(openatl_com_server_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(openatl_com_server_tests PRIVATE OpenATL::ATL)
 add_dependencies(openatl_com_server_tests openatl_com_server_fixture)

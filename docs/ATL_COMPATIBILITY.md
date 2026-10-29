@@ -70,11 +70,16 @@ be `final` because `CComObject<T>` derives from it. The class may also inherit
 DLL module reference; a DLL must use the module-aware creator or independently
 retain its module across locally created objects and external callers.
 
-The current `openatl/rgs_parser.h` accepts a bounded, read-only subset
-of actual Microsoft ATL RGS grammar, validated against four untouched
-resources. **RGS registry execution and `DECLARE_REGISTRY_RESOURCEID`
-are not yet implemented**, and parsing alone does not qualify sample
-registration or activation. See [server registration](COM_SERVER.md).
+The source-owned `openatl/rgs_parser.h` accepts a bounded, read-only
+subset of actual Microsoft ATL RGS grammar, validated against four
+untouched resources. The opt-in `openatl/rgs_registration.h` executes
+these plans under an explicitly opened caller-owned Classes root using
+the existing owner-verified registry plan/inspection machinery, with
+fail-closed `ForceRemove`, reverse rollback and strict unregistration
+preflight. **`DECLARE_REGISTRY_RESOURCEID`, arbitrary RGS resource
+loading and TypeLib registration remain unimplemented.** This isolated
+native registration conformance does not qualify the original ATL
+applications' complete compile/link/activation. See [server registration](COM_SERVER.md).
 
 **Tracked compatibility gaps:** expanded ATL object-map entry variants,
 chained interface maps, aggregation and tear-offs, RGS-driven persistent

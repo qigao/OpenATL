@@ -49,7 +49,7 @@ inline bool validProgId(LPCWSTR text) noexcept {
     return ::lstrcmpiW(text, L"CLSID") && ::lstrcmpiW(text, L"Interface") &&
            ::lstrcmpiW(text, L"TypeLib") && ::lstrcmpiW(text, L"AppID");
 }
-struct Value { LPCWSTR name; std::wstring text; };
+struct Value { std::wstring name; std::wstring text; };
 struct Node { std::wstring path; std::vector<Value> values; };
 struct Plan {
     std::vector<Node> nodes;
@@ -106,13 +106,17 @@ struct Plan {
 inline bool childOf(const std::wstring& parent, const std::wstring& child) noexcept {
     const wchar_t* separator = std::wcsrchr(child.c_str(), L'\\');
     return separator && size_t(separator - child.c_str()) == parent.size() &&
-           child.compare(0, parent.size(), parent) == 0;
+           ::CompareStringOrdinal(child.c_str(), static_cast<int>(parent.size()),
+                                  parent.c_str(), static_cast<int>(parent.size()),
+                                  TRUE) == CSTR_EQUAL;
 }
 
 // Inspect before deleting anything: reject unknown values/children and changed
 // values. Missing expected values are allowed for interrupted installations.
+template<class Selection>
 inline LSTATUS inspect(HKEY root, const Plan& plan, size_t index,
-                       const std::array<bool, 5>& selected, bool requireOwner) noexcept {
+                       const Selection& selected, bool requireOwner,
+                       bool requireAllValues = false) noexcept {
     Key key;
     LSTATUS status = ::RegOpenKeyExW(root, plan.nodes[index].path.c_str(), 0,
                                     KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS, &key.value);
@@ -129,7 +133,7 @@ inline LSTATUS inspect(HKEY root, const Plan& plan, size_t index,
         if (status != ERROR_SUCCESS) return status;
         const Value* expected = nullptr;
         for (const Value& value : node.values)
-            if (::lstrcmpiW(value.name, name) == 0) expected = &value;
+            if (::lstrcmpiW(value.name.c_str(), name) == 0) expected = &value;
         if (!expected) return ERROR_ACCESS_DENIED;
         DWORD type = 0, bytes = 0;
         status = ::RegQueryValueExW(key.value, name, nullptr, &type, nullptr, &bytes);
@@ -147,8 +151,18 @@ inline LSTATUS inspect(HKEY root, const Plan& plan, size_t index,
     }
     bool ownsRoot = false;
     for (const Value& value : node.values)
-        if (::lstrcmpiW(value.name, L"OpenATL.COMOwner") == 0) ownsRoot = true;
+        if (::lstrcmpiW(value.name.c_str(), L"OpenATL.COMOwner") == 0) ownsRoot = true;
     if (requireOwner && ownsRoot && !ownerFound) return ERROR_ACCESS_DENIED;
+    if (requireAllValues) {
+        for (const Value& value : node.values) {
+            // Ordinary unregistration must see the complete expected key.
+            // Rollback of a partial install deliberately leaves this off.
+            DWORD type = 0, bytes = 0;
+            status = ::RegQueryValueExW(key.value, value.name.c_str(), nullptr,
+                                        &type, nullptr, &bytes);
+            if (status != ERROR_SUCCESS) return ERROR_ACCESS_DENIED;
+        }
+    }
     for (DWORD i = 0;; ++i) {
         wchar_t name[256]{};
         DWORD size = 256;
@@ -166,11 +180,14 @@ inline LSTATUS inspect(HKEY root, const Plan& plan, size_t index,
     return ERROR_SUCCESS;
 }
 
+template<class Selection>
 inline LSTATUS remove(HKEY root, const Plan& plan,
-                      const std::array<bool, 5>& selected, bool requireOwner) noexcept {
+                      const Selection& selected, bool requireOwner,
+                      bool requireAllValues = false) noexcept {
     for (size_t i = 0; i < plan.nodes.size(); ++i) {
         if (!selected[i]) continue;
-        LSTATUS status = inspect(root, plan, i, selected, requireOwner);
+        LSTATUS status = inspect(root, plan, i, selected, requireOwner,
+                                 requireAllValues);
         if (status != ERROR_SUCCESS) return status;
     }
     for (size_t i = plan.nodes.size(); i-- != 0;) {
@@ -211,7 +228,7 @@ inline HRESULT RegisterClass(HKEY root, const ClassRegistration& entry) noexcept
             if (status == ERROR_SUCCESS) {
                 created[i] = true;
                 for (const Value& value : plan.nodes[i].values) {
-                    status = ::RegSetValueExW(key.value, value.name, 0, REG_SZ,
+                    status = ::RegSetValueExW(key.value, value.name.c_str(), 0, REG_SZ,
                         reinterpret_cast<const BYTE*>(value.text.c_str()),
                         static_cast<DWORD>((value.text.size() + 1) * sizeof(wchar_t)));
                     if (status != ERROR_SUCCESS) break;
