@@ -214,17 +214,22 @@ endif()
 if(NOT _wtl_ui_text MATCHES "AtlGetStockPen")
     message(FATAL_ERROR "WTL UI-only: stock Win32 GDI helper missing")
 endif()
-_openatl_replace_once(
-    "ATL::CString strResult(\"file://\");"
-    "ATL::CString strResult(_T(\"file://\"));"
-    "upstream WTL bug 329 Unicode file URI")
+# Official bug329 WTL patch already applied by the pinned vcpkg overlay.
+string(FIND "${_wtl_ui_text}" "ATL::CString strResult(_T(\"file://\"));" _wtl_bug329)
+if(_wtl_bug329 EQUAL -1)
+  message(FATAL_ERROR "WTL vcpkg bug329 patch missing")
+endif()
 file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
 
 set(_wtl_ui_header "${_wtl_headers}/atlribbon.h")
 file(READ "${_wtl_ui_header}" _wtl_ui_text)
 string(REPLACE "\r\n" "\n" _wtl_ui_text "${_wtl_ui_text}")
+# Official issue66 patch already applied by the pinned vcpkg overlay.
 foreach(_header IN ITEMS atlmisc.h atlframe.h atlctrls.h atlctrlw.h)
-  _openatl_replace_once("#include <${_header}>" "#include \"${_header}\"" "upstream WTL issue 66 ${_header}")
+  string(FIND "${_wtl_ui_text}" "#include \"${_header}\"" _wtl_issue66)
+  if(_wtl_issue66 EQUAL -1)
+    message(FATAL_ERROR "WTL vcpkg issue66 patch missing: ${_header}")
+  endif()
 endforeach()
 foreach(_method IN ITEMS UIAddElement UIRemoveElement)
   string(REPLACE "this->${_method}<" "this->template ${_method}<" _wtl_ui_text "${_wtl_ui_text}")
