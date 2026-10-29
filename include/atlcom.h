@@ -6,6 +6,7 @@
 #include "atlcomcli.h"
 #include "openatl/com_server.h"
 #include "openatl/rgs_resource.h"
+#include "openatl/atl_dispatch.h"
 #include <optional>
 
 namespace ATL {

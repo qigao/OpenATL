@@ -268,6 +268,34 @@ authorize blind `ForceRemove` replacement. The caller must serialize
 installer writes; no actions run under DllMain. Original Microsoft ATL
 sample builds remain to be qualified in #22.
 
+## First native IDispatch / type-info milestone
+
+`atlcom.h` now exports a first `ATL::IDispatchImpl<T, &IID, &LIBID,
+major, minor, holder>` API, backed by one `ATL::CComTypeInfoHolder`
+which uses Windows' actual `LoadRegTypeLib` and
+`ITypeLib::GetTypeInfoOfGuid`. `GetTypeInfoCount`,
+`GetTypeInfo`, `GetIDsOfNames` and `Invoke` use real
+`ITypeInfo` and enforce non-null outputs, `IID_NULL`, bounded names,
+argument consistency and authentic OLE HRESULTs.
+
+The native COM Server core test uses Windows OLEAUT32
+`CreateDispTypeInfo` to construct an actual `ITypeInfo`, injected via
+the optional ATL type-info-holder parameter. It verifies late-bound
+case-insensitive member name resolution, `ITypeInfo::Invoke`,
+return-VARIANT ownership, correct COM `IUnknown` identity,
+missing LIBID/IID failures, and image-TLB mode fail-closed behavior.
+It intentionally creates a true OS Automation type-info object, not a
+fake IDispatch function returning success.
+
+**This is partial ATL Automation compatibility.** There is no successful
+registered/installed TypeLib native acceptance yet; the standard holder
+does not cache type-info across apartment/module lifetime boundaries.
+The ATL `0xffff/0xffff` image-based TypeLib mode returns
+`E_NOTIMPL` instead of falling back to the registry or claiming success.
+The original Microsoft COMMap/AtlSafeArray project compile/link
+admission, real TypeLib deployment, BYREF/EXCEPINFO edge cases and
+`DECLARE_LIBID` integration remain separately tracked under #22/#37.
+
 ## Integration and validation
 
 Link the single `OpenATL::ATL` target. It supplies `ole32`, `oleaut32`,
