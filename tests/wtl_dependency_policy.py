@@ -6,7 +6,7 @@ import subprocess
 import sys
 ROOT=Path(__file__).resolve().parents[1]
 SHA="086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309"
-CACHE="0d6de1fefc03fc1dabbfd2d2fa0f10e7cfcb380c"
+CACHE="88328df0817885719868178c635a02570c7779b3"
 manifest=json.loads((ROOT/"vcpkg.json").read_text("utf-8"))
 cmake=(ROOT/"cmake/OpenATLWTL.cmake").read_text("utf-8")
 adapter=(ROOT/"cmake/wtl/PrepareWtl.cmake").read_text("utf-8")
