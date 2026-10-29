@@ -29,6 +29,9 @@ REQUIRED = {
                                    "UnregisterClass"),
     "openatl/rgs_parser.h": ("enum class Directive", "MaxNesting",
                             "inline Error Parse", "inline Error ResolveModule"),
+    "openatl/rgs_registration.h": ("RegisterRgs(", "UnregisterRgs(",
+                                   "PreflightNew", "registration_detail::remove",
+                                   "OpenATL.COMOwner", "NoRemove"),
     "atlreg.h": ("class CRegKey", "RegGetValue", "RegCreateKeyEx"),
 }
 

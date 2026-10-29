@@ -14,14 +14,19 @@ RGS source is permitted.
 | ArrayManager.rgs | `General/atlsafearray/ArrayManager.rgs` | `39bf8a7d2bc75c21f81c74b761ce97c95234c59a` |
 | MapCollection.rgs | `General/ATLCollections/MapCollection.rgs` | `b81d8194a2c9020de381c8e9f90eb01b6fa6428f` |
 
-The test program compiles these pinned files as immutable wide literals on
-Windows through a tiny generator, and accepts their **read-only syntax and
-projection** with exact node/value counts. This is **not** registry execution
-or proof of full ATL RGS compatibility. The `HKCR` keyword is a symbolic
+The test program embeds these pinned files as immutable wide literals on
+Windows and accepts their **read-only syntax and projection** with exact
+node/value counts. Separately, the native COM test now exercises the opt-in
+owner-verified executor under a newly GUID-named, isolated HKCU test root.
+This is still **not** proof of complete ATL RGS compatibility or automated
+production resource registration. The `HKCR` keyword is a symbolic
 input root, not authorization to write to real HKCR/HKLM.
 
-`ForceRemove` and `NoRemove` remain parsed directives only. No recursive
-deletion, hidden elevation, external registry mutation or COM initialization
-occurs in this grammar-only milestone. Subsequent registry execution requires
-a caller-selected root, owner-qualified value/child verification, fail-closed
-unsupported constructs and native isolated HKCU tests.
+`ForceRemove` and `NoRemove` remain parsed directives in the AST.
+Registration execution is an **explicit separate API** requiring an opened
+caller-owned HKEY and registration owner tag. `ForceRemove` is *not*
+authority to replace or recursively delete existing keys. The native
+test's isolated HKCU root is deleted only if newly created by that test;
+production execution performs no blind recursive deletion, hidden elevation
+or COM initialization. The full `DECLARE_REGISTRY_RESOURCEID` resource
+registrar remains a separate capability.

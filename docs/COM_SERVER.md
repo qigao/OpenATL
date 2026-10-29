@@ -147,10 +147,12 @@ fail closed. Failure leaves the output document unchanged.
 `ResolveModule` produces an independent expanded document and never reads
 environment variables or the registry.
 
-**No registry execution in this milestone.** `ForceRemove` and `NoRemove`
-are retained AST directives only. The parser does not open HKCR/HKLM,
-recursively delete keys, load RGS DLL resources, initialize COM or write
-registry entries. It does not claim ATL `DECLARE_REGISTRY_RESOURCEID` or
+**The parser alone never executes registry instructions.** `ForceRemove`
+and `NoRemove` are AST directives until an application separately calls
+the opt-in `RegisterRgs` / `UnregisterRgs` methods with an opened
+caller-owned Classes root. The parser never opens HKCR/HKLM,
+recursively deletes keys, loads RGS DLL resources or initializes COM,
+and the executor does not claim `DECLARE_REGISTRY_RESOURCEID` or
 `CAtlRegistrar` compatibility. Subsequent native registrar work must
 accept an **explicit caller-owned root** and reject foreign-key/value
 changes rather than treating `ForceRemove` as unqualified authorization
@@ -164,6 +166,60 @@ Git blob identities are checked at CMake configure time, their node/value
 counts and values are compared, and malformed inputs are tested
 independently. A successful parse is **not** evidence that those original
 Microsoft ATL projects build, register or activate against OpenATL.
+
+## Owner-verified RGS execution — explicit HKCU/Classes root
+
+`openatl/rgs_registration.h` now provides
+`OpenATL::COM::RegisterRgs(HKEY classesRoot, const RGS::Document&, modulePath, ownerTag)`
+and `UnregisterRgs(...)`, reusing the existing
+`registration_detail::Plan`, `inspect` and `remove` implementation rather
+than maintaining a second COM/registration provider. The parser itself
+(`rgs_parser.h`) remains read-only. A symbolic source `HKCR` does **not**
+select a Windows root: callers must supply an **opened, writable** Classes
+key. Predefined `HKEY_CLASSES_ROOT`, `HKEY_LOCAL_MACHINE`,
+`HKEY_CURRENT_USER` and other predefined handles are rejected, and there
+is no implicit elevation or registry-view switch.
+
+Registration requires an absolute, bounded, canonicalized DLL path and a
+caller-owned ASCII registration tag (1–64 letters/digits/periods/hyphens/
+underscores). The entire resolved RGS tree is validated **before mutation**:
+bounded depth/keys/values, ordered parents, canonical safe names and paths,
+no duplicates, unsupported substitutions, owner-marker collision or foreign
+preexisting keys. `ForceRemove` never overwrites an existing key and never
+calls `RegDeleteTree`. Only the literal value-free
+`NoRemove CLSID` may be shared; the shared CLSID container is not owned
+and is never removed, even if created by this registration.
+
+Every newly owned key receives `OpenATL.COMOwner` as its first REG_SZ value
+(`RGS1:<ownerTag>:<canonical module path>`); all original default/named
+REG_SZ values are then written unmodified apart from bounded
+`%MODULE%` expansion. A write failure triggers an owner/content-verified
+reverse cleanup of newly created keys. Cleanup errors override the initial
+write failure; external changes are **never** silently deleted.
+
+`UnregisterRgs` checks every expected owned key's marker, REG_SZ
+type/byte count/content and complete set of direct child names **before
+deleting a single key**. Foreign values/children, modified owners or
+unexpected data return access denied and preserve earlier owned keys;
+only verified owned keys are deleted nonrecursively in reverse order.
+A missing previously owned key is accepted for recovery from interrupted
+installation; duplicate unregistration is idempotent.
+
+Native Windows tests run all four original, byte-pinned Microsoft
+`.rgs` files under freshly GUID-named private
+`HKCU\\Software\\OpenATL.RGSTest.*` roots. They compare the entire
+resolved path/value projection, verify shared `NoRemove CLSID`, block
+foreign/modified keys, and inject a deterministic write failure at every
+owned node to prove reverse rollback. The test's final cleanup may use
+`RegDeleteTree` **only on its uniquely owned private test root**; this is
+not used in production registration.
+
+This is **not an atomic Windows registry transaction**, and callers must
+exclude concurrent installer writers. No COM initialization or registry
+operation occurs during RGS parsing, `DllMain`, or object-map discovery.
+This still does **not** implement `DECLARE_REGISTRY_RESOURCEID` resource
+loading, automatic RGS execution from COM class declarations, actual
+TypeLib registration, or the full Microsoft ATL registrar grammar.
 
 ## Integration and validation
 
