@@ -40,8 +40,9 @@ if ('option(OPENATL_WTL_FULL_ORIGINAL' not in cmake_source
         or 'if(OPENATL_WTL_FULL_ORIGINAL)' not in cmake_source
         or "The full original WTL source admission is qualification-only" not in
              (ROOT/"CMakeLists.txt").read_text("utf-8")
-        or "OPENATL_WTL_FULL_ORIGINAL_WIN32_OK" not in workflow):
-    fail.append("full unchanged original WTL native Win32 sample gate must remain strict")
+        or "OPENATL_WTL_FULL_ORIGINAL_WIN32_OK" not in workflow
+        or "OPENATL_WTL_FULL_ORIGINAL_LLVM_I686_OK" not in workflow):
+    fail.append("full unchanged original WTL native Win32/MSVC+LLVM sample gates must remain strict")
 # Feature deletions must not reappear in the build-local WTL include copy.
 # Original CAppModule/Server are now retained byte-identically, but
 # concurrent original StartMonitor remains unqualified until owner/join proof.

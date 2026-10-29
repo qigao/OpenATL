@@ -28,9 +28,12 @@ reconfigures after the existing adapted x86 suite, rebuilds *all eleven
 unchanged official WTL samples* plus native COM/UI tests, and repeats
 native CTest five times. Any missing original ATL API, compiler
 mismatch, or runtime failure is RED — do not silently return to the
-adapted path or skip the original mode. A GREEN for this qualification
-is still not proof of original `StartMonitor()` concurrent retirement
-or genuine PrintDlgEx printer UI behavior.
+adapted path or skip the original mode. The llvm-mingw i686 job now also runs the identical zero-adapter,
+all-eleven-sample rebuild and 5x native CTest gate. WTL API/compiler
+issues must be fixed in OpenATL or a separately reviewed upstream WTL
+patch — never by deleting upstream WTL declarations.
+A GREEN for this qualification is still not proof of original
+`StartMonitor()` concurrent retirement or genuine PrintDlgEx printer UI behavior.
 
 ## First direct-source acceptance
 

@@ -117,6 +117,21 @@ jobs:
           Run cmake @('--preset','llvm-i686','-DOPENATL_BUILD_WTL_UNMODIFIED=ON')
           Run cmake @('--build','--preset','llvm-i686','--parallel','2')
           Run ctest @('--preset','llvm-i686','--repeat','until-fail:5')
+      - name: Original vcpkg WTL10 on llvm-mingw i686 — all 11 samples, no adapter
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Run([string]$tool,[string[]]$argv) {
+            & $tool @argv
+            if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
+          }
+          $env:OPENATL_LLVM_MINGW_BIN=$env:OPENATL_LLVM_BIN
+          Run cmake @('--preset','llvm-i686',
+                      '-DOPENATL_WTL_FULL_ORIGINAL=ON',
+                      '-DOPENATL_BUILD_WTL_UNMODIFIED=ON')
+          Run cmake @('--build','--preset','llvm-i686','--parallel','2')
+          Run ctest @('--preset','llvm-i686','--repeat','until-fail:5')
+          Write-Host 'OPENATL_WTL_FULL_ORIGINAL_LLVM_I686_OK original=1 adapter=0 official_samples=11'
       - name: CMake native x64 and cross ARM64, PE/resources, CTest x5
         shell: pwsh
         run: |
