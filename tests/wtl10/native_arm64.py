@@ -62,6 +62,8 @@ CASES = (
      "OPENATL_WTL_ORIGINAL_MAP_OK factory=1 activate=1 cookies=1 rollback=1 thread=1 no_com=1"),
     ("openatl_wtl_unmodified_headers", ("--hyperlink",),
      "OPENATL_WTL_HYPERLINK_OK registry=1 original=1 colors=1 no_com=1 cleanup=1"),
+    ("openatl_wtl_unmodified_headers", ("--start-monitor-process",),
+     "OPENATL_WTL_START_MONITOR_PROCESS_OK quit=1 original=1 join=UNQUALIFIED"),
     ("openatl_com_client", ("--sta",), "ATL_COM_CLIENT_MODE_OK mode=sta apartment=1 activation=1 balance=1 changed=0"),
     ("openatl_com_client", ("--mta",), "ATL_COM_CLIENT_MODE_OK mode=mta apartment=1 activation=1 balance=1 changed=0"),
     ("openatl_com_client", ("--changed-sta",), "ATL_COM_CLIENT_MODE_OK mode=changed-sta apartment=1 activation=1 balance=1 changed=1"),

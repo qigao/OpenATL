@@ -39,3 +39,9 @@ add_test(NAME openatl.wtl_unmodified_no_com COMMAND openatl_wtl_unmodified_heade
 # Separate process: HKCU redirection never affects other COM/WTL tests.
 add_test(NAME openatl.wtl_original_hyperlink_hkcu
   COMMAND openatl_wtl_unmodified_headers --hyperlink)
+# The unmodified detached StartMonitor() only runs in an isolated process,
+# which calls ExitProcess after WM_QUIT rather than racing module.Term().
+add_test(NAME openatl.wtl_original_start_monitor_process
+  COMMAND openatl_wtl_unmodified_headers --start-monitor-process)
+set_tests_properties(openatl.wtl_original_start_monitor_process PROPERTIES
+  TIMEOUT 12)

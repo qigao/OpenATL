@@ -97,3 +97,19 @@ events). The producer and actual Windows ARM64 runners both read
 `OPENATL_EXPECTED_CHECKOUT_SHA`, and fail closed on missing or mismatched
 commit IDs. Original-WTL artifact provenance therefore refers to the
 **actual PR commit**, not simply an event-provided merge SHA.
+
+## Unmodified `StartMonitor()` process-only behavior test
+
+An additional native CTest and five-pass Windows ARM64 acceptance execute the
+**actual upstream** `WTL::CServerAppModule::StartMonitor()`, not the directly
+called `MonitorProc()`. The test starts with a stable, quiescent module,
+creates the owner thread message queue, signals the shutdown event, and checks
+that the original worker posts `WM_QUIT` within a fixed deadline. It never
+races the upstream non-atomic `m_bActivity` with concurrent `Unlock()`.
+
+Because upstream `StartMonitor()` immediately discards the worker's thread
+handle, the fixture is confined to a separate process and calls
+`ExitProcess` rather than running `Term()` against a potentially live
+worker. **This proves only real API startup/idle notification**, not a
+join, concurrent shutdown, safe DLL unload, or full COM server retirement.
+Those remain a hard Draft blocker in Issue #44.

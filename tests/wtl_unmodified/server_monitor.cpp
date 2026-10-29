@@ -92,7 +92,63 @@ bool RunMonitorCase(MonitorCase scenario) {
     module.Term();
     return good && NoComApartment();
 }
+
+// This is a separate *process-only* admission of the unchanged upstream
+// CServerAppModule::StartMonitor(). StartMonitor() discards its worker handle,
+// so there is no safe join/Term proof. Never destroy the module while the
+// worker might still reference it: ExitProcess retires the isolated fixture.
+// No concurrent Unlock(), no data race on upstream's plain bool m_bActivity.
+[[noreturn]] void MonitorProcessExit(UINT status, const char* error = nullptr) {
+    if (error)
+        std::fprintf(stderr, "WTL_START_MONITOR_PROCESS_FAIL reason=%s\n", error);
+    else
+        std::puts("OPENATL_WTL_START_MONITOR_PROCESS_OK quit=1 original=1 join=UNQUALIFIED");
+    std::fflush(stdout);
+    std::fflush(stderr);
+    ::ExitProcess(status);
+}
+
+void StartOriginalMonitorProcessOnly() {
+    if (!NoComApartment()) MonitorProcessExit(21, "unexpected-com-apartment");
+    const HINSTANCE image = ::GetModuleHandleW(nullptr);
+    if (!image) MonitorProcessExit(22, "image");
+    WTL::CServerAppModule module{};
+    module.m_hEventShutdown = nullptr;
+    module.m_bActivity = false;
+    if (FAILED(module.Init(nullptr, image, nullptr)))
+        MonitorProcessExit(23, "module-init");
+    module.m_dwTimeOut = 20;
+    module.m_dwPause = 1;
+
+    // PostThreadMessage(WM_QUIT) requires a queue on this owning thread.
+    MSG queue{};
+    ::PeekMessageW(&queue, nullptr, WM_USER, WM_USER, PM_NOREMOVE);
+    if (!module.StartMonitor()) MonitorProcessExit(24, "original-start");
+    HANDLE wake = module.m_hEventShutdown;
+    if (!wake || !::SetEvent(wake)) MonitorProcessExit(25, "wake");
+
+    // The upstream worker reads a stable module and owns the only writes to
+    // m_bActivity. WM_QUIT demonstrates the idle startup path, not a join.
+    const DWORD started = ::GetTickCount();
+    for (;;) {
+        MSG message{};
+        if (::PeekMessageW(&message, nullptr, WM_QUIT, WM_QUIT, PM_REMOVE)) {
+            if (message.message != WM_QUIT || !NoComApartment())
+                MonitorProcessExit(26, "quit-or-com");
+            MonitorProcessExit(0);
+        }
+        if (::GetTickCount() - started > 5000)
+            MonitorProcessExit(27, "worker-timeout");
+        if (::MsgWaitForMultipleObjectsEx(0, nullptr, 100, QS_POSTMESSAGE,
+                                          MWMO_INPUTAVAILABLE) == WAIT_FAILED)
+            MonitorProcessExit(28, "message-wait");
+    }
+}
 } // namespace
+
+void RunStartOriginalMonitorProcessOnly() {
+    StartOriginalMonitorProcessOnly();
+}
 
 bool RunServerMonitorTests() {
     for (int i = 0; i < 5; ++i) {

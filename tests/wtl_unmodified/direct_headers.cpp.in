@@ -78,6 +78,7 @@ bool OriginalPrintDialogCallbackNoCom()
 }
 
 bool RunServerMonitorTests();
+void RunStartOriginalMonitorProcessOnly();
 bool RunRegPropertyTests();
 bool RunOriginalHyperlinkRegistryTests();
 bool RunLegacyObjectMapTests();
@@ -120,6 +121,8 @@ int main(int argc, char** argv)
     // RegOverridePredefKey(HKCU) is process-wide. No real IE keys are edited.
     if (argc == 2 && std::strcmp(argv[1], "--hyperlink") == 0)
         return RunOriginalHyperlinkRegistryTests() ? 0 : 13;
+    if (argc == 2 && std::strcmp(argv[1], "--start-monitor-process") == 0)
+        RunStartOriginalMonitorProcessOnly();
     if (argc != 1) return 14;
 #if defined(__MINGW32__)
     if (!OriginalWtlBorrowConversion()) return 15;

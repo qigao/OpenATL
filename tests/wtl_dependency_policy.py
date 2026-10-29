@@ -88,6 +88,13 @@ if ("OriginalPrintDialogCallbackNoCom" not in direct or
 if ("server_monitor.cpp" not in (ROOT/"tests/wtl_unmodified/CMakeLists.txt").read_text("utf-8")
         or "RunServerMonitorTests()" not in (ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")):
     fail.append("original WTL server monitor bounded worker join must remain native test")
+monitor_src=(ROOT/"tests/wtl_unmodified/server_monitor.cpp").read_text("utf-8")
+if ("module.StartMonitor()" not in monitor_src
+        or "::ExitProcess(status)" not in monitor_src
+        or "--start-monitor-process" not in native_script
+        or "openatl.wtl_original_start_monitor_process" not in
+            (ROOT/"tests/wtl_unmodified/CMakeLists.txt").read_text("utf-8")):
+    fail.append("original detached StartMonitor requires process-only native test; no join claim")
 if ("reg_property.cpp" not in (ROOT/"tests/wtl_unmodified/CMakeLists.txt").read_text("utf-8")
         or "RunRegPropertyTests()" not in (ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")):
     fail.append("original CRegProperty real HKCU native behavior must remain qualified")
