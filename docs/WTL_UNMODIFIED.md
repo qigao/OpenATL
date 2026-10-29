@@ -130,11 +130,14 @@ HSP ten times under each compiler; no HSP bypass or test removal is accepted.
 ## PrintDlgEx Win32 default-printer probe — not a modal UI qualification
 
 The direct-original-header test now calls `WTL::CPrintDialogEx::GetDefaults()`,
-which executes the genuine Win32 `PrintDlgEx` with `PD_RETURNDEFAULT` and
-`PD_RETURNDC`. A separate `GetDefaultPrinterW` call distinguishes a real
-default printer from a hosted machine with none. Where one exists, the test
-validates Unicode `DEVNAMES` and `DEVMODE` bounds, the real printer DC,
-manual `GlobalFree`/`DeleteDC`, and explicit STA COM shutdown. Where no
+which executes the genuine Win32 `PrintDlgEx` with `PD_RETURNDEFAULT`
+but **without** the optional driver-dependent `PD_RETURNDC`. A separate
+`GetDefaultPrinterW` call distinguishes a configured default printer from
+a hosted machine with none. Where one exists, the test validates Unicode
+`DEVNAMES` and `DEVMODE` bounds, manual `GlobalFree`, and explicit STA
+COM shutdown. Device-context allocation and `DeleteDC` require a separate
+real printer-enabled gate and are not inferred from successful metadata
+retrieval. Where no
 default exists it requires a failed Win32 call and emits
 `WTL_PRINTER_READINESS default=0 ... modal=UNQUALIFIED` rather than inventing
 a printer or accepting false success. Unexpected errors with a configured
@@ -145,3 +148,14 @@ ARM64 five-pass suite, with strictly parsed two-line readiness diagnostics.
 creation, actual printer selection/cancellation, callback sequencing, and
 modal window/resource retirement on a printer-enabled native runner. No
 fake printer, WTL source edit, static stub or second printing provider.
+
+### Hosted printer driver discovery — CI #40891861080
+
+On the generic Windows x64 runner, `GetDefaultPrinterW` reported a
+configured default printer, but the first probe's combined
+`PD_RETURNDEFAULT | PD_RETURNDC` call returned
+`0x80070006` (`ERROR_INVALID_HANDLE`). This is a real RED, not a
+passing printer DC claim. The metadata-only probe now omits the optional
+`PD_RETURNDC` flag and retains strict Win32 HRESULT and bounds checks.
+A native printer-DC and modal UI test must still require an actual
+functional printer driver; its absence remains **UNQUALIFIED**.

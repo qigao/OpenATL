@@ -28,7 +28,10 @@ struct PrinterResources {
     ~PrinterResources() { (void)Release(); }
     bool Release() {
         bool okay = true;
-        if (values.hDC) {
+        // hDC is only a defined output if PD_RETURNDC/PD_RETURNIC
+        // requests it. This metadata-only probe must not interpret an
+        // unspecified hDC value as an owned printer DC.
+        if ((values.Flags & PD_RETURNDC) && values.hDC) {
             if (::DeleteDC(values.hDC)) values.hDC = nullptr;
             else okay = false;
         }
@@ -67,8 +70,8 @@ bool HasDefaultPrinter(bool& present) {
 }
 
 bool ValidateReturnedPrinter(const PRINTDLGEX& values) {
-    if (!values.hDevNames || !values.hDevMode || !values.hDC)
-        return false; // PD_RETURNDC explicitly requests a real printer DC.
+    if (!values.hDevNames || !values.hDevMode)
+        return false; // Only Win32 default printer metadata is required here.
 
     const SIZE_T nameBytes = ::GlobalSize(values.hDevNames);
     const DEVNAMES* info = static_cast<const DEVNAMES*>(::GlobalLock(values.hDevNames));
@@ -114,7 +117,11 @@ bool RunOriginalPrintDefaultsProbe() {
     bool good = true;
     HRESULT printStatus = E_UNEXPECTED;
     {
-        WTL::CPrintDialogEx dialog(PD_ALLPAGES | PD_NOWARNING | PD_RETURNDC);
+        // Do not conflate the default-printer metadata contract with
+        // driver-dependent DC creation. A hosted default printer can be
+        // enumerated but fail PD_RETURNDC with ERROR_INVALID_HANDLE.
+        // Real DC creation is an independent printer-enabled native gate.
+        WTL::CPrintDialogEx dialog(PD_ALLPAGES | PD_NOWARNING);
         PrinterResources resources(dialog.m_pdex);
         if (dialog.m_pdex.hDevMode || dialog.m_pdex.hDevNames ||
             dialog.m_pdex.hDC || dialog.m_pdex.lpCallback)
