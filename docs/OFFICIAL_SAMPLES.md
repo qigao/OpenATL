@@ -1,5 +1,15 @@
 # Official sample coverage
 
+The full WTL 10.0.10320 source archive and its eleven unchanged official
+samples are now vendored at
+[`third_party/wtl/WTL10_10320_Final.zip`](../third_party/wtl/WTL10_10320_Final.zip).
+CMake verifies its **repository-owned SHA512** and extracts it locally;
+it never downloads SourceForge at configure time. Original `MS-PL.txt`
+remains inside the source archive and is copied into the build tree. The
+mirror ZIP's SHA512 differs from the previous SourceForge ZIP; this is
+documented explicitly in [WTL provenance](../third_party/wtl/README.md).
+Full official source compilation and native UI tests remain mandatory.
+
 Official samples are a separate acceptance boundary from the community SDI
 fixture (`kkhaike/wtltest`) and OpenATL's own conformance tests. Passing that
 community fixture does not qualify the official WTL or Microsoft ATL suites.

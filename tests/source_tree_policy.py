@@ -21,6 +21,8 @@ def check() -> int:
         "include/atlcomcli.h", "include/atlcom.h",
         "include/openatl/com_server.h", "include/openatl/com_registration.h",
         "tests/com_server/CMakeLists.txt",
+        "third_party/wtl/WTL10_10320_Final.zip",
+        "third_party/wtl/README.md",
     ]
     errors = [f"Missing repository-owned ATL source: {item}"
               for item in required

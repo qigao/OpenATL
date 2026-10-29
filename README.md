@@ -51,6 +51,12 @@ and COM maps: `CComObjectRootEx`, `CComObject`, `CComCoClass`, `CComCreator`,
 See the [ATL compatibility matrix](docs/ATL_COMPATIBILITY.md) for supported
 semantics and limits. `CAtlDllModuleT` is implemented for explicit class
 tables; static `OBJECT_ENTRY_AUTO` factory discovery is supported.
+The original WTL 10.0.10320 header and sample source archive is vendored
+under `third_party/wtl/`, with strict SHA512, Git blob provenance and its
+MS-PL license preserved. CMake unpacks this local source for the original
+WTL10 suite; the build no longer downloads WTL from SourceForge. See
+[WTL provenance](third_party/wtl/README.md).
+
 Class-directed `UpdateRegistry` and a bounded original `REGISTRY` resource
 path are implemented. `ATL::IDispatchImpl` queries real Windows type
 information and invokes `ITypeInfo`. A new file-backed
