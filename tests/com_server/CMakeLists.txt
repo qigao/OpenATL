@@ -106,7 +106,12 @@ if(CMAKE_HOST_WIN32)
   if(MINGW)
     # Clang reads precisely the UTF-8 response-file SDK include paths,
     # including spaces in Program Files (x86); MIDL still gets /I itself.
-    set(_openatl_midl_cpp_options "-E -x c @${_openatl_midl_rsp}")
+    # MIDL expects literal __stdcall/__cdecl tokens in SDK IDL, whereas
+    # llvm-mingw's GNU-mode Clang predefines them as GNU __attribute__(())
+    # macros. Undefine those ABI sugar macros, retain real IDL declarations,
+    # and match /env win32's target width instead of the host's x64 width.
+    set(_openatl_midl_cpp_options
+      "-E -x c --target=i686-w64-mingw32 -U__stdcall -U__cdecl -U__fastcall -U_stdcall -U_cdecl -U_fastcall @${_openatl_midl_rsp}")
     list(APPEND _openatl_midl_cpp_args
       /cpp_cmd "${OPENATL_COMMAP_PINNED_CLANG_EXECUTABLE}"
       /cpp_opt "${_openatl_midl_cpp_options}")
