@@ -70,3 +70,19 @@ cmake --preset msvc-x64 -DOPENATL_BUILD_WTL_UNMODIFIED=ON
 cmake --build --preset msvc-x64 --parallel 2
 ctest --preset msvc-x64 --repeat until-fail:5 --output-on-failure
 ```
+
+## Original ARM64 provenance contract (strict version 1)
+
+Each independently compiled `*-original` ARM64 artifact now carries a
+versioned `manifest.json` with an exact `provenance` object and a separate
+`files` SHA256 map. The producer reads the **installed** WTL port identity
+stamp after CMake's source gate and records the checked-out CI commit,
+compiler (`llvm` or `msvc`), WTL version, provider, and archive SHA512.
+
+On the **real Windows ARM64** runner, the existing five-pass test suite now
+rejects missing/extra files, incorrect digest syntax, duplicate manifest
+keys, missing/wrong source metadata, a different checkout, or cross-toolchain
+artifact substitution *before executing any binary*. The legacy flat
+manifest format remains valid only for the non-`original` artifact set.
+The source-only job runs six negative-contract tests without claiming
+printer UI or detached StartMonitor ownership is qualified.

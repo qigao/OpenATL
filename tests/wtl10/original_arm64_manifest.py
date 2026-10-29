@@ -13,6 +13,8 @@ import subprocess
 import sys
 
 from native_arm64 import TARGETS
+from manifest_contract import (current_checkout_sha, make_original_manifest,
+                               verify_installed_wtl_stamp)
 
 
 def main() -> int:
@@ -26,6 +28,8 @@ def main() -> int:
     if ("OPENATL_WTL_FULL_ORIGINAL:BOOL=ON" not in cache
             or "OPENATL_BUILD_WTL_UNMODIFIED:BOOL=ON" not in cache):
         raise SystemExit("Original WTL qualification CMake options are not both ON")
+    # Bind the provenance to the actual installed WTL port identity.
+    verify_installed_wtl_stamp(cache)
     if (root / "wtl/include/atlapp.h").exists():
         raise SystemExit("Build-local adapted WTL header found in zero-adapter mode")
 
@@ -47,12 +51,14 @@ def main() -> int:
         subprocess.run(args, check=True, timeout=20)
         inventory[name] = hashlib.sha256(path.read_bytes()).hexdigest()
 
-    payload = json.dumps(inventory, sort_keys=True, indent=2) + "\n"
+    payload = json.dumps(make_original_manifest(inventory, sys.argv[2],
+                current_checkout_sha()), sort_keys=True, indent=2) + "\n"
     temporary = root / "manifest.json.tmp"
     temporary.write_text(payload, encoding="utf-8")
     temporary.replace(root / "manifest.json")
     print(f"OPENATL_WTL_ORIGINAL_ARM64_PE_OK toolchain={sys.argv[2]} "
-          f"files={len(expected)} sha256=1 machine=1 original=1 adapter=0")
+          f"files={len(expected)} sha256=1 machine=1 original=1 adapter=0 "
+          "source_stamp=1 checkout=1")
     return 0
 
 

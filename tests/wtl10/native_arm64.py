@@ -7,13 +7,13 @@ and each existing GUI/no-COM, ATL utility, W^X, and COM-client mode.
 The pinned WTL10 SDI is PE-verified and exercised through real Windows menu/dialog, button and Unicode edit-change events.
 """
 import hashlib
-import json
 import os
 from pathlib import Path
 import platform
 import re
 import subprocess
 import sys
+from manifest_contract import current_checkout_sha, read_manifest, verify_manifest
 
 TARGETS = (
     "openatl_gui_runtime",
@@ -108,18 +108,25 @@ def main() -> int:
     if os.name != "nt" or platform.machine().lower() not in ("arm64", "aarch64"):
         raise SystemExit("Refuse non-native Windows ARM64 acceptance")
     root = Path(sys.argv[1]).resolve(strict=True)
-    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8-sig"))
+    original = root.name.endswith("-original")
+    try:
+        manifest = read_manifest(root / "manifest.json")
+    except (OSError, ValueError) as error:
+        raise SystemExit(f"Invalid ARM64 manifest: {error}") from error
     samples = ("guidgen", "memdlg") if sys.argv[2] == "msvc" else ("guidgen",)
     targets = (*TARGETS, *("openatl_official_" + name for name in samples))
     required = {name + ".exe" for name in targets} | {
         "openatl_unload_fixture.dll", "openatl_unload_probe.dll", "openatl_com_server_fixture.dll"}
-    if set(manifest) != required:
-        raise SystemExit(f"ARM64 provenance set mismatch: missing={required-set(manifest)}, unexpected={set(manifest)-required}")
+    try:
+        manifest_files = verify_manifest(manifest, required, sys.argv[2],
+            current_checkout_sha() if original else None, original=original)
+    except ValueError as error:
+        raise SystemExit(f"Invalid ARM64 provenance: {error}") from error
     pe_validator = Path(__file__).with_name("verify_pe_machine.py")
     for filename in sorted(required):
         executable = root / filename
         actual = hashlib.sha256(executable.read_bytes()).hexdigest()
-        if actual != manifest[filename].lower():
+        if actual != manifest_files[filename]:
             raise SystemExit(f"ARM64 SHA256 mismatch for {filename}")
         arguments = [sys.executable, str(pe_validator), str(executable), "aarch64"]
         if filename in ("openatl_gui_runtime.exe", "openatl_unicode_utf8.exe", "openatl_wtl10_sdi.exe") or filename.startswith("openatl_official_"):
@@ -159,7 +166,8 @@ def main() -> int:
                 raise SystemExit(f"Native ARM64 official {sample} repeat {attempt} "
                     f"exit={official.returncode} stdout={official.stdout!r} stderr={official.stderr!r}")
     print(f"OPENATL_NATIVE_ARM64_OK files={len(required)} tests={len(CASES) + 1 + len(samples)} repeats=5 "
-          "sha256=1 pe=1 resources=1")
+          f"sha256=1 pe=1 resources=1 original={int(original)} "
+          f"checkout={int(original)}")
     return 0
 
 if __name__ == "__main__":

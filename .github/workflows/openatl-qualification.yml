@@ -26,6 +26,7 @@ jobs:
       - run: python3 tests/source_tree_policy.py
       - run: python3 tests/atl_surface_policy.py
       - run: python3 tests/wtl_dependency_policy.py
+      - run: python3 tests/wtl10/test_manifest_contract.py
 
   windows-llvm:
     name: llvm-mingw Win32 suite + x64 native + ARM64 PE build
