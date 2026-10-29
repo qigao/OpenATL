@@ -59,8 +59,23 @@ and `CharArrayProp` buffers, original `ERROR_OUTOFMEMORY` handling
 without partial modification, and `HFONT` LOGFONT registry persistence
 with explicitly owned GDI cleanup. The exact pinned vcpkg header source
 is audited for those public member and boundedness contracts. Further
-failure injection, genuine print-dialog UI, hyperlink registry behavior,
-and production adapter retirement remain unqualified.
+fault injection, genuine print-dialog UI and production adapter retirement
+remain unqualified.
+
+## Original WTL10 HyperLink registry color behavior
+
+A dedicated native test mode (`--hyperlink`) uses
+`RegOverridePredefKey(HKEY_CURRENT_USER, ownedSandbox)` within the
+**test process only**. It writes two temporary registry values under that
+isolated sandbox, creates and destroys a real original
+`WTL::CHyperLink` child window, and checks that its
+`m_clrLink`/`m_clrVisited` are the values parsed by the original WTL
+`Init()` from the redirected Internet Explorer settings key. The
+process-wide override is restored **before** closing and deleting the
+GUID-owned sandbox key; the test never edits real IE settings or HKLM/HKCR.
+The test also checks that original WTL does not initialize a COM apartment.
+Native x86/x64 CTest runs this in a separate process; both Windows ARM64
+test jobs execute the same mode five times.
 
 ## Original CServerAppModule shutdown monitor — bounded evidence
 

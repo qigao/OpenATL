@@ -79,6 +79,14 @@ def main() -> int:
     if misc[x:y].count("lRet = ERROR_OUTOFMEMORY;") < 2:
         raise ValueError("original WTL bounded-buffer rejection changed")
     print("WTL_REGISTRY_EXTENDED_CONTRACT_OK binary=1 char_array=1 font=1 map=1 callbacks=1 bounds=1")
+    # Original hyperlink code must still read both documented HKCU values
+    # through the single OpenATL::CRegKey Win32 API; no static color fallback.
+    for token in ('"Anchor Color"', '"Anchor Color Visited"',
+                  "QueryStringValue(", "_ParseColorString(",
+                  "Software\\\\Microsoft\\\\Internet Explorer\\\\Settings"):
+        if token not in ctrlx:
+            raise ValueError("original WTL hyperlink registry source changed: " + token)
+    print("WTL_HYPERLINK_REGISTRY_SOURCE_OK anchor=1 visited=1 parser=1")
     # Exact-release API details to qualify next: binary/font/character arrays
     # and CRTP property-map macros. Bounded source dump from installed package,
     # never a different WTL tag or an edited/adapted copy.

@@ -62,6 +62,15 @@ if ("WTL_REGISTRY_EXTENDED_CONTRACT_OK" not in audit_script.read_text("utf-8")
         or "ERROR_OUTOFMEMORY" not in expanded
         or "ScopedFont" not in expanded):
     fail.append("original WTL CRTP/binary/font/array native property gates required")
+link_src=(ROOT/"tests/wtl_unmodified/hyperlink_registry.cpp")
+direct_src=(ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")
+cmake_src=(ROOT/"tests/wtl_unmodified/CMakeLists.txt").read_text("utf-8")
+if (not link_src.is_file()
+        or "RegOverridePredefKey" not in link_src.read_text("utf-8")
+        or "RunOriginalHyperlinkRegistryTests()" not in direct_src
+        or "openatl.wtl_original_hyperlink_hkcu" not in cmake_src
+        or '"--hyperlink"' not in native_script):
+    fail.append("original WTL hyperlink HKCU isolated native behavior is mandatory")
 if fail:
     for item in fail: print("WTL_VCPKG_POLICY_FAIL "+item,file=sys.stderr)
     raise SystemExit(1)
