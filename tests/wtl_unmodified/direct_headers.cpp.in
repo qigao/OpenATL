@@ -5,6 +5,8 @@
 #include <atlcom.h>
 #include <atlwin.h>
 #include "@OPENATL_WTL_DIRECT_ATLAPP@"
+#include <atlframe.h>
+#include <atlctrls.h>
 #include <atldlgs.h>
 #include <atlmisc.h>
 #include <objbase.h>

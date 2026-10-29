@@ -8,9 +8,6 @@ if(NOT EXISTS "${_openatl_wtl_original_include}/atldlgs.h" OR
    NOT EXISTS "${_openatl_wtl_original_include}/atlmisc.h")
   message(FATAL_ERROR "Original WTL COM/dialog/registry surface is incomplete")
 endif()
-if(NOT EXISTS "${CMAKE_BINARY_DIR}/wtl/include/atlapp.h")
-  message(FATAL_ERROR "Expected current adapted WTL baseline missing; cannot compare")
-endif()
 file(TO_CMAKE_PATH "${_openatl_wtl_original_include}/atlapp.h" OPENATL_WTL_DIRECT_ATLAPP)
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/direct_headers.cpp.in"
   "${CMAKE_CURRENT_BINARY_DIR}/direct_headers.cpp" @ONLY)
