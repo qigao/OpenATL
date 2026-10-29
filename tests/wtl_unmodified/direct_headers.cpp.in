@@ -1,0 +1,40 @@
+// Original vcpkg WTL 10 headers, without OpenATL's build-local adapter.
+// Every identifier below is intentionally from the public WTL/ATL surface.
+// A RED here is a feature gap: do NOT delete the declaration to make it pass.
+#include <atlbase.h>
+#include <atlcom.h>
+#include <atlwin.h>
+#include "@OPENATL_WTL_DIRECT_ATLAPP@"
+#include <atldlgs.h>
+#include <atlmisc.h>
+#include <objbase.h>
+#include <type_traits>
+
+#ifndef OPENATL_REPOSITORY_HEADERS
+#error OpenATL ATL source identity must be present
+#endif
+static_assert(OPENATL_REPOSITORY_HEADERS == 0x4F41544CUL,
+              "Microsoft ATL or another ATL provider was selected");
+static_assert(std::is_base_of_v<ATL::CComModule, WTL::CAppModule>,
+              "Original WTL CAppModule must retain its CComModule inheritance");
+static_assert(std::is_base_of_v<WTL::CAppModule, WTL::CServerAppModule>,
+              "Original WTL COM server module must not be removed");
+static_assert(std::is_class_v<WTL::CPrintDialogEx>,
+              "Original WTL COM callback-based PrintDlgEx must be available");
+
+int main()
+{
+    WTL::CAppModule app;
+    HINSTANCE image = ::GetModuleHandleW(nullptr);
+    if (!image)
+        return 1;
+    HRESULT hr = app.Init(nullptr, image, nullptr);
+    if (FAILED(hr))
+        return 2;
+    APTTYPE apartment = APTTYPE_CURRENT;
+    APTTYPEQUALIFIER qualifier = APTTYPEQUALIFIER_NONE;
+    hr = ::CoGetApartmentType(&apartment, &qualifier);
+    app.Term();
+    // The basic WTL UI module must not implicitly initialize COM.
+    return hr == CO_E_NOTINITIALIZED ? 0 : 3;
+}

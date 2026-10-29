@@ -100,6 +100,12 @@ endif()
 
 option(OPENATL_BUILD_QUALIFICATION "Compile native UI, ATL utility and COM client/server tests" OFF)
 option(OPENATL_BUILD_OFFICIAL_SUITE "Build every unchanged WTL release sample (upstream Win32 ABI)" OFF)
+# This is a separate, strict feature-parity gate. It deliberately uses the
+# ORIGINAL vcpkg WTL headers rather than our currently adapted build copy.
+option(OPENATL_BUILD_WTL_UNMODIFIED "Qualify original vcpkg WTL headers directly against OpenATL" OFF)
+if(OPENATL_BUILD_WTL_UNMODIFIED AND NOT OPENATL_BUILD_QUALIFICATION)
+  message(FATAL_ERROR "Original WTL compatibility requires native qualification")
+endif()
 if(OPENATL_BUILD_OFFICIAL_SUITE AND NOT OPENATL_BUILD_QUALIFICATION)
   message(FATAL_ERROR "The official suite requires OPENATL_BUILD_QUALIFICATION")
 endif()
@@ -262,6 +268,9 @@ if(OPENATL_BUILD_QUALIFICATION)
 
   add_subdirectory(tests/com_server)
   add_subdirectory(tests/official_samples)
+  if(OPENATL_BUILD_WTL_UNMODIFIED)
+    add_subdirectory(tests/wtl_unmodified)
+  endif()
   add_subdirectory(tests/atl_host)
   add_subdirectory(tests/ratl_samples)
 

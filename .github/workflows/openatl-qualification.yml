@@ -373,6 +373,147 @@ jobs:
           Run cmake @('--preset','msvc-salts',"-DOPENATL_WTL_DEMO_DIR=$sample")
           Run cmake @('--build','--preset','msvc-salts','--parallel','2')
           Run ctest @('--preset','msvc-salts','--repeat','until-fail:5')
+      - name: Unmodified vcpkg WTL headers on OpenATL (strict feature-parity gate)
+        if: matrix.target == 'x64'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          cmake --preset msvc-x64 -DOPENATL_BUILD_WTL_UNMODIFIED=ON
+          if($LASTEXITCODE -ne 0) { throw 'unmodified WTL configure failed' }
+          cmake --build --preset msvc-x64 --target openatl_wtl_unmodified_headers --parallel 2
+          if($LASTEXITCODE -ne 0) { throw 'original WTL public headers are not yet compatible with OpenATL' }
+          ctest --preset msvc-x64 -R '^openatl.wtl_unmodified_no_com        with:
+          name: openatl-msvc-arm64
+          path: |
+            build-msvc-arm64/*.exe
+            !build-msvc-arm64/openatl_ratl_*.exe
+            build-msvc-arm64/*.dll
+            build-msvc-arm64/manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-arm64-llvm:
+    name: Real Windows ARM64 llvm-mingw CTest equivalents
+    needs: windows-llvm
+    runs-on: windows-11-vs2026-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: openatl-llvm-arm64
+          path: llvm-arm64
+      - name: Verify SHA256, ARM64 PE, real SDI, CET and unload tests x5
+        run: python tests/wtl10/native_arm64.py llvm-arm64 llvm
+
+  windows-arm64-msvc:
+    name: Real Windows ARM64 MSVC CTest equivalents
+    needs: msvc-windows
+    runs-on: windows-11-vs2026-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: openatl-msvc-arm64
+          path: msvc-arm64
+      - name: Verify SHA256, ARM64 PE, real SDI, CET and unload tests x5
+        run: python tests/wtl10/native_arm64.py msvc-arm64 msvc
+
+  linux-macos-cross:
+    name: ${{ matrix.host }} Windows x64/ARM64 cross CMake
+    # A macOS runner is currently unavailable. Keep macOS qualification
+    # opt-in, NOT silently passing or permanently deleted. Set repository
+    # variable OPENATL_MACOS_RUNNER_AVAILABLE=true to schedule the exact same
+    # pinned x64/ARM64 Windows cross-build when capacity has been provisioned.
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(vars.OPENATL_MACOS_RUNNER_AVAILABLE == 'true' && '[{"host":"Linux","runner":"ubuntu-24.04","archive":"llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz","sha256":"55064b60b991a1e1e8090b8c2f84e82b22cfe5903d12c159d65064cf5e8ae335"},{"host":"macOS","runner":"macos-15","archive":"llvm-mingw-20261020-ucrt-macos-universal.tar.xz","sha256":"e9c13e4ede38e715003ffc674d4d00a1088df8235439d1f0c16188ff0704c17e"}]' || '[{"host":"Linux","runner":"ubuntu-24.04","archive":"llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz","sha256":"55064b60b991a1e1e8090b8c2f84e82b22cfe5903d12c159d65064cf5e8ae335"}]') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: qigao/vcpkg-cache
+          ref: 88328df0817885719868178c635a02570c7779b3
+          path: tools/vcpkg-cache
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Bootstrap exact canonical vcpkg (curl-only, no Mono)
+        shell: pwsh
+        run: |
+          python tools/vcpkg-cache/scripts/setup-vcpkg-curl-cache.py tools/vcpkg-cache
+          if ($LASTEXITCODE -ne 0) { throw 'pinned vcpkg bootstrap failed' }
+      - name: Install pinned WTL10 from the selected vcpkg overlay
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=if($IsWindows){Join-Path $env:VCPKG_ROOT 'vcpkg.exe'}else{Join-Path $env:VCPKG_ROOT 'vcpkg'}
+          $installed=Join-Path $env:GITHUB_WORKSPACE 'build/wtl-vcpkg-installed'
+          $args_=@('install',"--x-manifest-root=$env:GITHUB_WORKSPACE",
+                   "--x-install-root=$installed",'--triplet=qigao-wtl10-headers',
+                   "--overlay-ports=$env:VCPKG_OVERLAY_PORTS",
+                   "--overlay-triplets=$env:VCPKG_OVERLAY_TRIPLETS")
+          & $exe @args_
+          if ($LASTEXITCODE -ne 0) { throw 'single-provider WTL install failed' }
+          $source=Join-Path $installed 'qigao-wtl10-headers/share/wtl/openatl-wtl-source.txt'
+          if (!(Test-Path $source)) { throw 'WTL source stamp missing' }
+          "OPENATL_WTL_VCPKG_INSTALLED_DIR=$installed" >> $env:GITHUB_ENV
+          "OPENATL_WTL_VCPKG_TRIPLET=qigao-wtl10-headers" >> $env:GITHUB_ENV
+      - name: Install SHA256-pinned llvm-mingw
+        shell: bash
+        env:
+          LLVM_ARCHIVE: ${{ matrix.archive }}
+          LLVM_SHA256: ${{ matrix.sha256 }}
+        run: |
+          set -euo pipefail
+          mkdir -p tools/llvm
+          curl -fLsS --retry 3 --retry-delay 3 "https://github.com/mstorsjo/llvm-mingw/releases/download/20261020/$LLVM_ARCHIVE" -o llvm.tar.xz
+          echo "$LLVM_SHA256  llvm.tar.xz" | shasum -a 256 -c -
+          tar -xJf llvm.tar.xz -C tools/llvm
+          driver="$(find "$PWD/tools/llvm" -name x86_64-w64-mingw32-clang++ -print -quit)"
+          test -x "$driver"
+          bin="$(dirname "$driver")"
+          echo "OPENATL_LLVM_MINGW_BIN=$bin" >> "$GITHUB_ENV"
+          echo "$bin" >> "$GITHUB_PATH"
+      - name: Fetch pinned SDI sample
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$OPENATL_LLVM_MINGW_BIN:$PATH"
+          git clone -q https://github.com/kkhaike/wtltest.git tools/wtl10-test
+          git -C tools/wtl10-test checkout -q --detach 63ba6a992cb3d79d56be66cd283f6615c6646b3d
+          test "$(git -C tools/wtl10-test rev-parse HEAD)" = 63ba6a992cb3d79d56be66cd283f6615c6646b3d
+      - name: CMake/WTL SDI and Windows PE resource qualification for both RIDs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for arch in x86_64 aarch64; do
+            build="build-llvm-$arch"
+            cmake --preset "llvm-$arch" "-DOPENATL_WTL_DEMO_DIR=$PWD/tools/wtl10-test"
+            cmake --build --preset "llvm-$arch" --parallel 2
+            if [ "$arch" = x86_64 ]; then
+              python3 tests/wtl10/verify_pe_mitigations.py "$build/openatl_mitigation_runtime.exe" "$arch" --require-cfg --require-cet
+              python3 tests/wtl10/verify_pe_mitigations.py "$build/openatl_cet_shadow_stack.exe" "$arch" --require-cfg --require-cet
+            else
+              python3 tests/wtl10/verify_pe_mitigations.py "$build/openatl_mitigation_runtime.exe" "$arch" --require-cfg
+            fi
+            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_unicode openatl_unicode_utf8 openatl_atl_extensions openatl_atl_mapping openatl_atl_image openatl_thunk_fault openatl_mitigation_runtime openatl_unload_runner openatl_unload_native openatl_com_client openatl_com_server_tests openatl_activex openatl_wtl10_sdi openatl_official_guidgen openatl_ratl_console openatl_ratl_dialog openatl_ratl_window; do
+              if [ "$target" = openatl_gui_runtime ] || [ "$target" = openatl_unicode_utf8 ] || [ "$target" = openatl_wtl10_sdi ] || [ "$target" = openatl_official_guidgen ] || [[ "$target" == openatl_ratl_* ]]; then
+                python3 tests/wtl10/verify_pe_machine.py "$build/$target.exe" "$arch" --require-resources
+              else
+                python3 tests/wtl10/verify_pe_machine.py "$build/$target.exe" "$arch"
+              fi
+            done
+            python3 tests/wtl10/verify_pe_machine.py "$build/openatl_unload_fixture.dll" "$arch"
+            python3 tests/wtl10/verify_pe_machine.py "$build/openatl_unload_probe.dll" "$arch"
+            python3 tests/wtl10/verify_pe_machine.py "$build/openatl_com_server_fixture.dll" "$arch"
+          done
+ --output-on-failure
+          if($LASTEXITCODE -ne 0) { throw 'original WTL native runtime contract failed' }
       - uses: actions/upload-artifact@v4
         if: matrix.target == 'arm64'
         with:

@@ -48,6 +48,9 @@ function(_openatl_prepare_wtl)
     message(FATAL_ERROR "WTL vcpkg source identity mismatch")
   endif()
   set(_openatl_wtl_samples "${_wtl_share}/Samples" PARENT_SCOPE)
+  # Private qualification input only: bypass the adapted WTL header tree.
+  # Production include paths remain unchanged until the strict gate passes.
+  set(_openatl_wtl_original_include "${_wtl_source}" PARENT_SCOPE)
   set(_wtl_adapter "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/wtl/PrepareWtl.cmake")
   set(_wtl_headers "${CMAKE_CURRENT_BINARY_DIR}/wtl/include")
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_wtl_identity}" "${_wtl_adapter}")
