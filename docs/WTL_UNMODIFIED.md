@@ -126,3 +126,22 @@ sets OFF, checks the exact CMakeCache value, and logs HSP as **UNQUALIFIED**.
 The canonical `msvc-x64` preset still defaults to ON, and
 `.github/workflows/openatl-hsp-dedicated.yml` still requires real hardware
 HSP ten times under each compiler; no HSP bypass or test removal is accepted.
+
+## PrintDlgEx Win32 default-printer probe — not a modal UI qualification
+
+The direct-original-header test now calls `WTL::CPrintDialogEx::GetDefaults()`,
+which executes the genuine Win32 `PrintDlgEx` with `PD_RETURNDEFAULT` and
+`PD_RETURNDC`. A separate `GetDefaultPrinterW` call distinguishes a real
+default printer from a hosted machine with none. Where one exists, the test
+validates Unicode `DEVNAMES` and `DEVMODE` bounds, the real printer DC,
+manual `GlobalFree`/`DeleteDC`, and explicit STA COM shutdown. Where no
+default exists it requires a failed Win32 call and emits
+`WTL_PRINTER_READINESS default=0 ... modal=UNQUALIFIED` rather than inventing
+a printer or accepting false success. Unexpected errors with a configured
+printer are real REDs. This test is included in native CTest and the real
+ARM64 five-pass suite, with strictly parsed two-line readiness diagnostics.
+
+**Still unqualified:** visible `PrintDlgEx::DoModal()` property-sheet
+creation, actual printer selection/cancellation, callback sequencing, and
+modal window/resource retirement on a printer-enabled native runner. No
+fake printer, WTL source edit, static stub or second printing provider.

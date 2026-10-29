@@ -143,6 +143,17 @@ if (not link_src.is_file()
         or "openatl.wtl_original_hyperlink_hkcu" not in cmake_src
         or '"--hyperlink"' not in native_script):
     fail.append("original WTL hyperlink HKCU isolated native behavior is mandatory")
+print_probe=ROOT/"tests/wtl_unmodified/print_defaults.cpp"
+if (not print_probe.is_file()
+        or "dialog.GetDefaults()" not in print_probe.read_text("utf-8")
+        or "GetDefaultPrinterW" not in print_probe.read_text("utf-8")
+        or "GlobalFree" not in print_probe.read_text("utf-8")
+        or "winspool" not in cmake_src
+        or "openatl.wtl_original_print_defaults_probe" not in cmake_src
+        or "RunOriginalPrintDefaultsProbe()" not in direct_src
+        or '"--print-defaults"' not in native_script
+        or "native_stdout_ok" not in native_script):
+    fail.append("real Win32 PrintDlgEx default-printer probe and cleanup required")
 if fail:
     for item in fail: print("WTL_VCPKG_POLICY_FAIL "+item,file=sys.stderr)
     raise SystemExit(1)
