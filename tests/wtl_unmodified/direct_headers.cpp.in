@@ -26,17 +26,24 @@ static_assert(std::is_class_v<WTL::CPrintDialogEx>,
 
 int main()
 {
-    WTL::CAppModule app;
     HINSTANCE image = ::GetModuleHandleW(nullptr);
-    if (!image)
-        return 1;
-    HRESULT hr = app.Init(nullptr, image, nullptr);
-    if (FAILED(hr))
-        return 2;
-    APTTYPE apartment = APTTYPE_CURRENT;
-    APTTYPEQUALIFIER qualifier = APTTYPEQUALIFIER_NONE;
-    hr = ::CoGetApartmentType(&apartment, &qualifier);
-    app.Term();
-    // The basic WTL UI module must not implicitly initialize COM.
-    return hr == CO_E_NOTINITIALIZED ? 0 : 3;
+    if (!image) return 1;
+    {
+        WTL::CAppModule app;
+        HRESULT hr = app.Init(nullptr, image, nullptr);
+        if (FAILED(hr)) return 2;
+        APTTYPE apartment = APTTYPE_CURRENT;
+        APTTYPEQUALIFIER qualifier = APTTYPEQUALIFIER_NONE;
+        hr = ::CoGetApartmentType(&apartment, &qualifier);
+        app.Term();
+        if (hr != CO_E_NOTINITIALIZED) return 3;
+    }
+    // Non-null raw legacy object maps are not yet qualified for COM server
+    // registration. Fail explicitly instead of silently accepting a stub.
+    {
+        ATL::CComModule module;
+        auto* unsupported = reinterpret_cast<ATL::_ATL_OBJMAP_ENTRY*>(1);
+        if (module.Init(unsupported, image, nullptr) != E_NOTIMPL) return 4;
+    }
+    return 0;
 }

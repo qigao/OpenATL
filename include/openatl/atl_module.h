@@ -29,6 +29,10 @@ public:
     // any TypeLib request on an actual application module; it is metadata,
     // not a registry registration or a second COM factory provider.
     inline static GUID m_libid{};
+    // Same image-owned module lock as GetLockCount/Lock/Unlock.
+    // Original WTL's CServerAppModule reads this counter.
+    std::atomic<LONG> m_nLockCnt{0};
+    CComAutoCriticalSection m_csStaticDataInitAndTypeInfo;
     CAtlModule() noexcept {
         if (_pAtlModule) std::terminate();
         _pAtlModule = this;
@@ -40,20 +44,20 @@ public:
     }
     CAtlModule(const CAtlModule&) = delete;
     CAtlModule& operator=(const CAtlModule&) = delete;
-    LONG GetLockCount() const noexcept { return locks_.load(); }
+    LONG GetLockCount() const noexcept { return m_nLockCnt.load(); }
     LONG Lock() noexcept {
         if (terminated_.load()) std::terminate();
-        LONG value = locks_.load();
+        LONG value = m_nLockCnt.load();
         for (;;) {
             if (value == (std::numeric_limits<LONG>::max)()) std::terminate();
-            if (locks_.compare_exchange_weak(value, value + 1)) return value + 1;
+            if (m_nLockCnt.compare_exchange_weak(value, value + 1)) return value + 1;
         }
     }
     LONG Unlock() noexcept {
-        LONG value = locks_.load();
+        LONG value = m_nLockCnt.load();
         for (;;) {
             if (!value) std::terminate();
-            if (locks_.compare_exchange_weak(value, value - 1)) return value - 1;
+            if (m_nLockCnt.compare_exchange_weak(value, value - 1)) return value - 1;
         }
     }
     HRESULT AddTermFunc(_ATL_TERMFUNC callback, DWORD_PTR argument) noexcept {
@@ -72,7 +76,7 @@ public:
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (terminated_.load()) return;
-            if (locks_.load()) std::terminate();
+            if (m_nLockCnt.load()) std::terminate();
             terminated_.store(true);
             callbacks.swap(callbacks_);
         }
@@ -83,10 +87,68 @@ protected:
     bool IsTerminated() const noexcept { return terminated_.load(); }
 private:
     struct Termination { _ATL_TERMFUNC callback; DWORD_PTR argument; };
-    std::atomic<LONG> locks_{0};
     std::atomic<bool> terminated_{false};
     std::mutex mutex_;
     std::vector<Termination> callbacks_;
+};
+
+// Original WTL10 CAppModule derives from this ATL module interface.
+// Provide real no-object-map UI lifecycle, with no implicit COM apartment.
+// A non-null legacy object map must fail until its factory/cookie/rollback
+// registration implementation is qualified; do not fabricate S_OK.
+struct _ATL_OBJMAP_ENTRY;
+
+class CComModule : public CAtlModule {
+public:
+    CComModule() noexcept = default;
+    ~CComModule() noexcept { Term(); }
+    CComModule(const CComModule&) = delete;
+    CComModule& operator=(const CComModule&) = delete;
+
+    HRESULT Init(_ATL_OBJMAP_ENTRY* map, HINSTANCE image,
+                 const GUID* libId = nullptr) noexcept {
+        if (!image) return E_INVALIDARG;
+        if (IsTerminated()) return E_UNEXPECTED;
+        if (initialized_) return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+        if (map) return E_NOTIMPL;
+        m_hInst = image;
+        m_hInstResource = image;
+        m_pObjMap = nullptr;
+        _AtlBaseModule.m_hInst = image;
+        _AtlBaseModule.m_hInstResource = image;
+        if (libId) m_libid = *libId;
+        initialized_ = true;
+        return S_OK;
+    }
+    void Term() noexcept {
+        if (initialized_) {
+            // No retirement while a factory, object or server lock exists.
+            if (GetLockCount() != 0) std::terminate();
+            initialized_ = false;
+            m_pObjMap = nullptr;
+        }
+        CAtlModule::Term();
+    }
+    HINSTANCE GetModuleInstance() const noexcept { return m_hInst; }
+    HINSTANCE GetResourceInstance() const noexcept {
+        return _AtlBaseModule.GetResourceInstance();
+    }
+    HINSTANCE SetResourceInstance(HINSTANCE image) noexcept {
+        m_hInstResource = image;
+        return _AtlBaseModule.SetResourceInstance(image);
+    }
+    HRESULT RegisterClassObjects(DWORD, DWORD) noexcept {
+        // The only supported initialized map is empty.
+        return initialized_ ? S_OK : E_UNEXPECTED;
+    }
+    HRESULT RevokeClassObjects() noexcept {
+        return initialized_ ? S_OK : E_UNEXPECTED;
+    }
+    HINSTANCE m_hInst = nullptr;
+    HINSTANCE m_hInstResource = nullptr;
+    _ATL_OBJMAP_ENTRY* m_pObjMap = nullptr;
+private:
+    bool initialized_ = false;
 };
 
 template<class T>
