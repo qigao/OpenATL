@@ -30,6 +30,23 @@
 #include <commctrl.h>
 #include <shlwapi.h>
 
+// The pinned llvm-mingw uxtheme.h declares GetThemePartSize(RECT*), although
+// original WTL10's public method correctly accepts LPCRECT. Preserve WTL's
+// untouched public API: provide one C++ const-input Win32 ABI overload only
+// where the MinGW SDK signature requires a mutable pointer. Win32 consumes
+// the rectangle as input; no borrowed const memory is ever cast away.
+#if defined(__MINGW32__)
+#include <uxtheme.h>
+inline HRESULT WINAPI GetThemePartSize(HTHEME theme, HDC dc, int part, int state,
+                                        const RECT* input, THEMESIZE size,
+                                        SIZE* result) noexcept {
+    RECT copied{};
+    if (input) copied = *input;
+    return ::GetThemePartSize(theme, dc, part, state,
+                              input ? &copied : nullptr, size, result);
+}
+#endif
+
 #if defined(__MINGW32__)
 #include <type_traits>
 #endif

@@ -100,6 +100,12 @@ endif()
 
 option(OPENATL_BUILD_QUALIFICATION "Compile native UI, ATL utility and COM client/server tests" OFF)
 option(OPENATL_BUILD_OFFICIAL_SUITE "Build every unchanged WTL release sample (upstream Win32 ABI)" OFF)
+# Original WTL is the only include source for all consumers.
+# This optional switch enables additional real native WTL API tests.
+option(OPENATL_BUILD_WTL_UNMODIFIED "Run original WTL API native contract tests" OFF)
+if(OPENATL_BUILD_WTL_UNMODIFIED AND NOT OPENATL_BUILD_QUALIFICATION)
+  message(FATAL_ERROR "Original WTL compatibility requires native qualification")
+endif()
 if(OPENATL_BUILD_OFFICIAL_SUITE AND NOT OPENATL_BUILD_QUALIFICATION)
   message(FATAL_ERROR "The official suite requires OPENATL_BUILD_QUALIFICATION")
 endif()
@@ -253,6 +259,9 @@ if(OPENATL_BUILD_QUALIFICATION)
   add_executable(openatl_com_client tests/atl_conformance/com_client.cpp)
   target_link_libraries(openatl_com_client PRIVATE OpenATL::ATL)
   add_test(NAME openatl.com_client COMMAND openatl_com_client)
+  add_executable(openatl_com_site tests/atl_conformance/com_site.cpp)
+  target_link_libraries(openatl_com_site PRIVATE OpenATL::ATL)
+  add_test(NAME openatl.com_site_no_apartment COMMAND openatl_com_site)
   # Every mode is its own process: COM apartment state is thread-local,
   # never shared with WTL UI or another COM client mode.
   foreach(_client_mode IN ITEMS sta mta changed-sta changed-mta uninitialized)
@@ -262,10 +271,13 @@ if(OPENATL_BUILD_QUALIFICATION)
 
   add_subdirectory(tests/com_server)
   add_subdirectory(tests/official_samples)
+  if(OPENATL_BUILD_WTL_UNMODIFIED)
+    add_subdirectory(tests/wtl_unmodified)
+  endif()
   add_subdirectory(tests/atl_host)
   add_subdirectory(tests/ratl_samples)
 
-  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_unicode openatl_unicode_utf8 openatl_com_server_fixture openatl_com_server_tests openatl_thunk_fault openatl_mitigation_runtime openatl_unload_fixture openatl_unload_runner openatl_unload_probe openatl_unload_native openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
+  foreach(_qualified IN ITEMS openatl_gui_runtime openatl_com_client openatl_com_site openatl_unicode openatl_unicode_utf8 openatl_com_server_fixture openatl_com_server_tests openatl_thunk_fault openatl_mitigation_runtime openatl_unload_fixture openatl_unload_runner openatl_unload_probe openatl_unload_native openatl_atl_core openatl_atl_path openatl_atl_extensions openatl_atl_mapping openatl_atl_image)
     target_compile_definitions(${_qualified} PRIVATE NDEBUG)
     if(MSVC)
       target_compile_options(${_qualified} PRIVATE /W3 /EHsc)

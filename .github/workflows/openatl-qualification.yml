@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# pull_request GITHUB_SHA names GitHub's synthetic merge, not the PR HEAD.
+# Every builder and real ARM64 consumer checks out and verifies this same SHA.
+env:
+  OPENATL_EXPECTED_CHECKOUT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 # Keep the exact PR HEAD qualified while avoiding obsolete pending
 # attempts for earlier commits on that same pull request. Separate PRs
 # and manual dispatch refs retain independent job groups.
@@ -23,9 +28,12 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - run: python3 tests/source_tree_policy.py
       - run: python3 tests/atl_surface_policy.py
       - run: python3 tests/wtl_dependency_policy.py
+      - run: python3 tests/wtl10/test_manifest_contract.py
 
   windows-llvm:
     name: llvm-mingw Win32 suite + x64 native + ARM64 PE build
@@ -35,10 +43,12 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/checkout@v4
         with:
           repository: qigao/vcpkg-cache
-          ref: 88328df0817885719868178c635a02570c7779b3
+          ref: 8359cdbdf25c1f58cfc7230cc6318dc2fdb804fb
           path: tools/vcpkg-cache
       - uses: actions/setup-python@v5
         with:
@@ -114,9 +124,24 @@ jobs:
           "OPENATL_WINDOWS_SDK_BIN=$env:OPENATL_WINDOWS_SDK_BIN" |
             Out-File $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Windows SDK bin: $env:OPENATL_WINDOWS_SDK_BIN"
-          Run cmake @('--preset','llvm-i686')
+          Run cmake @('--preset','llvm-i686','-DOPENATL_BUILD_WTL_UNMODIFIED=ON')
           Run cmake @('--build','--preset','llvm-i686','--parallel','2')
           Run ctest @('--preset','llvm-i686','--repeat','until-fail:5')
+      - name: Original vcpkg WTL10 on llvm-mingw i686 — all 11 samples, no adapter
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Run([string]$tool,[string[]]$argv) {
+            & $tool @argv
+            if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
+          }
+          $env:OPENATL_LLVM_MINGW_BIN=$env:OPENATL_LLVM_BIN
+          Run cmake @('--preset','llvm-i686',
+                      '-DOPENATL_WTL_FULL_ORIGINAL=ON',
+                      '-DOPENATL_BUILD_WTL_UNMODIFIED=ON')
+          Run cmake @('--build','--preset','llvm-i686','--parallel','2')
+          Run ctest @('--preset','llvm-i686','--repeat','until-fail:5')
+          Write-Host 'OPENATL_WTL_FULL_ORIGINAL_LLVM_I686_OK original=1 adapter=0 official_samples=11'
       - name: CMake native x64 and cross ARM64, PE/resources, CTest x5
         shell: pwsh
         run: |
@@ -127,10 +152,10 @@ jobs:
           }
           $env:OPENATL_LLVM_MINGW_BIN=$env:OPENATL_LLVM_BIN
           $sample=(Resolve-Path tools/wtl10-test).Path
-          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_activex','openatl_wtl10_sdi','openatl_official_guidgen')
+          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_site','openatl_wtl_unmodified_headers','openatl_com_server_tests','openatl_activex','openatl_wtl10_sdi','openatl_official_guidgen')
           foreach($arch in @('x86_64','aarch64')) {
             $build="build-llvm-$arch"
-            Run cmake @('--preset',"llvm-$arch","-DOPENATL_WTL_DEMO_DIR=$sample")
+            Run cmake @('--preset',"llvm-$arch","-DOPENATL_WTL_DEMO_DIR=$sample","-DOPENATL_BUILD_WTL_UNMODIFIED=ON")
             Run cmake @('--build','--preset',"llvm-$arch",'--parallel','2')
             $peCheck=@('tests/wtl10/verify_pe_mitigations.py',"$build/openatl_mitigation_runtime.exe",$arch,'--require-cfg')
             if($arch -eq 'x86_64') { $peCheck+='--require-cet' }
@@ -163,6 +188,23 @@ jobs:
               $manifest | ConvertTo-Json -Depth 3 | Set-Content "$build/manifest.json" -Encoding utf8
             }
           }
+      - name: Full original WTL10 on llvm-mingw x64 — source-only headers, CTest x5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Run([string]$tool,[string[]]$argv) {
+            & $tool @argv
+            if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
+          }
+          $env:OPENATL_LLVM_MINGW_BIN=$env:OPENATL_LLVM_BIN
+          # Reconfigure the separately qualified x64 build, without altering
+          # the ARM64 artifact and exact PE/SHA256 provenance already staged.
+          Run cmake @('--preset','llvm-x86_64',
+                      '-DOPENATL_WTL_FULL_ORIGINAL=ON',
+                      '-DOPENATL_BUILD_WTL_UNMODIFIED=ON')
+          Run cmake @('--build','--preset','llvm-x86_64','--parallel','2')
+          Run ctest @('--preset','llvm-x86_64','--repeat','until-fail:5')
+          Write-Host 'OPENATL_WTL_FULL_ORIGINAL_LLVM_X64_OK original=1 adapter=0 native=1 repeats=5'
       - uses: actions/upload-artifact@v4
         with:
           name: openatl-llvm-arm64
@@ -173,6 +215,37 @@ jobs:
             build-llvm-aarch64/manifest.json
           if-no-files-found: error
           retention-days: 7
+      - name: Compile independent zero-adapter WTL10 llvm-mingw ARM64 and PE manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Run([string]$tool,[string[]]$argv) {
+            & $tool @argv
+            if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
+          }
+          $env:OPENATL_LLVM_MINGW_BIN=$env:OPENATL_LLVM_BIN
+          $demo=(Resolve-Path tools/wtl10-test).Path
+          Run cmake @('--preset','llvm-aarch64',
+                      '-B','build-llvm-aarch64-original',
+                      "-DOPENATL_WTL_DEMO_DIR=$demo",
+                      '-DOPENATL_WTL_FULL_ORIGINAL=ON',
+                      '-DOPENATL_BUILD_WTL_UNMODIFIED=ON')
+          Run cmake @('--build','build-llvm-aarch64-original','--parallel','2')
+          Run python @('tests/wtl10/original_arm64_manifest.py',
+                      'build-llvm-aarch64-original','llvm')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openatl-llvm-arm64-original
+          path: |
+            build-llvm-aarch64-original/*.exe
+            !build-llvm-aarch64-original/openatl_ratl_*.exe
+            build-llvm-aarch64-original/*.dll
+            build-llvm-aarch64-original/manifest.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Original WTL LLVM ARM64 qualification artifact created
+        shell: pwsh
+        run: Write-Host 'OPENATL_WTL_ORIGINAL_ARM64_LLVM_BUILD_OK source=vcpkg adapter=0 manifest=1'
 
   msvc-win32-official:
     name: MSVC x86 complete official WTL10 suite and native CTest
@@ -180,10 +253,12 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/checkout@v4
         with:
           repository: qigao/vcpkg-cache
-          ref: 88328df0817885719868178c635a02570c7779b3
+          ref: 8359cdbdf25c1f58cfc7230cc6318dc2fdb804fb
           path: tools/vcpkg-cache
       - uses: actions/setup-python@v5
         with:
@@ -220,7 +295,7 @@ jobs:
             & $tool @argv
             if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
           }
-          Run cmake @('--preset','msvc-x86')
+          Run cmake @('--preset','msvc-x86','-DOPENATL_BUILD_WTL_UNMODIFIED=ON')
           Run cmake @('--build','--preset','msvc-x86','--parallel','2')
           $samples=@('Aero','Alpha','BmpView','GuidGen','MDIDocVw','MemDlg',
                      'MTPad','MTPad7','TabBrowser','Wizard97Test','WTLExplorer')
@@ -230,6 +305,20 @@ jobs:
             Run python @('tests/wtl10/verify_pe_machine.py',$filename,'i686','--require-resources')
           }
           Run ctest @('--preset','msvc-x86','--repeat','until-fail:5')
+      - name: Full original vcpkg WTL10 source — all 11 unchanged Win32 samples, no adapter
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Run([string]$tool,[string[]]$argv) {
+            & $tool @argv
+            if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
+          }
+          Run cmake @('--preset','msvc-x86',
+                      '-DOPENATL_WTL_FULL_ORIGINAL=ON',
+                      '-DOPENATL_BUILD_WTL_UNMODIFIED=ON')
+          Run cmake @('--build','--preset','msvc-x86','--parallel','2')
+          Run ctest @('--preset','msvc-x86','--repeat','until-fail:5')
+          Write-Host 'OPENATL_WTL_FULL_ORIGINAL_WIN32_OK original=1 adapter=0 official_samples=11'
 
   msvc-windows:
     name: MSVC ${{ matrix.target }} native/build qualification
@@ -248,10 +337,12 @@ jobs:
             vc_arch: amd64_arm64
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/checkout@v4
         with:
           repository: qigao/vcpkg-cache
-          ref: 88328df0817885719868178c635a02570c7779b3
+          ref: 8359cdbdf25c1f58cfc7230cc6318dc2fdb804fb
           path: tools/vcpkg-cache
       - uses: actions/setup-python@v5
         with:
@@ -277,6 +368,12 @@ jobs:
           if (!(Test-Path $source)) { throw 'WTL source stamp missing' }
           "OPENATL_WTL_VCPKG_INSTALLED_DIR=$installed" >> $env:GITHUB_ENV
           "OPENATL_WTL_VCPKG_TRIPLET=qigao-wtl10-headers" >> $env:GITHUB_ENV
+      - name: Audit original WTL10 registry/property and hyperlink APIs
+        if: matrix.target == 'x64'
+        shell: pwsh
+        run: |
+          python tests/wtl_unmodified/audit_wtl_api.py
+          if ($LASTEXITCODE -ne 0) { throw 'Original WTL registry API surface changed' }
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
         with:
           arch: ${{ matrix.vc_arch }}
@@ -306,7 +403,7 @@ jobs:
           $machine=if($arch -eq 'x64'){'x86_64'}else{'aarch64'}
           $build="build-msvc-$arch"
           $sample=(Resolve-Path tools/wtl10-test).Path
-          $cmakeArgs=@('--preset',"msvc-$arch","-DOPENATL_WTL_DEMO_DIR=$sample")
+          $cmakeArgs=@('--preset',"msvc-$arch","-DOPENATL_WTL_DEMO_DIR=$sample","-DOPENATL_BUILD_WTL_UNMODIFIED=ON")
           if($arch -eq 'x64') {
             # GitHub's generic windows-2022 image has no guaranteed hardware
             # Shadow Stack. Preserve strict HSP proof in the dedicated
@@ -329,7 +426,7 @@ jobs:
           if(!$identity -or !(Select-String -Path $identity.FullName -Pattern 'CMAKE_CXX_COMPILER_ID "MSVC"' -Quiet)) {
             throw 'MSVC cl.exe was not the actual compiler'
           }
-          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_activex','openatl_wtl10_sdi','openatl_official_guidgen','openatl_official_memdlg')
+          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_site','openatl_wtl_unmodified_headers','openatl_com_server_tests','openatl_activex','openatl_wtl10_sdi','openatl_official_guidgen','openatl_official_memdlg')
           foreach($name in @('console','dialog','window')) {
             Run python @('tests/wtl10/verify_pe_machine.py',"$build/openatl_ratl_$name.exe",$machine,'--require-resources')
           }
@@ -373,6 +470,31 @@ jobs:
           Run cmake @('--preset','msvc-salts',"-DOPENATL_WTL_DEMO_DIR=$sample")
           Run cmake @('--build','--preset','msvc-salts','--parallel','2')
           Run ctest @('--preset','msvc-salts','--repeat','until-fail:5')
+      - name: Full original WTL10 on MSVC x64 — source-only headers, CTest x5
+        if: matrix.target == 'x64'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Run([string]$tool,[string[]]$argv) {
+            & $tool @argv
+            if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
+          }
+          # The shared msvc-x64 preset intentionally defaults to mandatory
+          # hardware HSP=ON for the separately qualified dedicated runner.
+          # Every hosted reconfigure MUST override it: otherwise this second
+          # CMake invocation re-enables CET HSP on a runner that has no HSP.
+          Run cmake @('--preset','msvc-x64',
+                      '-DOPENATL_WTL_FULL_ORIGINAL=ON',
+                      '-DOPENATL_BUILD_WTL_UNMODIFIED=ON',
+                      '-DOPENATL_REQUIRE_CET_RUNTIME=OFF')
+          $cache=Get-Content 'build-msvc-x64/CMakeCache.txt'
+          if ($cache -notcontains 'OPENATL_REQUIRE_CET_RUNTIME:BOOL=OFF') {
+            throw 'Hosted WTL x64 reconfigure unexpectedly enabled mandatory HSP'
+          }
+          Write-Host '::notice::Hosted Windows x64 HSP remains UNQUALIFIED; openatl-hsp-dedicated.yml requires real HSP x10, no fallback.'
+          Run cmake @('--build','--preset','msvc-x64','--parallel','2')
+          Run ctest @('--preset','msvc-x64','--repeat','until-fail:5')
+          Write-Host 'OPENATL_WTL_FULL_ORIGINAL_MSVC_X64_OK original=1 adapter=0 native=1 repeats=5 hsp=UNQUALIFIED'
       - uses: actions/upload-artifact@v4
         if: matrix.target == 'arm64'
         with:
@@ -384,34 +506,83 @@ jobs:
             build-msvc-arm64/manifest.json
           if-no-files-found: error
           retention-days: 7
+      - name: Compile independent zero-adapter WTL10 MSVC ARM64 and PE manifest
+        if: matrix.target == 'arm64'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Run([string]$tool,[string[]]$argv) {
+            & $tool @argv
+            if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
+          }
+          $demo=(Resolve-Path tools/wtl10-test).Path
+          Run cmake @('--preset','msvc-arm64',
+                      '-B','build-msvc-arm64-original',
+                      "-DOPENATL_WTL_DEMO_DIR=$demo",
+                      '-DOPENATL_WTL_FULL_ORIGINAL=ON',
+                      '-DOPENATL_BUILD_WTL_UNMODIFIED=ON')
+          Run cmake @('--build','build-msvc-arm64-original','--parallel','2')
+          Run python @('tests/wtl10/original_arm64_manifest.py',
+                      'build-msvc-arm64-original','msvc')
+      - uses: actions/upload-artifact@v4
+        if: matrix.target == 'arm64'
+        with:
+          name: openatl-msvc-arm64-original
+          path: |
+            build-msvc-arm64-original/*.exe
+            !build-msvc-arm64-original/openatl_ratl_*.exe
+            build-msvc-arm64-original/*.dll
+            build-msvc-arm64-original/manifest.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Original WTL MSVC ARM64 qualification artifact created
+        if: matrix.target == 'arm64'
+        shell: pwsh
+        run: Write-Host 'OPENATL_WTL_ORIGINAL_ARM64_MSVC_BUILD_OK source=vcpkg adapter=0 manifest=1'
 
   windows-arm64-llvm:
     name: Real Windows ARM64 llvm-mingw CTest equivalents
     needs: windows-llvm
     runs-on: windows-11-vs2026-arm
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/download-artifact@v4
         with:
           name: openatl-llvm-arm64
           path: llvm-arm64
       - name: Verify SHA256, ARM64 PE, real SDI, CET and unload tests x5
         run: python tests/wtl10/native_arm64.py llvm-arm64 llvm
+      - uses: actions/download-artifact@v4
+        with:
+          name: openatl-llvm-arm64-original
+          path: llvm-arm64-original
+      - name: Native ARM64 WTL10 full-original llvm-mingw CTest equivalents x5
+        run: python tests/wtl10/native_arm64.py llvm-arm64-original llvm
 
   windows-arm64-msvc:
     name: Real Windows ARM64 MSVC CTest equivalents
     needs: msvc-windows
     runs-on: windows-11-vs2026-arm
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/download-artifact@v4
         with:
           name: openatl-msvc-arm64
           path: msvc-arm64
       - name: Verify SHA256, ARM64 PE, real SDI, CET and unload tests x5
         run: python tests/wtl10/native_arm64.py msvc-arm64 msvc
+      - uses: actions/download-artifact@v4
+        with:
+          name: openatl-msvc-arm64-original
+          path: msvc-arm64-original
+      - name: Native ARM64 WTL10 full-original MSVC CTest equivalents x5
+        run: python tests/wtl10/native_arm64.py msvc-arm64-original msvc
 
   linux-macos-cross:
     name: ${{ matrix.host }} Windows x64/ARM64 cross CMake
@@ -427,10 +598,12 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/checkout@v4
         with:
           repository: qigao/vcpkg-cache
-          ref: 88328df0817885719868178c635a02570c7779b3
+          ref: 8359cdbdf25c1f58cfc7230cc6318dc2fdb804fb
           path: tools/vcpkg-cache
       - uses: actions/setup-python@v5
         with:
@@ -486,7 +659,7 @@ jobs:
           set -euo pipefail
           for arch in x86_64 aarch64; do
             build="build-llvm-$arch"
-            cmake --preset "llvm-$arch" "-DOPENATL_WTL_DEMO_DIR=$PWD/tools/wtl10-test"
+            cmake --preset "llvm-$arch" "-DOPENATL_WTL_DEMO_DIR=$PWD/tools/wtl10-test" "-DOPENATL_BUILD_WTL_UNMODIFIED=ON"
             cmake --build --preset "llvm-$arch" --parallel 2
             if [ "$arch" = x86_64 ]; then
               python3 tests/wtl10/verify_pe_mitigations.py "$build/openatl_mitigation_runtime.exe" "$arch" --require-cfg --require-cet
@@ -494,7 +667,7 @@ jobs:
             else
               python3 tests/wtl10/verify_pe_mitigations.py "$build/openatl_mitigation_runtime.exe" "$arch" --require-cfg
             fi
-            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_unicode openatl_unicode_utf8 openatl_atl_extensions openatl_atl_mapping openatl_atl_image openatl_thunk_fault openatl_mitigation_runtime openatl_unload_runner openatl_unload_native openatl_com_client openatl_com_server_tests openatl_activex openatl_wtl10_sdi openatl_official_guidgen openatl_ratl_console openatl_ratl_dialog openatl_ratl_window; do
+            for target in openatl_gui_runtime openatl_atl_core openatl_atl_path openatl_unicode openatl_unicode_utf8 openatl_atl_extensions openatl_atl_mapping openatl_atl_image openatl_thunk_fault openatl_mitigation_runtime openatl_unload_runner openatl_unload_native openatl_com_client openatl_com_site openatl_wtl_unmodified_headers openatl_com_server_tests openatl_activex openatl_wtl10_sdi openatl_official_guidgen openatl_ratl_console openatl_ratl_dialog openatl_ratl_window; do
               if [ "$target" = openatl_gui_runtime ] || [ "$target" = openatl_unicode_utf8 ] || [ "$target" = openatl_wtl10_sdi ] || [ "$target" = openatl_official_guidgen ] || [[ "$target" == openatl_ratl_* ]]; then
                 python3 tests/wtl10/verify_pe_machine.py "$build/$target.exe" "$arch" --require-resources
               else

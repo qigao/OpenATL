@@ -7,13 +7,13 @@ and each existing GUI/no-COM, ATL utility, W^X, and COM-client mode.
 The pinned WTL10 SDI is PE-verified and exercised through real Windows menu/dialog, button and Unicode edit-change events.
 """
 import hashlib
-import json
 import os
 from pathlib import Path
 import platform
 import re
 import subprocess
 import sys
+from manifest_contract import current_checkout_sha, read_manifest, verify_manifest
 
 TARGETS = (
     "openatl_gui_runtime",
@@ -29,6 +29,8 @@ TARGETS = (
     "openatl_unload_runner",
     "openatl_unload_native",
     "openatl_com_client",
+    "openatl_com_site",
+    "openatl_wtl_unmodified_headers",
     "openatl_com_server_tests",
     "openatl_activex",
     "openatl_wtl10_sdi",
@@ -55,6 +57,15 @@ CASES = (
     ("openatl_com_server_tests", ("--sta",), "OPENATL_COM_SERVER_NATIVE_OK mode=sta activation=1 identity=1 locks=1 unregister=1 unload=1"),
     ("openatl_com_server_tests", ("--mta",), "OPENATL_COM_SERVER_NATIVE_OK mode=mta activation=1 identity=1 locks=1 unregister=1 unload=1"),
     ("openatl_com_client", (), "ATL_COM_CLIENT_OK activate=1 qi=1 comptr=1 bstr=1 variant=1 unregister=0"),
+    ("openatl_com_site", (), "OPENATL_SITE_OK set=1 get=1 errors=1 self=1 release=1 no_com=1"),
+    ("openatl_wtl_unmodified_headers", (),
+     "OPENATL_WTL_ORIGINAL_MAP_OK factory=1 activate=1 cookies=1 rollback=1 thread=1 no_com=1"),
+    ("openatl_wtl_unmodified_headers", ("--hyperlink",),
+     "OPENATL_WTL_HYPERLINK_OK registry=1 original=1 colors=1 no_com=1 cleanup=1"),
+    ("openatl_wtl_unmodified_headers", ("--start-monitor-process",),
+     "OPENATL_WTL_START_MONITOR_PROCESS_OK quit=1 original=1 join=UNQUALIFIED"),
+    ("openatl_wtl_unmodified_headers", ("--print-defaults",),
+     "OPENATL_WTL_PRINT_DEFAULTS_PARITY_OK win32=1 cleanup=1 modal=UNQUALIFIED"),
     ("openatl_com_client", ("--sta",), "ATL_COM_CLIENT_MODE_OK mode=sta apartment=1 activation=1 balance=1 changed=0"),
     ("openatl_com_client", ("--mta",), "ATL_COM_CLIENT_MODE_OK mode=mta apartment=1 activation=1 balance=1 changed=0"),
     ("openatl_com_client", ("--changed-sta",), "ATL_COM_CLIENT_MODE_OK mode=changed-sta apartment=1 activation=1 balance=1 changed=1"),
@@ -95,24 +106,55 @@ def native_stderr_ok(name: str, args: tuple, stderr: str) -> bool:
         previous_ticks = ticks
     return True
 
+_PRINTER_READINESS = re.compile(
+    r"WTL_PRINTER_READINESS default=([01]) win32=0x([0-9a-f]{8}) "
+    r"wtl=0x([0-9a-f]{8}) metadata=(QUALIFIED|UNQUALIFIED) modal=UNQUALIFIED"
+)
+def native_stdout_ok(name: str, args: tuple, stdout: str) -> bool:
+    if name != "openatl_wtl_unmodified_headers" or args != ("--print-defaults",):
+        return True
+    lines = stdout.strip().splitlines()
+    if len(lines) != 2 or lines[1] != (
+        "OPENATL_WTL_PRINT_DEFAULTS_PARITY_OK win32=1 cleanup=1 modal=UNQUALIFIED"
+    ):
+        return False
+    match = _PRINTER_READINESS.fullmatch(lines[0])
+    if not match:
+        return False
+    default_present = match.group(1) == "1"
+    win32_hr = int(match.group(2), 16)
+    wtl_hr = int(match.group(3), 16)
+    qualified = match.group(4) == "QUALIFIED"
+    succeeded = (wtl_hr & 0x80000000) == 0
+    return (wtl_hr == win32_hr and
+            qualified == (default_present and succeeded) and
+            (default_present or not succeeded))
+
 def main() -> int:
     if len(sys.argv) != 3 or sys.argv[2] not in ("llvm", "msvc"):
         raise SystemExit("Usage: python tests/wtl10/native_arm64.py ARTIFACT_DIR llvm|msvc")
     if os.name != "nt" or platform.machine().lower() not in ("arm64", "aarch64"):
         raise SystemExit("Refuse non-native Windows ARM64 acceptance")
     root = Path(sys.argv[1]).resolve(strict=True)
-    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8-sig"))
+    original = root.name.endswith("-original")
+    try:
+        manifest = read_manifest(root / "manifest.json")
+    except (OSError, ValueError) as error:
+        raise SystemExit(f"Invalid ARM64 manifest: {error}") from error
     samples = ("guidgen", "memdlg") if sys.argv[2] == "msvc" else ("guidgen",)
     targets = (*TARGETS, *("openatl_official_" + name for name in samples))
     required = {name + ".exe" for name in targets} | {
         "openatl_unload_fixture.dll", "openatl_unload_probe.dll", "openatl_com_server_fixture.dll"}
-    if set(manifest) != required:
-        raise SystemExit(f"ARM64 provenance set mismatch: missing={required-set(manifest)}, unexpected={set(manifest)-required}")
+    try:
+        manifest_files = verify_manifest(manifest, required, sys.argv[2],
+            current_checkout_sha() if original else None, original=original)
+    except ValueError as error:
+        raise SystemExit(f"Invalid ARM64 provenance: {error}") from error
     pe_validator = Path(__file__).with_name("verify_pe_machine.py")
     for filename in sorted(required):
         executable = root / filename
         actual = hashlib.sha256(executable.read_bytes()).hexdigest()
-        if actual != manifest[filename].lower():
+        if actual != manifest_files[filename]:
             raise SystemExit(f"ARM64 SHA256 mismatch for {filename}")
         arguments = [sys.executable, str(pe_validator), str(executable), "aarch64"]
         if filename in ("openatl_gui_runtime.exe", "openatl_unicode_utf8.exe", "openatl_wtl10_sdi.exe") or filename.startswith("openatl_official_"):
@@ -126,6 +168,7 @@ def main() -> int:
                                   errors="replace", timeout=20, check=False)
             last_line = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else ""
             if (proc.returncode != 0 or not native_stderr_ok(name, args, proc.stderr)
+                    or not native_stdout_ok(name, args, proc.stdout)
                     or last_line != expected):
                 raise SystemExit(
                     f"Native ARM64 {name} {args} repeat {attempt} "
@@ -152,7 +195,8 @@ def main() -> int:
                 raise SystemExit(f"Native ARM64 official {sample} repeat {attempt} "
                     f"exit={official.returncode} stdout={official.stdout!r} stderr={official.stderr!r}")
     print(f"OPENATL_NATIVE_ARM64_OK files={len(required)} tests={len(CASES) + 1 + len(samples)} repeats=5 "
-          "sha256=1 pe=1 resources=1")
+          f"sha256=1 pe=1 resources=1 original={int(original)} "
+          f"checkout={int(original)}")
     return 0
 
 if __name__ == "__main__":

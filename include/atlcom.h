@@ -7,9 +7,30 @@
 #include "openatl/com_server.h"
 #include "openatl/rgs_resource.h"
 #include "openatl/atl_dispatch.h"
+#include <ocidl.h>  // IObjectWithSite, native COM interface
 #include <optional>
 
 namespace ATL {
+
+// Site ownership is a normal COM AddRef/Release contract; WTL's original
+// PrintDlgEx callback uses this helper. No application COM apartment is
+// created by storing or querying a site, and no second COM provider exists.
+template<class T>
+class IObjectWithSiteImpl : public IObjectWithSite {
+public:
+    HRESULT STDMETHODCALLTYPE SetSite(IUnknown* site) noexcept override {
+        m_spUnkSite = site;  // AddRef new before releasing old; self-safe.
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetSite(REFIID iid, void** output) noexcept override {
+        if (!output) return E_POINTER;
+        *output = nullptr;
+        if (!m_spUnkSite.p) return E_FAIL;
+        return m_spUnkSite.p->QueryInterface(iid, output);
+    }
+protected:
+    CComPtr<IUnknown> m_spUnkSite;
+};
 
 class CComObjectRootBase {
 public:

@@ -374,6 +374,10 @@ public:
         return *this;
     }
 
+    // Standard ATL borrowed HWND conversion. Original WTL #7 installs
+    // MinGW-only direct CButton/CEdit borrowing overloads, avoiding
+    // ambiguous control-copy vs HWND assignment without an ATL-side
+    // catch-all conversion template.
     operator HWND() const noexcept { return m_hWnd; }
 
     static LRESULT SendMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam) noexcept
