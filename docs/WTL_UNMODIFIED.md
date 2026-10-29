@@ -18,6 +18,20 @@ package files, rewrite original WTL header bodies, skip existing samples
 or accept a second provider. The existing adapted qualification remains
 an independent mandatory regression suite.
 
+## Whole-project original header admission
+
+`OPENATL_WTL_FULL_ORIGINAL=ON` is a separate, qualification-only option
+that sets `OpenATL::ATL`'s WTL include path to the **exact installed vcpkg
+WTL headers**, with zero `PrepareWtl.cmake` execution. It does not add
+a fallback or second WTL source. The mandatory Win32 MSVC job now
+reconfigures after the existing adapted x86 suite, rebuilds *all eleven
+unchanged official WTL samples* plus native COM/UI tests, and repeats
+native CTest five times. Any missing original ATL API, compiler
+mismatch, or runtime failure is RED — do not silently return to the
+adapted path or skip the original mode. A GREEN for this qualification
+is still not proof of original `StartMonitor()` concurrent retirement
+or genuine PrintDlgEx printer UI behavior.
+
 ## First direct-source acceptance
 
 * Restore `ATL::CComModule` and its correct class-object/lock/registry

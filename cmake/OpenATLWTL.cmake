@@ -1,6 +1,8 @@
 # Only the verified vcpkg WTL10 package is a source provider.
-# OpenATL supplies ATL; a compatibility adapter currently operates only on
-# a build-local copy of WTL until the full unmodified header API is qualified.
+# OpenATL supplies ATL. The strict qualification-only full-source mode
+# bypasses PrepareWtl.cmake ENTIRELY, for all targets/samples.
+option(OPENATL_WTL_FULL_ORIGINAL
+  "Qualify all OpenATL/WTL targets on original installed vcpkg WTL headers (no adapter)" OFF)
 function(_openatl_prepare_wtl)
   if(DEFINED VCPKG_INSTALLED_DIR AND NOT "${VCPKG_INSTALLED_DIR}" STREQUAL "")
     set(_wtl_install "${VCPKG_INSTALLED_DIR}")
@@ -51,6 +53,13 @@ function(_openatl_prepare_wtl)
   # Private qualification input only: bypass the adapted WTL header tree.
   # Production include paths remain unchanged until the strict gate passes.
   set(_openatl_wtl_original_include "${_wtl_source}" PARENT_SCOPE)
+  if(OPENATL_WTL_FULL_ORIGINAL)
+    # This is NOT a second provider or a runtime fallback: both modes use
+    # the exact same SHA512-verified vcpkg source. Keep strict provenance.
+    target_include_directories(openatl_atl INTERFACE "${_wtl_source}")
+    message(STATUS "OPENATL_WTL_FULL_ORIGINAL=ON: all targets use original vcpkg WTL without PrepareWtl")
+    return()
+  endif()
   set(_wtl_adapter "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/wtl/PrepareWtl.cmake")
   set(_wtl_headers "${CMAKE_CURRENT_BINARY_DIR}/wtl/include")
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_wtl_identity}" "${_wtl_adapter}")

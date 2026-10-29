@@ -35,6 +35,13 @@ cmake_source=(ROOT/"cmake/OpenATLWTL.cmake").read_text("utf-8")
 if ('file(SHA256 "${_wtl_headers}/atlapp.h"' not in cmake_source or
         "WTL original CAppModule/CServerAppModule source identity mismatch" not in cmake_source):
     fail.append("build-local atlapp.h must be byte-identical to vcpkg original")
+if ('option(OPENATL_WTL_FULL_ORIGINAL' not in cmake_source
+        or 'target_include_directories(openatl_atl INTERFACE "${_wtl_source}")' not in cmake_source
+        or 'if(OPENATL_WTL_FULL_ORIGINAL)' not in cmake_source
+        or "The full original WTL source admission is qualification-only" not in
+             (ROOT/"CMakeLists.txt").read_text("utf-8")
+        or "OPENATL_WTL_FULL_ORIGINAL_WIN32_OK" not in workflow):
+    fail.append("full unchanged original WTL native Win32 sample gate must remain strict")
 # Feature deletions must not reappear in the build-local WTL include copy.
 # Original CAppModule/Server are now retained byte-identically, but
 # concurrent original StartMonitor remains unqualified until owner/join proof.

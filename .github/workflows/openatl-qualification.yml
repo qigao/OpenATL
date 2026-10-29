@@ -230,6 +230,20 @@ jobs:
             Run python @('tests/wtl10/verify_pe_machine.py',$filename,'i686','--require-resources')
           }
           Run ctest @('--preset','msvc-x86','--repeat','until-fail:5')
+      - name: Full original vcpkg WTL10 source — all 11 unchanged Win32 samples, no adapter
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          function Run([string]$tool,[string[]]$argv) {
+            & $tool @argv
+            if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
+          }
+          Run cmake @('--preset','msvc-x86',
+                      '-DOPENATL_WTL_FULL_ORIGINAL=ON',
+                      '-DOPENATL_BUILD_WTL_UNMODIFIED=ON')
+          Run cmake @('--build','--preset','msvc-x86','--parallel','2')
+          Run ctest @('--preset','msvc-x86','--repeat','until-fail:5')
+          Write-Host 'OPENATL_WTL_FULL_ORIGINAL_WIN32_OK original=1 adapter=0 official_samples=11'
 
   msvc-windows:
     name: MSVC ${{ matrix.target }} native/build qualification

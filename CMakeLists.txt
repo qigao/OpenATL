@@ -103,6 +103,9 @@ option(OPENATL_BUILD_OFFICIAL_SUITE "Build every unchanged WTL release sample (u
 # This is a separate, strict feature-parity gate. It deliberately uses the
 # ORIGINAL vcpkg WTL headers rather than our currently adapted build copy.
 option(OPENATL_BUILD_WTL_UNMODIFIED "Qualify original vcpkg WTL headers directly against OpenATL" OFF)
+if(OPENATL_WTL_FULL_ORIGINAL AND NOT OPENATL_BUILD_QUALIFICATION)
+  message(FATAL_ERROR "The full original WTL source admission is qualification-only")
+endif()
 if(OPENATL_BUILD_WTL_UNMODIFIED AND NOT OPENATL_BUILD_QUALIFICATION)
   message(FATAL_ERROR "Original WTL compatibility requires native qualification")
 endif()
