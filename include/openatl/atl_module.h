@@ -92,11 +92,47 @@ private:
     std::vector<Termination> callbacks_;
 };
 
-// Original WTL10 CAppModule derives from this ATL module interface.
-// Provide real no-object-map UI lifecycle, with no implicit COM apartment.
-// A non-null legacy object map must fail until its factory/cookie/rollback
-// registration implementation is qualified; do not fabricate S_OK.
-struct _ATL_OBJMAP_ENTRY;
+// Original ATL object-map ABI. The source table remains owned by the caller;
+// this module owns only the COM factory references and registration cookies.
+// Null pclsid terminates the table; counts are bounded before any callback.
+using _ATL_CREATORFUNC = HRESULT (WINAPI)(void*, REFIID, LPVOID*);
+using _ATL_DESCRIPTIONFUNC = LPCTSTR (WINAPI)();
+struct _ATL_CATMAP_ENTRY;
+using _ATL_CATMAPFUNC = const _ATL_CATMAP_ENTRY* (*)();
+
+struct _ATL_OBJMAP_ENTRY {
+    const CLSID* pclsid = nullptr;
+    HRESULT (WINAPI* pfnUpdateRegistry)(BOOL) = nullptr;
+    _ATL_CREATORFUNC* pfnGetClassObject = nullptr;
+    _ATL_CREATORFUNC* pfnCreateInstance = nullptr;
+    IUnknown* pCF = nullptr;
+    DWORD dwRegister = 0;
+    _ATL_DESCRIPTIONFUNC* pfnGetObjectDescription = nullptr;
+    _ATL_CATMAPFUNC pfnGetCategoryMap = nullptr;
+    void (WINAPI* pfnObjectMain)(bool) = nullptr;
+};
+
+namespace detail {
+// One cookie registration/retirement implementation shared with CAtlExeModuleT.
+// Only the owning COM apartment can register or revoke its native classes.
+inline HRESULT RegisterClassCookie(REFCLSID id, IUnknown* factory,
+                                   DWORD context, DWORD flags, DWORD& cookie) noexcept {
+    if (!factory || ::IsEqualCLSID(id, CLSID_NULL) || cookie) return E_INVALIDARG;
+    DWORD created = 0;
+    const HRESULT hr = ::CoRegisterClassObject(id, factory, context, flags, &created);
+    if (SUCCEEDED(hr)) {
+        if (!created) return E_UNEXPECTED;
+        cookie = created;
+    }
+    return hr;
+}
+inline HRESULT RevokeClassCookie(DWORD& cookie) noexcept {
+    if (!cookie) return S_FALSE;
+    const HRESULT hr = ::CoRevokeClassObject(cookie);
+    if (SUCCEEDED(hr)) cookie = 0;
+    return hr;
+}
+}
 
 class CComModule : public CAtlModule {
 public:
@@ -110,22 +146,129 @@ public:
         if (!image) return E_INVALIDARG;
         if (IsTerminated()) return E_UNEXPECTED;
         if (initialized_) return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
-        if (map) return E_NOTIMPL;
+        size_t count = 0;
+        if (map) {
+            // A missing sentinel is an invalid caller-owned table, never an
+            // invitation to walk arbitrarily large/unknown memory.
+            for (; count < 1024 && map[count].pclsid; ++count) {
+                const auto& entry = map[count];
+                if (::IsEqualCLSID(*entry.pclsid, CLSID_NULL) ||
+                    !entry.pfnGetClassObject || !entry.pfnCreateInstance ||
+                    entry.pCF || entry.dwRegister) return E_INVALIDARG;
+                for (size_t j = 0; j < count; ++j)
+                    if (::IsEqualCLSID(*entry.pclsid, *map[j].pclsid))
+                        return E_INVALIDARG;
+            }
+            if (count == 1024) return HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW);
+        }
         m_hInst = image;
         m_hInstResource = image;
-        m_pObjMap = nullptr;
+        m_pObjMap = map;
+        mapCount_ = count;
+        owner_ = ::GetCurrentThreadId();
         _AtlBaseModule.m_hInst = image;
         _AtlBaseModule.m_hInstResource = image;
         if (libId) m_libid = *libId;
         initialized_ = true;
+
+        // Original ATL object maps invoke start/stop hooks on the owning
+        // module thread. Revert already-started entries on a thrown hook.
+        size_t started = 0;
+        try {
+            for (; started < count; ++started)
+                if (map[started].pfnObjectMain)
+                    map[started].pfnObjectMain(true);
+        } catch (...) {
+            while (started) {
+                --started;
+                if (map[started].pfnObjectMain) {
+                    try { map[started].pfnObjectMain(false); }
+                    catch (...) { std::terminate(); }
+                }
+            }
+            m_pObjMap = nullptr;
+            mapCount_ = 0;
+            initialized_ = false;
+            return E_UNEXPECTED;
+        }
         return S_OK;
     }
+
+    HRESULT RegisterClassObjects(DWORD context, DWORD flags) noexcept {
+        if (!initialized_ || IsTerminated()) return E_UNEXPECTED;
+        if (::GetCurrentThreadId() != owner_) return RPC_E_WRONG_THREAD;
+        for (size_t i = 0; i < mapCount_; ++i)
+            if (m_pObjMap[i].dwRegister || m_pObjMap[i].pCF)
+                return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+        if (!mapCount_) return S_FALSE;
+
+        for (size_t i = 0; i < mapCount_; ++i) {
+            auto& entry = m_pObjMap[i];
+            IClassFactory* factoryRaw = nullptr;
+            // Standard legacy creator ABI passes the class instance creator
+            // as opaque context to the factory creator.
+            HRESULT hr = E_UNEXPECTED;
+            try {
+                hr = entry.pfnGetClassObject(
+                    reinterpret_cast<void*>(entry.pfnCreateInstance),
+                    IID_IClassFactory,
+                    reinterpret_cast<LPVOID*>(&factoryRaw));
+            } catch (...) { hr = E_UNEXPECTED; }
+            CComPtr<IClassFactory> factory;
+            factory.Attach(factoryRaw);
+            if (SUCCEEDED(hr) && !factory.p) hr = E_UNEXPECTED;
+            if (SUCCEEDED(hr)) {
+                DWORD cookie = 0;
+                hr = detail::RegisterClassCookie(*entry.pclsid, factory.p,
+                                                 context, flags, cookie);
+                if (SUCCEEDED(hr)) {
+                    entry.dwRegister = cookie;
+                    entry.pCF = factory.Detach();
+                }
+            }
+            if (FAILED(hr)) {
+                const HRESULT rollback = RevokeClassObjects();
+                return FAILED(rollback) ? rollback : hr;
+            }
+        }
+        return S_OK;
+    }
+
+    HRESULT RevokeClassObjects() noexcept {
+        if (!initialized_) return E_UNEXPECTED;
+        if (::GetCurrentThreadId() != owner_) return RPC_E_WRONG_THREAD;
+        bool any = false;
+        HRESULT result = S_OK;
+        for (size_t n = mapCount_; n > 0; --n) {
+            auto& entry = m_pObjMap[n - 1];
+            if (!entry.dwRegister) continue;
+            any = true;
+            HRESULT hr = detail::RevokeClassCookie(entry.dwRegister);
+            if (SUCCEEDED(hr)) {
+                // COM no longer owns the registered class factory. Release
+                // our retained reference only after successful revocation.
+                IUnknown* owned = entry.pCF;
+                entry.pCF = nullptr;
+                if (owned) owned->Release();
+            } else if (SUCCEEDED(result)) result = hr;
+        }
+        return FAILED(result) ? result : (any ? S_OK : S_FALSE);
+    }
+
     void Term() noexcept {
         if (initialized_) {
-            // No retirement while a factory, object or server lock exists.
-            if (GetLockCount() != 0) std::terminate();
+            if (::GetCurrentThreadId() != owner_) std::terminate();
+            // Never retire a table or factory with leaked COM registration.
+            if (FAILED(RevokeClassObjects()) || GetLockCount() != 0)
+                std::terminate();
+            for (size_t n = mapCount_; n > 0; --n)
+                if (m_pObjMap[n - 1].pfnObjectMain) {
+                    try { m_pObjMap[n - 1].pfnObjectMain(false); }
+                    catch (...) { std::terminate(); }
+                }
             initialized_ = false;
             m_pObjMap = nullptr;
+            mapCount_ = 0;
         }
         CAtlModule::Term();
     }
@@ -137,17 +280,12 @@ public:
         m_hInstResource = image;
         return _AtlBaseModule.SetResourceInstance(image);
     }
-    HRESULT RegisterClassObjects(DWORD, DWORD) noexcept {
-        // The only supported initialized map is empty.
-        return initialized_ ? S_OK : E_UNEXPECTED;
-    }
-    HRESULT RevokeClassObjects() noexcept {
-        return initialized_ ? S_OK : E_UNEXPECTED;
-    }
     HINSTANCE m_hInst = nullptr;
     HINSTANCE m_hInstResource = nullptr;
     _ATL_OBJMAP_ENTRY* m_pObjMap = nullptr;
 private:
+    size_t mapCount_ = 0;
+    DWORD owner_ = 0;
     bool initialized_ = false;
 };
 
@@ -507,8 +645,8 @@ public:
         catch (...) { return detail::AtlModuleException(); }
         for (size_t i = 0; i < classes_.size(); ++i) {
             DWORD cookie = 0;
-            hr = ::CoRegisterClassObject(classes_[i].clsid, classes_[i].factory,
-                                         context, flags, &cookie);
+            hr = detail::RegisterClassCookie(classes_[i].clsid, classes_[i].factory.p,
+                                             context, flags, cookie);
             if (FAILED(hr)) {
                 (void)RevokeClassObjects(); // Retain failed-revocation cookies for retry.
                 return hr;
@@ -523,8 +661,9 @@ public:
         HRESULT result = S_OK;
         for (auto i = cookies_.rbegin(); i != cookies_.rend(); ++i) {
             if (!i->has_value()) continue;
-            HRESULT hr = ::CoRevokeClassObject(**i);
-            if (SUCCEEDED(hr)) i->reset();
+            DWORD cookie = **i;
+            HRESULT hr = detail::RevokeClassCookie(cookie);
+            if (!cookie) i->reset();
             else if (SUCCEEDED(result)) result = hr;
         }
         if (SUCCEEDED(result)) cookies_.clear();
