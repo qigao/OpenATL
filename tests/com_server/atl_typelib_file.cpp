@@ -104,6 +104,15 @@ bool TestFileTypeLib() {
     MEMBERID id = MEMBERID_NIL;
     FILE_TLB_CHECK(info->GetIDsOfNames(name, 1, &id) == S_OK && id == 77);
     info.Release();
+    // Windows accepts both absolute drive-path separator spellings.
+    // CMake passes forward slashes for its generated COMMap.tlb path.
+    std::wstring forwardSlashes = file.path;
+    for (wchar_t& ch : forwardSlashes)
+        if (ch == L'\\') ch = L'/';
+    ATL::CComPtr<ITypeInfo> forwardSlashInfo;
+    FILE_TLB_CHECK(holder.GetTIFromFile(forwardSlashes, &iidFile, &libFile,
+        1, 0, &forwardSlashInfo.p) == S_OK && forwardSlashInfo.p);
+    forwardSlashInfo.Release();
 
     invalid = reinterpret_cast<ITypeInfo*>(1);
     FILE_TLB_CHECK(holder.GetTIFromFile(file.path, &iidFile, &libOther,

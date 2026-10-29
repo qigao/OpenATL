@@ -36,7 +36,7 @@ bool ToWide(const char* input, std::wstring& path) {
 }
 void ReportTypeLibraryFailure(ITypeLib* library, const char* requested,
                               HRESULT failure) noexcept {
-    std::fprintf(stderr, "MICROSOFT_COMMAP_TYPELIB_LOOKUP requested=%s hr=0x%08lx count=%u\\n",
+    std::fprintf(stderr, "MICROSOFT_COMMAP_TYPELIB_LOOKUP requested=%s hr=0x%08lx count=%u\n",
         requested, static_cast<unsigned long>(failure),
         library ? library->GetTypeInfoCount() : 0);
     if (!library) return;
@@ -46,7 +46,7 @@ void ReportTypeLibraryFailure(ITypeLib* library, const char* requested,
         TYPEATTR* attr = nullptr;
         if (FAILED(type->GetTypeAttr(&attr)) || !attr) continue;
         std::fprintf(stderr,
-            "MICROSOFT_COMMAP_TYPE index=%u guid=%08lx-%04x-%04x kind=%u funcs=%u\\n",
+            "MICROSOFT_COMMAP_TYPE index=%u guid=%08lx-%04x-%04x kind=%u funcs=%u\n",
             i, static_cast<unsigned long>(attr->guid.Data1),
             attr->guid.Data2, attr->guid.Data3,
             static_cast<unsigned>(attr->typekind),

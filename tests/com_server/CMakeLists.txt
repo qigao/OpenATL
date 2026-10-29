@@ -77,41 +77,40 @@ if(CMAKE_HOST_WIN32)
     "${_openatl_midl_sdk_bin}" DIRECTORY)
   get_filename_component(_openatl_midl_sdk_root
     "${_openatl_midl_sdk_bin_root}" DIRECTORY)
-  # Windows SDK MIDL defaults to MSVC cl.exe; native llvm-mingw has no
-  # MSVC toolchain. The pinned llvm-mingw distribution includes clang.exe
-  # but may omit the clang-cl.exe *driver alias*. A filesystem link in the
-  # SAME compiler bin directory changes argv[0] to select Clang's cl-driver
-  # mode, without another compiler, extra download or altered source IDL.
+  # MIDL defaults to cl.exe, absent in a native llvm-mingw build.
+  # The pinned llvm-mingw package's clang.exe is a GNU-style driver even
+  # when hard-linked under the clang-cl.exe name. Use documented MIDL
+  # /cpp_cmd + /cpp_opt to explicitly select GNU preprocessing. Preserve
+  # all SDK IDL preprocessor directives (do not use /no_cpp).
   set(_openatl_midl_cpp_args)
   if(MINGW)
     find_program(OPENATL_COMMAP_PINNED_CLANG_EXECUTABLE NAMES clang.exe
       HINTS "$ENV{OPENATL_LLVM_MINGW_BIN}" NO_DEFAULT_PATH REQUIRED)
-    get_filename_component(_openatl_pinned_clang_bin
-      "${OPENATL_COMMAP_PINNED_CLANG_EXECUTABLE}" DIRECTORY)
-    set(_openatl_clang_cl_alias "${_openatl_pinned_clang_bin}/clang-cl.exe")
-    if(NOT EXISTS "${_openatl_clang_cl_alias}")
-      file(CREATE_LINK "${OPENATL_COMMAP_PINNED_CLANG_EXECUTABLE}"
-        "${_openatl_clang_cl_alias}" COPY_ON_ERROR RESULT _openatl_alias_result)
-      if(NOT _openatl_alias_result STREQUAL "0")
-        message(FATAL_ERROR "Unable to create pinned Clang cl-driver alias: ${_openatl_alias_result}")
-      endif()
-    endif()
-    file(SHA256 "${OPENATL_COMMAP_PINNED_CLANG_EXECUTABLE}" _openatl_clang_sha)
-    file(SHA256 "${_openatl_clang_cl_alias}" _openatl_clang_cl_sha)
-    if(NOT _openatl_clang_sha STREQUAL _openatl_clang_cl_sha)
-      message(FATAL_ERROR "MIDL clang-cl alias does not match pinned Clang SHA256")
-    endif()
-    message(STATUS "MIDL pinned clang-cl driver SHA256: ${_openatl_clang_sha}")
-    list(APPEND _openatl_midl_cpp_args /cpp_cmd "${_openatl_clang_cl_alias}")
   endif()
   set(_openatl_midl_include_flags)
+  set(_openatl_midl_rsp "")
+  if(MINGW)
+    set(_openatl_midl_rsp "${CMAKE_CURRENT_BINARY_DIR}/commap-llvm-cpp.rsp")
+    file(WRITE "${_openatl_midl_rsp}" "")
+  endif()
   foreach(_atl_folder IN ITEMS um shared)
     set(_atl_sdk_idl_include
       "${_openatl_midl_sdk_root}/Include/${_openatl_midl_sdk_version}/${_atl_folder}")
     if(IS_DIRECTORY "${_atl_sdk_idl_include}")
       list(APPEND _openatl_midl_include_flags "/I" "${_atl_sdk_idl_include}")
+      if(MINGW)
+        file(APPEND "${_openatl_midl_rsp}" "-I\"${_atl_sdk_idl_include}\"\n")
+      endif()
     endif()
   endforeach()
+  if(MINGW)
+    # Clang reads precisely the UTF-8 response-file SDK include paths,
+    # including spaces in Program Files (x86); MIDL still gets /I itself.
+    set(_openatl_midl_cpp_options "-E -x c @${_openatl_midl_rsp}")
+    list(APPEND _openatl_midl_cpp_args
+      /cpp_cmd "${OPENATL_COMMAP_PINNED_CLANG_EXECUTABLE}"
+      /cpp_opt "${_openatl_midl_cpp_options}")
+  endif()
   set(_openatl_commap_generated "${CMAKE_CURRENT_BINARY_DIR}/microsoft-commap")
   file(MAKE_DIRECTORY "${_openatl_commap_generated}")
   set(_openatl_commap_header "${_openatl_commap_generated}/COMMap.h")
