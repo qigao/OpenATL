@@ -22,6 +22,8 @@ function(_openatl_prepare_wtl)
   if(NOT _wtl_triplet MATCHES "^[a-zA-Z0-9_.+-]+$")
     message(FATAL_ERROR "Invalid WTL triplet")
   endif()
+  # Windows GITHUB_ENV paths use backslashes: normalize before CMake serializes sample inputs.
+  file(TO_CMAKE_PATH "${_wtl_install}" _wtl_install)
   set(_wtl_pkg "${_wtl_install}/${_wtl_triplet}")
   set(_wtl_source "${_wtl_pkg}/include")
   set(_wtl_share "${_wtl_pkg}/share/wtl")
