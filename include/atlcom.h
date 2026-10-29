@@ -5,6 +5,7 @@
 #include "atlbase.h"
 #include "atlcomcli.h"
 #include "openatl/com_server.h"
+#include "openatl/rgs_resource.h"
 #include <optional>
 
 namespace ATL {
@@ -217,6 +218,16 @@ public: \
             (clsid), static_cast<OpenATL::COM::Creator>( \
                 &ATL::CComObject<type>::CreateInstance), \
             ATL::detail::AutoRegistryMethod<type>::callback); \
+    }
+
+// Class-directed original ATL REGISTRY resource-ID declaration. The owning
+// DLL export must first supply a ScopedRgsRegistrationContext with an
+// explicit opened Classes HKEY, image and owner identity. No HKCR default.
+#define DECLARE_REGISTRY_RESOURCEID(id) \
+public: \
+    static HRESULT WINAPI UpdateRegistry(BOOL install) noexcept { \
+        return ::OpenATL::COM::UpdateRegistryResource( \
+            static_cast<unsigned>(id), install); \
     }
 
 // ATL's deliberate declaration that this class performs no persistent

@@ -1,25 +1,16 @@
 #include <atlcom.h>
 #include <openatl/com_registration.h>
 #include "interfaces.h"
+#include "fixture_registry_ids.h"
 
 namespace {
 using namespace OpenATL::COM;
 
 HMODULE image = nullptr;
-HRESULT registerClass(bool installing, REFCLSID clsid, LPCWSTR progId) noexcept {
-    wchar_t path[32768]{};
-    const DWORD length = ::GetModuleFileNameW(image, path, 32768);
-    if (!length) return HRESULT_FROM_WIN32(::GetLastError());
-    if (length >= 32768) return HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER);
-    ATL::CRegKey root;
-    const LSTATUS status = ::RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Classes",
-                                          0, KEY_READ | KEY_WRITE, &root.m_hKey);
-    if (status != ERROR_SUCCESS) return HRESULT_FROM_WIN32(status);
-    const ClassRegistration entry{clsid, path, progId,
-        L"OpenATL native COM class", ThreadingModel::Both};
-    return installing ? RegisterClass(root.m_hKey, entry)
-                      : UnregisterClass(root.m_hKey, entry);
-}
+// Explicit application installer policy for this conformance DLL. The
+// context is scoped to this DLL's synchronous export and is not created by
+// COM activation, static registration, or DllMain.
+HRESULT withRegistryContext(BOOL installing) noexcept;
 
 // The DLL contains two classes declared with genuine ATL OBJECT_ENTRY_AUTO.
 // CAtlDllModuleT invokes each class's real UpdateRegistry callback and
@@ -33,9 +24,7 @@ public:
         COM_INTERFACE_ENTRY2_IID(IID_OpenATLValue, IOpenATLValue, IOpenATLDerived)
         COM_INTERFACE_ENTRY_IID(IID_OpenATLSecond, IOpenATLSecond)
     END_COM_MAP()
-    static HRESULT WINAPI UpdateRegistry(BOOL install) noexcept {
-        return registerClass(install != FALSE, CLSID_OpenATLValue, OpenATLTestProgId);
-    }
+    DECLARE_REGISTRY_RESOURCEID(IDR_OPENATL_VALUE)
     HRESULT STDMETHODCALLTYPE GetValue(LONG* value) noexcept override {
         if (!value) return E_POINTER;
         *value = 42;
@@ -61,9 +50,7 @@ public:
     BEGIN_COM_MAP(AuxValue)
         COM_INTERFACE_ENTRY_IID(IID_OpenATLValue, IOpenATLValue)
     END_COM_MAP()
-    static HRESULT WINAPI UpdateRegistry(BOOL install) noexcept {
-        return registerClass(install != FALSE, CLSID_OpenATLAuxValue, OpenATLAuxProgId);
-    }
+    DECLARE_REGISTRY_RESOURCEID(IDR_OPENATL_AUX)
     HRESULT STDMETHODCALLTYPE GetValue(LONG* value) noexcept override {
         if (!value) return E_POINTER;
         *value = 84;
@@ -75,6 +62,22 @@ OBJECT_ENTRY_AUTO(CLSID_OpenATLAuxValue, AuxValue)
 // No application-specific registration override or manual BindServer.
 class FixtureAtlModule : public ATL::CAtlDllModuleT<FixtureAtlModule> {};
 FixtureAtlModule dllModule;
+
+HRESULT withRegistryContext(BOOL installing) noexcept {
+    ATL::CRegKey root;
+    const LSTATUS state = ::RegOpenKeyExW(
+        HKEY_CURRENT_USER, L"Software\\Classes", 0,
+        KEY_READ | KEY_WRITE, &root.m_hKey);
+    if (state != ERROR_SUCCESS) return HRESULT_FROM_WIN32(state);
+    // Under HKCU only, explicitly selected by this application's installer.
+    // The same context is visible to the two class callbacks in this image;
+    // client/test EXE TLS and other DLLs cannot accidentally inherit it.
+    ScopedRgsRegistrationContext scope(root.m_hKey, image,
+                                        L"OpenATLNativeFixture");
+    if (FAILED(scope.Status())) return scope.Status();
+    return installing ? dllModule.DllRegisterServer()
+                      : dllModule.DllUnregisterServer();
+}
 } // namespace
 
 extern "C" BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void* reserved) {
@@ -89,8 +92,8 @@ extern "C" HRESULT WINAPI DllCanUnloadNow() {
     return dllModule.DllCanUnloadNow();
 }
 extern "C" HRESULT WINAPI DllRegisterServer() {
-    return dllModule.DllRegisterServer();
+    return withRegistryContext(TRUE);
 }
 extern "C" HRESULT WINAPI DllUnregisterServer() {
-    return dllModule.DllUnregisterServer();
+    return withRegistryContext(FALSE);
 }

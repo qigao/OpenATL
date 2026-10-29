@@ -37,8 +37,11 @@ manually calling `BindServer`. A class-defined
 `static HRESULT WINAPI UpdateRegistry(BOOL)` now drives real DLL registration
 in CLSID order, with inverse callback rollback on failure. Missing class
 registration hooks fail `E_NOTIMPL`; `DECLARE_NO_REGISTRY()` is an explicit
-opt-out. This does **not** yet implement RGS resource parsing, automatic
-ProgID/path inference, type libraries or all ATL object-map operations.
+opt-out. `DECLARE_REGISTRY_RESOURCEID(id)` now loads a **real Win32
+REGISTRY resource** from an explicit image inside a scoped, caller-owned
+registration context, then uses the existing bounded RGS parser and
+owner-verified executor. The framework neither chooses HKCR nor infers
+installer metadata, and full ATL TypeLib/COM map compatibility remains open.
 See [server contracts](docs/COM_SERVER.md) and
 [DLL module lifetime](docs/ATL_MODULE.md).
 
@@ -48,9 +51,9 @@ and COM maps: `CComObjectRootEx`, `CComObject`, `CComCoClass`, `CComCreator`,
 See the [ATL compatibility matrix](docs/ATL_COMPATIBILITY.md) for supported
 semantics and limits. `CAtlDllModuleT` is implemented for explicit class
 tables; static `OBJECT_ENTRY_AUTO` factory discovery is supported.
-Class-directed `UpdateRegistry` registration is implemented; resource-based
-RGS, expanded COM maps, type libraries and aggregation remain compatibility
-work. `CComModule`
+Class-directed `UpdateRegistry` and a bounded original `REGISTRY` resource
+path are implemented; arbitrary RGS variants, TypeLib registration,
+expanded COM maps and aggregation remain compatibility work. `CComModule`
 is currently absent and will be evaluated against actual ATL consumers. Windowed ActiveX
 containment and typed Automation event sinks are described in
 [the hosting contract](docs/ACTIVEX_HOST.md); resource-based ActiveX dialogs

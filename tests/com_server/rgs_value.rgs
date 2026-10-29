@@ -1,0 +1,18 @@
+HKCR
+{
+  ForceRemove OpenATL.Conformance.Server.1 = s 'OpenATL native COM class'
+  {
+    CLSID = s '{D7022AE3-51CE-49AF-9872-1140D1824961}'
+  }
+  NoRemove CLSID
+  {
+    ForceRemove {D7022AE3-51CE-49AF-9872-1140D1824961} = s 'OpenATL native COM class'
+    {
+      ProgID = s 'OpenATL.Conformance.Server.1'
+      InprocServer32 = s '%MODULE%'
+      {
+        val ThreadingModel = s 'Both'
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+HKCR
+{
+  ForceRemove OpenATL.Conformance.Aux.1 = s 'OpenATL auxiliary COM class'
+  {
+    CLSID = s '{D7022AF0-51CE-49AF-9872-1140D1824961}'
+  }
+  NoRemove CLSID
+  {
+    ForceRemove {D7022AF0-51CE-49AF-9872-1140D1824961} = s 'OpenATL auxiliary COM class'
+    {
+      ProgID = s 'OpenATL.Conformance.Aux.1'
+      InprocServer32 = s '%MODULE%'
+      {
+        val ThreadingModel = s 'Both'
+      }
+    }
+  }
+}

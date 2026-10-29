@@ -23,6 +23,7 @@ target. Missing standard headers and APIs remain compatibility gaps; see the
 | `atlbase.h`: `CAtlDllModuleT<T>` | Real DLL exports and one `OpenATL::COM::Module` engine. Supports bound tables and static `OBJECT_ENTRY_AUTO` discovery, plus class-directed `UpdateRegistry(BOOL)` callbacks with ordered rollback; RGS resource scripts and automatic ProgID inference remain pending. |
 | `OBJECT_ENTRY_AUTO(clsid, type)` | Static per-image class map and optional typed `UpdateRegistry(BOOL)` callback, bounded duplicate/invalid CLSID rejection, real `IClassFactory`/object/module-lock ownership and native STA/MTA activation. No COM, registry I/O or heap allocation in static constructor. |
 | `DECLARE_NO_REGISTRY()` | Explicit ATL class opt-out of persistent registration; absent `UpdateRegistry` without this opt-out fails `E_NOTIMPL`. |
+| `DECLARE_REGISTRY_RESOURCEID(id)` | Class-static `UpdateRegistry(BOOL)` loads a real `REGISTRY` resource from the explicit HMODULE, parses a bounded ATL RGS subset and executes the owner-verified plan only inside a scoped application registration context; no implicit HKCR or TypeLib registration. |
 | `atlcom.h`: `CComObjectRootBase`, `CComObjectRootEx`, `CComObjectRoot` | Nonaggregated reference counting, thread-model critical section, construction/release hooks |
 | `CComObject<T>` | Concrete IUnknown, raw creation with initial reference count **zero**, typed QI, last-release destruction |
 | `CComCoClass<T, &CLSID>`, `CComCreator<Object>` | Local nonaggregated creation, CLSID accessor, aggregation rejection |
@@ -76,10 +77,11 @@ untouched resources. The opt-in `openatl/rgs_registration.h` executes
 these plans under an explicitly opened caller-owned Classes root using
 the existing owner-verified registry plan/inspection machinery, with
 fail-closed `ForceRemove`, reverse rollback and strict unregistration
-preflight. **`DECLARE_REGISTRY_RESOURCEID`, arbitrary RGS resource
-loading and TypeLib registration remain unimplemented.** This isolated
-native registration conformance does not qualify the original ATL
-applications' complete compile/link/activation. See [server registration](COM_SERVER.md).
+preflight. `DECLARE_REGISTRY_RESOURCEID` now supports a genuine Win32
+`REGISTRY` resource ID with strict encoding and explicit scoped owner/root
+policy. **Full RGS grammar and TypeLib registration remain unimplemented.**
+This isolated native admission does not qualify the original ATL applications'
+complete compile/link/activation. See [server registration](COM_SERVER.md).
 
 **Tracked compatibility gaps:** expanded ATL object-map entry variants,
 chained interface maps, aggregation and tear-offs, RGS-driven persistent

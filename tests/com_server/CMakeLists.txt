@@ -1,4 +1,20 @@
-add_library(openatl_com_server_fixture SHARED fixture.cpp fixture.def interfaces.h)
+# Build actual type REGISTRY Win32 resource blobs. The two ordinary
+# fixture scripts match the test COM CLSIDs; the other two files are the
+# unchanged, checksum-pinned Microsoft ATL RGS resources from #30.
+file(TO_CMAKE_PATH "${PROJECT_SOURCE_DIR}/tests/com_server/rgs_value.rgs"
+  _openatl_fixture_value_rgs)
+file(TO_CMAKE_PATH "${PROJECT_SOURCE_DIR}/tests/com_server/rgs_aux.rgs"
+  _openatl_fixture_aux_rgs)
+file(TO_CMAKE_PATH "${PROJECT_SOURCE_DIR}/tests/atl_rgs/fixtures/Chain.rgs"
+  _openatl_fixture_chain_rgs)
+file(TO_CMAKE_PATH "${PROJECT_SOURCE_DIR}/tests/atl_rgs/fixtures/Outer.rgs"
+  _openatl_fixture_outer_rgs)
+set(_openatl_fixture_rc "${CMAKE_CURRENT_BINARY_DIR}/fixture_registry.rc")
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/fixture_registry.rc.in"
+  "${_openatl_fixture_rc}" @ONLY)
+add_library(openatl_com_server_fixture SHARED
+  fixture.cpp fixture.def fixture_registry_ids.h
+  "${_openatl_fixture_rc}" interfaces.h)
 set_target_properties(openatl_com_server_fixture PROPERTIES PREFIX "")
 target_link_libraries(openatl_com_server_fixture PRIVATE OpenATL::ATL)
 

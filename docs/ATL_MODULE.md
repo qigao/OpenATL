@@ -101,8 +101,11 @@ these methods; the inherited default now uses only the class-defined
 `UpdateRegistry(BOOL)` methods attached to `OBJECT_ENTRY_AUTO` entries.
 A missing class callback is **`E_NOTIMPL`**, not fake success.
 `DECLARE_NO_REGISTRY()` deliberately opts a class out and explicitly
-returns `S_OK` without installing keys. Type library and RGS resource
-registration are still unimplemented.
+returns `S_OK` without installing keys. Type library registration remains unimplemented. Class-directed
+`DECLARE_REGISTRY_RESOURCEID` now loads an actual `REGISTRY` resource
+under the application's explicit `ScopedRgsRegistrationContext`, reusing
+the existing RGS parser and owner-verified executor; it does not silently
+install anything without that scope.
 
 The existing `tests/com_server/fixture.cpp` now routes its actual COM DLL
 exports through `CAtlDllModuleT` and preserves real HKCU class registration,
@@ -149,6 +152,7 @@ remains usable, but its default class registration is `E_NOTIMPL`; the
 owning application can provide a derived registrar.
 
 **Not yet complete:** `CAtlComModule`, extended object-map variants,
-resource-based RGS registration, type libraries, aggregated classes, and
-complete EXE/service COM Server behavior remain separate compatibility
-milestones. Complete Microsoft ATL source compatibility is not yet claimed.
+full arbitrary RGS registration grammar, TypeLib registration,
+aggregated classes and complete EXE/service COM Server behavior remain
+separate compatibility milestones. Bounded real `REGISTRY` resource-ID
+handling is now available only under an explicit scoped registration policy. Complete Microsoft ATL source compatibility is not yet claimed.

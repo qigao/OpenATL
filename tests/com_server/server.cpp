@@ -1,7 +1,10 @@
 #include <atlbase.h>
 #include <openatl/com_server.h>
 #include <openatl/com_registration.h>
+#include <openatl/rgs_resource.h>
 #include "interfaces.h"
+#include "fixture_registry_ids.h"
+#include "openatl_rgs_fixtures.generated.h"
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -388,9 +391,106 @@ struct ForeignAuxProgId {
     }
 };
 
+
+bool verifyResourceDocuments(HMODULE image) {
+    using namespace OpenATL;
+    const struct { unsigned id; std::wstring_view original; } cases[] = {
+        {IDR_MICROSOFT_CHAIN, OpenATLRgsSamples::Chain},
+        {IDR_MICROSOFT_OUTER, OpenATLRgsSamples::Outer}
+    };
+    for (const auto& sample : cases) {
+        RGS::Document expected, actual;
+        REQUIRE(RGS::Parse(sample.original, expected) == RGS::Error::Ok);
+        REQUIRE(COM::ReadRgsResource(image, sample.id, actual) == S_OK);
+        REQUIRE(actual.keys.size() == expected.keys.size());
+        for (size_t i = 0; i < expected.keys.size(); ++i) {
+            const auto& a = actual.keys[i];
+            const auto& b = expected.keys[i];
+            REQUIRE(a.path == b.path && a.directive == b.directive);
+            REQUIRE(a.values.size() == b.values.size());
+            for (size_t k = 0; k < b.values.size(); ++k)
+                REQUIRE(a.values[k].name == b.values[k].name &&
+                        a.values[k].text == b.values[k].text);
+        }
+    }
+    RGS::Document untouched;
+    REQUIRE(RGS::Parse(L"HKCR { Sentinel = s 'unchanged' }", untouched) ==
+            RGS::Error::Ok);
+    REQUIRE(FAILED(COM::ReadRgsResource(image, IDR_WRONG_RESOURCE_TYPE,
+                                        untouched)));
+    REQUIRE(FAILED(COM::ReadRgsResource(image, 32767, untouched)));
+    REQUIRE(COM::ReadRgsResource(nullptr, IDR_MICROSOFT_CHAIN,
+                                 untouched) == E_INVALIDARG);
+    REQUIRE(COM::ReadRgsResource(image, 0, untouched) == E_INVALIDARG);
+    REQUIRE(untouched.keys.size() == 1 &&
+            untouched.keys[0].path == L"Sentinel");
+    std::wstring decoded = L"untouched";
+    const BYTE invalidUtf8[] = {0xef, 0xbb, 0xbf, 0xc3, 0x28};
+    REQUIRE(COM::rgs_resource_detail::Decode(
+        invalidUtf8, sizeof(invalidUtf8), decoded) ==
+        HRESULT_FROM_WIN32(ERROR_NO_UNICODE_TRANSLATION));
+    REQUIRE(decoded == L"untouched");
+    const BYTE invalidUtf16[] = {0xff, 0xfe, 0x00, 0xd8};
+    REQUIRE(COM::rgs_resource_detail::Decode(
+        invalidUtf16, sizeof(invalidUtf16), decoded) ==
+        HRESULT_FROM_WIN32(ERROR_NO_UNICODE_TRANSLATION));
+    REQUIRE(decoded == L"untouched");
+    const BYTE validUtf16[] = {0xff, 0xfe, 0x48, 0x00, 0x4b, 0x00,
+                               0x43, 0x00, 0x52, 0x00, 0x20, 0x00,
+                               0x7b, 0x00, 0x20, 0x00, 0x41, 0x00,
+                               0x20, 0x00, 0x7d, 0x00};
+    REQUIRE(COM::rgs_resource_detail::Decode(
+        validUtf16, sizeof(validUtf16), decoded) == S_OK &&
+        decoded == L"HKCR { A }");
+    REQUIRE(COM::UpdateRegistryResource(IDR_MICROSOFT_CHAIN, TRUE) ==
+            E_UNEXPECTED); // No ambient registration context.
+    // Read-only resource admission must not create a COM apartment.
+    ULONG_PTR token = 0;
+    REQUIRE(::CoGetContextToken(&token) == CO_E_NOTINITIALIZED);
+    return true;
+}
+
+bool scopedResourceRegistry(HMODULE image) {
+    // The EXE can explicitly borrow its own GUID-isolated root for testing;
+    // it does not inherit a DLL's TLS context or write to default HKCR.
+    RegistryRoot root;
+    REQUIRE(root.Open());
+    using OpenATL::COM::ScopedRgsRegistrationContext;
+    {
+        ScopedRgsRegistrationContext invalid(HKEY_CURRENT_USER, image,
+                                              L"RgsNativeTest");
+        REQUIRE(invalid.Status() == E_INVALIDARG);
+        ScopedRgsRegistrationContext invalidOwner(root.key, image,
+                                                   L"illegal\\owner");
+        REQUIRE(invalidOwner.Status() == E_INVALIDARG);
+    }
+    {
+        ScopedRgsRegistrationContext context(root.key, image,
+                                              L"RgsNativeTest");
+        REQUIRE(context.Status() == S_OK);
+        ScopedRgsRegistrationContext nested(root.key, image, L"Nested");
+        REQUIRE(nested.Status() == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS));
+        REQUIRE(OpenATL::COM::UpdateRegistryResource(
+            IDR_MICROSOFT_CHAIN, TRUE) == S_OK);
+        REQUIRE(exists(root.key, L"COMMap.Chain.1"));
+        REQUIRE(OpenATL::COM::UpdateRegistryResource(
+            IDR_MICROSOFT_CHAIN, FALSE) == S_OK);
+        REQUIRE(!exists(root.key, L"COMMap.Chain.1"));
+        REQUIRE(exists(root.key, L"CLSID")); // NoRemove container remains.
+        REQUIRE(OpenATL::COM::UpdateRegistryResource(
+            IDR_MICROSOFT_CHAIN, FALSE) == S_OK);
+    }
+    REQUIRE(OpenATL::COM::UpdateRegistryResource(
+        IDR_MICROSOFT_CHAIN, TRUE) == E_UNEXPECTED);
+    REQUIRE(root.Close());
+    return true;
+}
+
 bool native(DWORD apartment) {
     Dll dll;
     REQUIRE(dll.Open());
+    REQUIRE(verifyResourceDocuments(dll.image));
+    REQUIRE(scopedResourceRegistry(dll.image));
     ULONG_PTR token = 0;
     REQUIRE(::CoGetContextToken(&token) == CO_E_NOTINITIALIZED);
     REQUIRE(dll.unload() == S_OK);

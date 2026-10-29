@@ -28,5 +28,10 @@ caller-owned HKEY and registration owner tag. `ForceRemove` is *not*
 authority to replace or recursively delete existing keys. The native
 test's isolated HKCU root is deleted only if newly created by that test;
 production execution performs no blind recursive deletion, hidden elevation
-or COM initialization. The full `DECLARE_REGISTRY_RESOURCEID` resource
-registrar remains a separate capability.
+or COM initialization. A restricted `DECLARE_REGISTRY_RESOURCEID` capability now loads actual
+compiled Win32 `REGISTRY` resources through an explicit HMODULE and an
+application-scoped installer context. The fixture embeds the unchanged
+Microsoft Chain/Outer files as resources and compares their loaded AST to
+these pinned text inputs. Real COM classes use two class-matching RGS
+resources for native STA/MTA activation; full ATL registrar/resource
+language and TypeLib semantics remain separate work.
