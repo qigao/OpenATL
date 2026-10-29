@@ -24,6 +24,7 @@ target. Missing standard headers and APIs remain compatibility gaps; see the
 | `OBJECT_ENTRY_AUTO(clsid, type)` | Static per-image class map and optional typed `UpdateRegistry(BOOL)` callback, bounded duplicate/invalid CLSID rejection, real `IClassFactory`/object/module-lock ownership and native STA/MTA activation. No COM, registry I/O or heap allocation in static constructor. |
 | `DECLARE_NO_REGISTRY()` | Explicit ATL class opt-out of persistent registration; absent `UpdateRegistry` without this opt-out fails `E_NOTIMPL`. |
 | `DECLARE_REGISTRY_RESOURCEID(id)` | Class-static `UpdateRegistry(BOOL)` loads a real `REGISTRY` resource from the explicit HMODULE, parses a bounded ATL RGS subset and executes the owner-verified plan only inside a scoped application registration context; no implicit HKCR or TypeLib registration. |
+| `IDispatchImpl<T, &IID, &LIBID, major, minor, holder>`, `CComTypeInfoHolder` | Real Windows type-info holder using `LoadRegTypeLib` and `GetTypeInfoOfGuid`; four IDispatch methods and `ITypeInfo::GetIDsOfNames/Invoke` delegation, with owned temporary pointers and no static type-info cache. A native test uses OLEAUT32 `CreateDispTypeInfo` through a typed custom holder for real name lookup and late binding. Image TLB mode `0xffff/0xffff` is **E_NOTIMPL** and registered TLB success is not yet qualified. |
 | `atlcom.h`: `CComObjectRootBase`, `CComObjectRootEx`, `CComObjectRoot` | Nonaggregated reference counting, thread-model critical section, construction/release hooks |
 | `CComObject<T>` | Concrete IUnknown, raw creation with initial reference count **zero**, typed QI, last-release destruction |
 | `CComCoClass<T, &CLSID>`, `CComCreator<Object>` | Local nonaggregated creation, CLSID accessor, aggregation rejection |
@@ -86,8 +87,8 @@ complete compile/link/activation. See [server registration](COM_SERVER.md).
 
 **Tracked compatibility gaps:** expanded ATL object-map entry variants
 (including aggregation, automatic aggregates and tear-offs),
-type-info dispatch and RGS-driven persistent
-class registration, `IDispatchImpl`/type libraries,
+image-embedded TypeLib dispatch and RGS-driven persistent
+class registration, complete TypeLib registration/unregistration,
 connection-point server templates, RGS, SAFEARRAY wrappers, windowless
 hosting, resource-based ActiveX dialogs and complete control/server support.
 `CComModule` is currently unimplemented but not prohibited by policy; assess

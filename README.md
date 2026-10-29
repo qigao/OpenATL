@@ -52,8 +52,11 @@ See the [ATL compatibility matrix](docs/ATL_COMPATIBILITY.md) for supported
 semantics and limits. `CAtlDllModuleT` is implemented for explicit class
 tables; static `OBJECT_ENTRY_AUTO` factory discovery is supported.
 Class-directed `UpdateRegistry` and a bounded original `REGISTRY` resource
-path are implemented; arbitrary RGS variants, TypeLib registration,
-expanded COM maps and aggregation remain compatibility work. `CComModule`
+path are implemented. A first real `ATL::IDispatchImpl` can query Windows
+registered type information and invoke actual `ITypeInfo` methods; its
+native regression test uses OLEAUT32 type-info creation, not a synthetic
+dispatch substitute. Image-loaded TypeLib, installed TypeLib acceptance,
+full Automation semantics, expanded COM maps and aggregation remain work. `CComModule`
 is currently absent and will be evaluated against actual ATL consumers. Windowed ActiveX
 containment and typed Automation event sinks are described in
 [the hosting contract](docs/ACTIVEX_HOST.md); resource-based ActiveX dialogs
