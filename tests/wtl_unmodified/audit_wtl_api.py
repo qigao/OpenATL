@@ -76,7 +76,7 @@ def main() -> int:
         ("CHAR_READ", "LSTATUS ReadProp(LPCTSTR lpstrRegValue, CharArrayProp& caProp)", "LSTATUS WriteProp(LPCTSTR lpstrRegValue, CharArrayProp& caProp)", 30),
         ("CHAR_WRITE", "LSTATUS WriteProp(LPCTSTR lpstrRegValue, CharArrayProp& caProp)", "LSTATUS ReadProp(LPCTSTR lpstrRegValue, ATL::CString& strProp)", 22),
         ("MAP", "#define BEGIN_REGPROP_MAP", "class CRegPropertyImpl", 20),
-        ("IMPL", "class CRegPropertyImpl", "Global functions for stock GDI objects", 75),
+        ("IMPL", "class CRegPropertyImpl", "void OnWriteError", 75),
     ):
         begin_idx = next((i for i, line in enumerate(section) if start_token in line), -1)
         end_idx = next((i for i in range(max(begin_idx + 1, 0), len(section))
