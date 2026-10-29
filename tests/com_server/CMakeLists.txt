@@ -77,6 +77,18 @@ if(CMAKE_HOST_WIN32)
     "${_openatl_midl_sdk_bin}" DIRECTORY)
   get_filename_component(_openatl_midl_sdk_root
     "${_openatl_midl_sdk_bin_root}" DIRECTORY)
+  # midl.exe defaults to cl.exe. Native llvm-mingw runs without MSVC's
+  # environment: use clang-cl from the SAME checksum-pinned LLVM toolchain
+  # as the build. MIDL still processes unchanged Microsoft source bytes.
+  set(_openatl_midl_cpp_args)
+  if(MINGW)
+    find_program(OPENATL_COMMAP_CLANG_CL_EXECUTABLE
+      NAMES clang-cl.exe clang-cl
+      HINTS "$ENV{OPENATL_LLVM_MINGW_BIN}"
+      NO_DEFAULT_PATH REQUIRED)
+    list(APPEND _openatl_midl_cpp_args /cpp_cmd
+      "${OPENATL_COMMAP_CLANG_CL_EXECUTABLE}")
+  endif()
   set(_openatl_midl_include_flags)
   foreach(_atl_folder IN ITEMS um shared)
     set(_atl_sdk_idl_include
@@ -94,7 +106,7 @@ if(CMAKE_HOST_WIN32)
     OUTPUT "${_openatl_commap_header}" "${_openatl_commap_iid}"
            "${_openatl_commap_tlb}"
     COMMAND "${OPENATL_COMMAP_MIDL_EXECUTABLE}" /nologo /env win32
-      ${_openatl_midl_include_flags}
+      ${_openatl_midl_cpp_args} ${_openatl_midl_include_flags}
       /out "${_openatl_commap_generated}" /h COMMap.h
       /iid COMMap_i.c /tlb COMMap.tlb "${_openatl_commap_idl}"
     DEPENDS "${_openatl_commap_idl}"
