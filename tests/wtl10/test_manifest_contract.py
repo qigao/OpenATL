@@ -72,7 +72,7 @@ class ManifestContractTests(unittest.TestCase):
 
     def test_checkout_matches_actual_git_head_not_synthetic_merge(self) -> None:
         with patch("manifest_contract.subprocess.check_output",
-                   return_value=self.sha + "\\n") as git:
+                   return_value=self.sha + chr(10)) as git:
             with patch.dict(os.environ, {
                 "GITHUB_ACTIONS": "true",
                 "GITHUB_SHA": "d" * 40,  # synthetic merge; must be ignored
@@ -83,7 +83,7 @@ class ManifestContractTests(unittest.TestCase):
 
     def test_checkout_rejects_mismatch_missing_and_bad_hash(self) -> None:
         with patch("manifest_contract.subprocess.check_output",
-                   return_value=self.sha + "\\n"):
+                   return_value=self.sha + chr(10)):
             for expected in ("d" * 40, "", "bad-sha"):
                 with self.subTest(expected=expected):
                     with patch.dict(os.environ, {
