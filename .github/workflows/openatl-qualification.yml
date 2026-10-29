@@ -277,6 +277,12 @@ jobs:
           if (!(Test-Path $source)) { throw 'WTL source stamp missing' }
           "OPENATL_WTL_VCPKG_INSTALLED_DIR=$installed" >> $env:GITHUB_ENV
           "OPENATL_WTL_VCPKG_TRIPLET=qigao-wtl10-headers" >> $env:GITHUB_ENV
+      - name: Audit original WTL10 registry/property and hyperlink APIs
+        if: matrix.target == 'x64'
+        shell: pwsh
+        run: |
+          python tests/wtl_unmodified/audit_wtl_api.py
+          if ($LASTEXITCODE -ne 0) { throw 'Original WTL registry API surface changed' }
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
         with:
           arch: ${{ matrix.vc_arch }}

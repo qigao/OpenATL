@@ -43,6 +43,11 @@ if ("OriginalPrintDialogCallbackNoCom" not in direct or
 if ("server_monitor.cpp" not in (ROOT/"tests/wtl_unmodified/CMakeLists.txt").read_text("utf-8")
         or "RunServerMonitorTests()" not in (ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")):
     fail.append("original WTL server monitor bounded worker join must remain native test")
+audit_script=(ROOT/"tests/wtl_unmodified/audit_wtl_api.py")
+if (not audit_script.is_file() or
+        "WTL_REGISTRY_API_INVENTORY_OK" not in audit_script.read_text("utf-8") or
+        "python tests/wtl_unmodified/audit_wtl_api.py" not in workflow):
+    fail.append("pinned original WTL registry API inventory must remain mandatory")
 if fail:
     for item in fail: print("WTL_VCPKG_POLICY_FAIL "+item,file=sys.stderr)
     raise SystemExit(1)

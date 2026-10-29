@@ -53,7 +53,8 @@ using `CREATE_SUSPENDED`, one original shutdown event, and an explicit,
 bounded join *before* `Term()`. The owner thread creates a message queue
 before the monitor can post `WM_QUIT`. Cases cover idle exit, a held
 module lock blocking retirement, explicit owner-controlled lock release,
-shutdown event disposal and the original `WM_QUIT` post. The owner only
+original `CServerAppModule::Unlock()` event signaling **before** the monitor
+is started, shutdown event disposal and the original `WM_QUIT` post. The owner only
 writes `m_bActivity` before spawning the monitor; it intentionally uses
 `CComModule::Unlock` plus an explicit event signal to avoid racing the
 original non-atomic `CServerAppModule::Unlock`. A stuck worker fails

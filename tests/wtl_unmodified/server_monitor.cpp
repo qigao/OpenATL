@@ -16,7 +16,11 @@ bool NoComApartment() noexcept {
     return ::CoGetContextToken(&token) == CO_E_NOTINITIALIZED;
 }
 
-bool RunMonitorCase(bool pinned) {
+enum class MonitorCase { idle, pinned, preStartUnlock };
+
+bool RunMonitorCase(MonitorCase scenario) {
+    const bool pinned = scenario == MonitorCase::pinned;
+    const bool preStartUnlock = scenario == MonitorCase::preStartUnlock;
     if (!NoComApartment()) return false;
     const HINSTANCE image = ::GetModuleHandleW(nullptr);
     if (!image) return false;
@@ -38,6 +42,16 @@ bool RunMonitorCase(bool pinned) {
     if (!event) { module.Term(); return false; }
     module.m_hEventShutdown = event;
     if (pinned && module.Lock() != 1) std::terminate();
+    bool preStartSignalOkay = true;
+    if (preStartUnlock) {
+        // This directly tests the unchanged WTL CServerAppModule::Unlock
+        // side effects, but no worker exists yet: no m_bActivity data race.
+        if (module.Lock() != 1) std::terminate();
+        const LONG count = module.Unlock();
+        preStartSignalOkay =
+            count == 0 && module.m_bActivity &&
+            ::WaitForSingleObject(event, 0) == WAIT_OBJECT_0;
+    }
 
     DWORD workerId = 0;
     // Retain a genuine join handle. Starting suspended makes the initial
@@ -55,7 +69,7 @@ bool RunMonitorCase(bool pinned) {
     if (!::SetEvent(event) || ::ResumeThread(worker) != 1)
         std::terminate(); // Never retire a module with a live/suspended worker.
 
-    bool good = workerId != 0;
+    bool good = workerId != 0 && preStartSignalOkay;
     if (pinned) {
         // At least several idle timeouts pass with the module pinned.
         const DWORD blocked = ::WaitForSingleObject(worker, 130);
@@ -81,12 +95,14 @@ bool RunMonitorCase(bool pinned) {
 } // namespace
 
 bool RunServerMonitorTests() {
-    for (int i = 0; i < 6; ++i) {
-        if (!RunMonitorCase(false) || !RunMonitorCase(true)) {
+    for (int i = 0; i < 5; ++i) {
+        if (!RunMonitorCase(MonitorCase::idle) ||
+            !RunMonitorCase(MonitorCase::pinned) ||
+            !RunMonitorCase(MonitorCase::preStartUnlock)) {
             std::fprintf(stderr, "WTL_SERVER_MONITOR_FAIL cycle=%d\n", i);
             return false;
         }
     }
-    std::puts("OPENATL_WTL_SERVER_MONITOR_OK cycles=12 joined=1 pinned=1 quit=1 no_com=1");
+    std::puts("OPENATL_WTL_SERVER_MONITOR_OK cycles=15 joined=1 pinned=1 signal=1 quit=1 no_com=1");
     return true;
 }
