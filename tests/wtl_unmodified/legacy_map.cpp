@@ -130,13 +130,12 @@ bool OriginalMapRuntime() {
             {&kLegacyA, nullptr, nullptr, &CreatePersist}, {}
         };
         EXPECT(module.Init(incomplete, image) == E_INVALIDARG);
-        const ATL::_ATL_OBJMAP_ENTRY duplicate[] = {
+        ATL::_ATL_OBJMAP_ENTRY duplicate[] = {
             {&kLegacyA, nullptr, &GetFactory, &CreatePersist},
             {&kLegacyA, nullptr, &GetFactory, &CreatePersist}, {}
         };
         // The legacy ABI owns a mutable registration-cookie table.
-        auto validDuplicate = duplicate;
-        EXPECT(module.Init(validDuplicate, image) == E_INVALIDARG);
+        EXPECT(module.Init(duplicate, image) == E_INVALIDARG);
         EXPECT(module.GetLockCount() == 0);
     }
     EXPECT(NoCom());
