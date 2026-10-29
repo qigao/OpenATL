@@ -27,8 +27,13 @@ an independent mandatory regression suite.
 * Keep `WTL::CServerAppModule`, including monitor/shutdown and COM server
   semantics, without deleting public declarations.
 * Keep `WTL::CPrintDialogEx` and actual `IPrintDialogCallback` /
-  `IObjectWithSite` behavior. WTL `CRegProperty` and hyperlink registry
-  behavior are subsequent explicit functionality gates.
+  `IObjectWithSite` behavior. The new independent
+  `openatl.com_site_no_apartment` test verifies COM AddRef/Release,
+  interface-query error handling, self-assignment and no implicit apartment
+  initialization for `ATL::IObjectWithSiteImpl<T>`. Original WTL dialog
+  API admission remains blocked until the direct-header target passes.
+  WTL `CRegProperty` and hyperlink registry behavior are subsequent
+  explicit functionality gates.
 * Basic WTL UI must not silently initialize a COM apartment.
 
 The initial direct-source CI job is intentionally **fail-closed** until

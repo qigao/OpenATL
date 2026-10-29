@@ -127,7 +127,7 @@ jobs:
           }
           $env:OPENATL_LLVM_MINGW_BIN=$env:OPENATL_LLVM_BIN
           $sample=(Resolve-Path tools/wtl10-test).Path
-          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_activex','openatl_wtl10_sdi','openatl_official_guidgen')
+          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_site','openatl_com_server_tests','openatl_activex','openatl_wtl10_sdi','openatl_official_guidgen')
           foreach($arch in @('x86_64','aarch64')) {
             $build="build-llvm-$arch"
             Run cmake @('--preset',"llvm-$arch","-DOPENATL_WTL_DEMO_DIR=$sample")
@@ -329,7 +329,7 @@ jobs:
           if(!$identity -or !(Select-String -Path $identity.FullName -Pattern 'CMAKE_CXX_COMPILER_ID "MSVC"' -Quiet)) {
             throw 'MSVC cl.exe was not the actual compiler'
           }
-          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_server_tests','openatl_activex','openatl_wtl10_sdi','openatl_official_guidgen','openatl_official_memdlg')
+          $targets=@('openatl_gui_runtime','openatl_atl_core','openatl_atl_path','openatl_unicode','openatl_unicode_utf8','openatl_atl_extensions','openatl_atl_mapping','openatl_atl_image','openatl_thunk_fault','openatl_mitigation_runtime','openatl_unload_runner','openatl_unload_native','openatl_com_client','openatl_com_site','openatl_com_server_tests','openatl_activex','openatl_wtl10_sdi','openatl_official_guidgen','openatl_official_memdlg')
           foreach($name in @('console','dialog','window')) {
             Run python @('tests/wtl10/verify_pe_machine.py',"$build/openatl_ratl_$name.exe",$machine,'--require-resources')
           }
