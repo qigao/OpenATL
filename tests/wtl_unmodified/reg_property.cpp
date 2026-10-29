@@ -10,6 +10,9 @@
 #include <windows.h>
 #include <objbase.h>
 #include <string>
+#include <array>
+#include <cstring>
+#include <cwchar>
 #include <cstdio>
 
 #define CHECK_PROPERTY(x) do { if (!(x)) { \
@@ -49,6 +52,146 @@ bool NoComApartment() {
     ULONG_PTR context = 0;
     return ::CoGetContextToken(&context) == CO_E_NOTINITIALIZED;
 }
+// Original WTL mapped-property CRTP callbacks. All accesses use the
+// original pinned CRegPropertyImpl/REG_PROPERTY macros, not a second parser.
+struct MapProperties : WTL::CRegPropertyImpl<MapProperties> {
+    DWORD count = 0;
+    bool enabled = false;
+    ATL::CString caption;
+    int reads = 0, writes = 0, readErrors = 0, writeErrors = 0;
+    LSTATUS lastReadError = ERROR_SUCCESS;
+    LSTATUS lastWriteError = ERROR_SUCCESS;
+    std::wstring lastReadName;
+
+    BEGIN_REGPROP_MAP(MapProperties)
+        REG_PROPERTY(L"MapCount", count)
+        REG_PROPERTY(L"MapEnabled", enabled)
+        REG_PROPERTY(L"MapCaption", caption)
+    END_REGPROP_MAP()
+
+    void OnRead(LPCTSTR) { ++reads; }
+    void OnWrite(LPCTSTR) { ++writes; }
+    void OnReadError(LPCTSTR name, LSTATUS error) {
+        ++readErrors;
+        lastReadError = error;
+        lastReadName = name ? name : L"";
+    }
+    void OnWriteError(LPCTSTR, LSTATUS error) {
+        ++writeErrors;
+        lastWriteError = error;
+    }
+};
+
+struct ScopedFont {
+    HFONT value = nullptr;
+    ~ScopedFont() { if (value) ::DeleteObject(value); }
+    ScopedFont(const ScopedFont&) = delete;
+    ScopedFont& operator=(const ScopedFont&) = delete;
+    ScopedFont() = default;
+};
+
+bool RunExtendedPropertyRoundtrip(const std::wstring& root, ATL::CRegKey& key) {
+    const std::array<BYTE, 9> blob = {0x00,0x7f,0x80,0xff,0x51,0x00,0x34,0x9a,0x11};
+    WTL::CRegProperty::BinaryProp output{};
+    output.pBinary = const_cast<BYTE*>(blob.data());
+    output.uSize = static_cast<ULONG>(blob.size());
+    CHECK_PROPERTY(WTL::CRegProperty::WriteOne(root.c_str(), L"Blob", output));
+    std::array<BYTE, 9> got{};
+    WTL::CRegProperty::BinaryProp input{};
+    input.pBinary = got.data();
+    input.uSize = static_cast<ULONG>(got.size());
+    CHECK_PROPERTY(WTL::CRegProperty::ReadOne(root.c_str(), L"Blob", input));
+    CHECK_PROPERTY(input.uSize == blob.size() && got == blob);
+
+    // WTL's public BinaryProp/CharArrayProp contracts reject insufficient
+    // caller-owned buffers with ERROR_OUTOFMEMORY, never partial copies.
+    WTL::CRegProperty typed;
+    CHECK_PROPERTY(typed.OpenRegKey(root.c_str(), false) == ERROR_SUCCESS);
+    std::array<BYTE, 4> smallBlob{};
+    smallBlob.fill(0xa5);
+    WTL::CRegProperty::BinaryProp small{};
+    small.pBinary = smallBlob.data();
+    small.uSize = static_cast<ULONG>(smallBlob.size());
+    CHECK_PROPERTY(typed.ReadProp(L"Blob", small) == ERROR_OUTOFMEMORY);
+    CHECK_PROPERTY(small.uSize == smallBlob.size());
+    for (BYTE b : smallBlob) CHECK_PROPERTY(b == 0xa5);
+
+    wchar_t originalText[] = L"WTL-CharArray-\u03bb\u6d4b\u8bd5";
+    WTL::CRegProperty::CharArrayProp writeText{};
+    writeText.lpstrText = originalText;
+    writeText.uSize = sizeof(originalText) / sizeof(originalText[0]);
+    CHECK_PROPERTY(WTL::CRegProperty::WriteOne(root.c_str(), L"CharArray", writeText));
+    std::array<wchar_t, 64> charBuffer{};
+    WTL::CRegProperty::CharArrayProp readText{};
+    readText.lpstrText = charBuffer.data();
+    readText.uSize = static_cast<ULONG>(charBuffer.size());
+    CHECK_PROPERTY(WTL::CRegProperty::ReadOne(root.c_str(), L"CharArray", readText));
+    CHECK_PROPERTY(std::wcscmp(charBuffer.data(), originalText) == 0);
+    CHECK_PROPERTY(readText.uSize <= charBuffer.size());
+    std::array<wchar_t, 3> tinyText = {L'X',L'Y',L'Z'};
+    WTL::CRegProperty::CharArrayProp shortText{};
+    shortText.lpstrText = tinyText.data();
+    shortText.uSize = static_cast<ULONG>(tinyText.size());
+    CHECK_PROPERTY(typed.ReadProp(L"CharArray", shortText) == ERROR_OUTOFMEMORY);
+    CHECK_PROPERTY(shortText.uSize == tinyText.size() &&
+                   tinyText[0] == L'X' && tinyText[1] == L'Y' && tinyText[2] == L'Z');
+    typed.CloseRegKey();
+
+    LOGFONTW fontDesc{};
+    fontDesc.lfHeight = -17;
+    fontDesc.lfWeight = FW_BOLD;
+    fontDesc.lfCharSet = DEFAULT_CHARSET;
+    ::lstrcpyW(fontDesc.lfFaceName, L"Arial");
+    ScopedFont originalFont;
+    originalFont.value = ::CreateFontIndirectW(&fontDesc);
+    CHECK_PROPERTY(originalFont.value != nullptr);
+    CHECK_PROPERTY(WTL::CRegProperty::WriteOne(root.c_str(), L"Font", originalFont.value));
+    DWORD type = 0;
+    ULONG size = 0;
+    CHECK_PROPERTY(key.QueryValue(L"Font", &type, nullptr, &size) == ERROR_SUCCESS);
+    CHECK_PROPERTY(type == REG_BINARY && size == sizeof(LOGFONTW));
+    ScopedFont restoredFont;
+    CHECK_PROPERTY(WTL::CRegProperty::ReadOne(root.c_str(), L"Font", restoredFont.value));
+    CHECK_PROPERTY(restoredFont.value != nullptr);
+    LOGFONTW fontResult{};
+    CHECK_PROPERTY(::GetObjectW(restoredFont.value, sizeof(fontResult), &fontResult) ==
+                   sizeof(fontResult));
+    CHECK_PROPERTY(fontResult.lfHeight == fontDesc.lfHeight &&
+                   fontResult.lfWeight == fontDesc.lfWeight &&
+                   ::lstrcmpW(fontResult.lfFaceName, fontDesc.lfFaceName) == 0);
+
+    MapProperties write{};
+    write.count = 0x7f3095;
+    write.enabled = true;
+    write.caption = L"WTL map / \u03bb\u6d4b\u8bd5";
+    write.Write(root.c_str());
+    CHECK_PROPERTY(write.writes == 1 && write.writeErrors == 0 && write.reads == 0);
+    MapProperties read{};
+    read.Read(root.c_str());
+    CHECK_PROPERTY(read.reads == 1 && read.readErrors == 0 &&
+                   read.count == write.count && read.enabled == write.enabled &&
+                   read.caption == write.caption.GetString());
+
+    // A missing mapped property preserves the caller's default and causes
+    // no OnReadError; a wrong registry type causes exactly one callback,
+    // while valid neighboring properties still read normally.
+    CHECK_PROPERTY(key.DeleteValue(L"MapEnabled") == ERROR_SUCCESS);
+    MapProperties optional{};
+    optional.enabled = true;
+    optional.Read(root.c_str());
+    CHECK_PROPERTY(optional.reads == 1 && optional.readErrors == 0 &&
+                   optional.enabled && optional.count == write.count);
+    CHECK_PROPERTY(key.SetStringValue(L"MapCount", L"wrong type") == ERROR_SUCCESS);
+    MapProperties invalid{};
+    invalid.count = 123;
+    invalid.Read(root.c_str());
+    CHECK_PROPERTY(invalid.reads == 1 && invalid.readErrors == 1 &&
+                   invalid.lastReadError == ERROR_INVALID_DATATYPE &&
+                   invalid.lastReadName == L"MapCount" &&
+                   invalid.count == 123 && invalid.caption == write.caption.GetString());
+    return true;
+}
+
 bool RunPropertyRoundtrip() {
     CHECK_PROPERTY(NoComApartment());
     ScopedOwnedKey root;
@@ -104,6 +247,8 @@ bool RunPropertyRoundtrip() {
     CHECK_PROPERTY(untouched == 0x6b9c01efu);
     typed.CloseRegKey();
 
+    CHECK_PROPERTY(RunExtendedPropertyRoundtrip(root.path, key));
+
     DWORD type = 0;
     DWORD bytes = sizeof(DWORD);
     DWORD raw = 0;
@@ -121,6 +266,6 @@ bool RunRegPropertyTests() {
     for (int i = 0; i < 4; ++i) {
         if (!RunPropertyRoundtrip()) return false;
     }
-    std::puts("OPENATL_WTL_REGPROPERTY_OK rounds=4 dword=1 bool=1 unicode=1 optional_missing=1 type_error=1 cleanup=1 no_com=1");
+    std::puts("OPENATL_WTL_REGPROPERTY_OK rounds=4 dword=1 bool=1 unicode=1 optional_missing=1 type_error=1 binary=1 char_array=1 font=1 map=1 callbacks=1 cleanup=1 no_com=1");
     return true;
 }

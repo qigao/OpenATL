@@ -63,6 +63,22 @@ def main() -> int:
     if "return (lRet == ERROR_SUCCESS) || (lRet == ERROR_FILE_NOT_FOUND);" not in misc[x:y]:
         raise ValueError("pinned WTL ReadOne optional-missing contract changed")
     print("WTL_REGISTRY_MISSING_CONTRACT_OK optional_missing=1 typed_error=preserved")
+    # The inventory below is from the installed release, never an external
+    # mirrored header. Missing caps/CRTP/callback contracts fail closed.
+    for item in (
+        "struct BinaryProp", "struct CharArrayProp",
+        "if(uSize <= binProp.uSize)", "if(uSize <= caProp.uSize)",
+        "LSTATUS ReadProp(LPCTSTR lpstrRegValue, HFONT& hFont)",
+        "LSTATUS WriteProp(LPCTSTR lpstrRegValue, HFONT& hFont)",
+        "class CRegPropertyImpl : public CRegProperty",
+        "#define BEGIN_REGPROP_MAP", "#define REG_PROPERTY",
+        "#define END_REGPROP_MAP()", "OnReadError(", "OnWriteError(",
+    ):
+        if item not in misc[x:y]:
+            raise ValueError("original WTL property ABI changed: " + item)
+    if misc[x:y].count("lRet = ERROR_OUTOFMEMORY;") < 2:
+        raise ValueError("original WTL bounded-buffer rejection changed")
+    print("WTL_REGISTRY_EXTENDED_CONTRACT_OK binary=1 char_array=1 font=1 map=1 callbacks=1 bounds=1")
     # Exact-release API details to qualify next: binary/font/character arrays
     # and CRTP property-map macros. Bounded source dump from installed package,
     # never a different WTL tag or an edited/adapted copy.

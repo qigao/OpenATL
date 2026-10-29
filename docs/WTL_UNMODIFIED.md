@@ -51,9 +51,16 @@ as an optional/default success without mutating the old destination value;
 `ReadProp` still returns the precise `ERROR_FILE_NOT_FOUND` status,
 and wrong types return `ERROR_INVALID_DATATYPE`. The test verifies both
 paths and deletes the key it owns. No HKCR/HKLM writes or implicit COM.
-The full `CRegPropertyImpl<T>` macro/property-map and binary/font
-serialization remain separate unqualified gates, even when this basic
-native property roundtrip passes.
+The expanded direct-source native test also uses `CRegPropertyImpl<T>`
+with unchanged `BEGIN_REGPROP_MAP`/`REG_PROPERTY` macros; checks OnRead/
+OnWrite and precise OnReadError callbacks, missing-property defaults, and
+propagation of valid neighboring fields. It exercises bounded `BinaryProp`
+and `CharArrayProp` buffers, original `ERROR_OUTOFMEMORY` handling
+without partial modification, and `HFONT` LOGFONT registry persistence
+with explicitly owned GDI cleanup. The exact pinned vcpkg header source
+is audited for those public member and boundedness contracts. Further
+failure injection, genuine print-dialog UI, hyperlink registry behavior,
+and production adapter retirement remain unqualified.
 
 ## Original CServerAppModule shutdown monitor — bounded evidence
 

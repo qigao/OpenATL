@@ -54,6 +54,14 @@ if (not audit_script.is_file() or
 if ("WTL_REGISTRY_MISSING_CONTRACT_OK" not in audit_script.read_text("utf-8") or
         "ERROR_FILE_NOT_FOUND" not in (ROOT/"tests/wtl_unmodified/reg_property.cpp").read_text("utf-8")):
     fail.append("original WTL optional missing and precise LSTATUS tests required")
+expanded=(ROOT/"tests/wtl_unmodified/reg_property.cpp").read_text("utf-8")
+if ("WTL_REGISTRY_EXTENDED_CONTRACT_OK" not in audit_script.read_text("utf-8")
+        or "BEGIN_REGPROP_MAP(MapProperties)" not in expanded
+        or "WTL::CRegProperty::BinaryProp" not in expanded
+        or "WTL::CRegProperty::CharArrayProp" not in expanded
+        or "ERROR_OUTOFMEMORY" not in expanded
+        or "ScopedFont" not in expanded):
+    fail.append("original WTL CRTP/binary/font/array native property gates required")
 if fail:
     for item in fail: print("WTL_VCPKG_POLICY_FAIL "+item,file=sys.stderr)
     raise SystemExit(1)
