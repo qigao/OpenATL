@@ -71,7 +71,7 @@ _BROWSER_PHASES = (
     "document-complete", "destroying-window", "window-destroyed", "end",
 )
 _BROWSER_LINE = re.compile(
-    r"^ACTIVEX_BROWSER cycle=(-?\\d+) phase=([a-z-]+) ticks=(\\d+)$"
+    r"^ACTIVEX_BROWSER cycle=(-?\d+) phase=([a-z-]+) ticks=(\d+)$"
 )
 
 def native_stderr_ok(name: str, args: tuple, stderr: str) -> bool:
