@@ -23,6 +23,9 @@ bool RunAtlDispatchTests();
 bool RunAtlModuleTests();
 bool RunRgsParserTests();
 bool RunRgsRegistryTests();
+#if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
+bool RunOriginalCommapTypeLibTest(const char* path);
+#endif
 namespace {
 std::atomic<int> live{0};
 bool throwUnexpected = false;
@@ -566,6 +569,13 @@ bool native(DWORD apartment) {
 } // namespace
 
 int main(int argc, char** argv) {
+#if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
+    if (argc == 3 && std::strcmp(argv[1], "--commap-tlb") == 0) {
+        if (!RunOriginalCommapTypeLibTest(argv[2])) return 1;
+        std::puts("OPENATL_ORIGINAL_COMMAP_MIDL_OK source=1 typelib=1 iids=1 dispids=1 register=0");
+        return 0;
+    }
+#endif
     if (argc != 2) return 2;
     if (std::strcmp(argv[1], "--module") == 0) {
         if (!RunAtlModuleTests()) return 1;

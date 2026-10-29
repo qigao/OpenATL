@@ -37,7 +37,7 @@ public:
         const bool drive = path.size() >= 3 &&
             ((path[0] >= L'A' && path[0] <= L'Z') ||
              (path[0] >= L'a' && path[0] <= L'z')) &&
-            path[1] == L':' && path[2] == L'\\';
+            path[1] == L':' && (path[2] == L'\\' || path[2] == L'/');
         const bool unc = path.size() >= 5 && path[0] == L'\\' &&
             path[1] == L'\\' && path[2] != L'\\';
         if (!drive && !unc) return E_INVALIDARG;

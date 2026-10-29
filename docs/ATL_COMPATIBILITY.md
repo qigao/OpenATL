@@ -86,6 +86,12 @@ policy. **Full RGS grammar and TypeLib registration remain unimplemented.**
 This isolated native admission does not qualify the original ATL applications'
 complete compile/link/activation. See [server registration](COM_SERVER.md).
 
+Original Microsoft COMMap `COMMap.idl` is pinned and submitted to native
+Windows SDK `midl.exe` on Windows CI. The generated binary TypeLib,
+interface header and IID implementation are checked through actual OLEAUT32
+loading and native compilation. This is original-IDL admission, not whole
+COMMap DLL build/link or any of the 37 original pure-ATL projects passing.
+
 **Tracked compatibility gaps:** expanded ATL object-map entry variants
 (including aggregation, automatic aggregates and tear-offs),
 image-embedded TypeLib dispatch and RGS-driven persistent

@@ -79,6 +79,11 @@ jobs:
           foreach($tool in @('rc.exe','uicc.exe')) {
             if(!(Test-Path (Join-Path $env:OPENATL_WINDOWS_SDK_BIN $tool))) { throw "Selected SDK is missing $tool" }
           }
+          # Subsequent x64/ARM64 job steps run in new PowerShell processes.
+          # Persist this exact selected SDK version, including midl.exe,
+          # rather than discovering a different SDK or assuming PATH state.
+          "OPENATL_WINDOWS_SDK_BIN=$env:OPENATL_WINDOWS_SDK_BIN" |
+            Out-File $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Windows SDK bin: $env:OPENATL_WINDOWS_SDK_BIN"
           Run cmake @('--preset','llvm-i686')
           Run cmake @('--build','--preset','llvm-i686','--parallel','2')

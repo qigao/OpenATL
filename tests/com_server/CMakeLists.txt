@@ -49,6 +49,106 @@ add_dependencies(openatl_com_server_tests openatl_com_server_fixture)
 set_target_properties(openatl_com_server_fixture openatl_com_server_tests PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+
+# Exact Microsoft VCSamples COMMap.idl: SHA-pinned and unchanged.
+# The real native Windows SDK midl.exe supplies .h/.c/.tlb; no Mono/Wine
+# or synthetic interfaces and no automatic regsvr32/TypeLib registration.
+set(_openatl_commap_original
+  "${PROJECT_SOURCE_DIR}/tests/official_samples/microsoft_atl/commap")
+set(_openatl_commap_idl "${_openatl_commap_original}/COMMap.idl")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+  "${_openatl_commap_idl}")
+execute_process(COMMAND "${Python3_EXECUTABLE}"
+  "${_openatl_commap_original}/check_idl.py" "${_openatl_commap_idl}"
+  COMMAND_ERROR_IS_FATAL ANY)
+if(CMAKE_HOST_WIN32)
+  find_program(OPENATL_COMMAP_MIDL_EXECUTABLE NAMES midl.exe midl
+    HINTS "$ENV{OPENATL_WINDOWS_SDK_BIN}"
+      "$ENV{WindowsSdkDir}/bin/$ENV{WindowsSDKVersion}/x86"
+      "$ENV{WindowsSdkDir}/bin/$ENV{WindowsSDKVersion}/x64"
+    REQUIRED)
+  get_filename_component(_openatl_midl_arch_bin
+    "${OPENATL_COMMAP_MIDL_EXECUTABLE}" DIRECTORY)
+  get_filename_component(_openatl_midl_sdk_bin
+    "${_openatl_midl_arch_bin}" DIRECTORY)
+  get_filename_component(_openatl_midl_sdk_version
+    "${_openatl_midl_sdk_bin}" NAME)
+  get_filename_component(_openatl_midl_sdk_bin_root
+    "${_openatl_midl_sdk_bin}" DIRECTORY)
+  get_filename_component(_openatl_midl_sdk_root
+    "${_openatl_midl_sdk_bin_root}" DIRECTORY)
+  # MIDL defaults to cl.exe, absent in a native llvm-mingw build.
+  # The pinned llvm-mingw package's clang.exe is a GNU-style driver even
+  # when hard-linked under the clang-cl.exe name. Use documented MIDL
+  # /cpp_cmd + /cpp_opt to explicitly select GNU preprocessing. Preserve
+  # all SDK IDL preprocessor directives (do not use /no_cpp).
+  set(_openatl_midl_cpp_args)
+  if(MINGW)
+    find_program(OPENATL_COMMAP_PINNED_CLANG_EXECUTABLE NAMES clang.exe
+      HINTS "$ENV{OPENATL_LLVM_MINGW_BIN}" NO_DEFAULT_PATH REQUIRED)
+  endif()
+  set(_openatl_midl_include_flags)
+  set(_openatl_midl_rsp "")
+  if(MINGW)
+    set(_openatl_midl_rsp "${CMAKE_CURRENT_BINARY_DIR}/commap-llvm-cpp.rsp")
+    file(WRITE "${_openatl_midl_rsp}" "")
+  endif()
+  foreach(_atl_folder IN ITEMS um shared)
+    set(_atl_sdk_idl_include
+      "${_openatl_midl_sdk_root}/Include/${_openatl_midl_sdk_version}/${_atl_folder}")
+    if(IS_DIRECTORY "${_atl_sdk_idl_include}")
+      list(APPEND _openatl_midl_include_flags "/I" "${_atl_sdk_idl_include}")
+      if(MINGW)
+        file(APPEND "${_openatl_midl_rsp}" "-I\"${_atl_sdk_idl_include}\"\n")
+      endif()
+    endif()
+  endforeach()
+  if(MINGW)
+    # Clang reads precisely the UTF-8 response-file SDK include paths,
+    # including spaces in Program Files (x86); MIDL still gets /I itself.
+    # MIDL expects literal __stdcall/__cdecl tokens in SDK IDL, whereas
+    # llvm-mingw's GNU-mode Clang predefines them as GNU __attribute__(())
+    # macros. Undefine those ABI sugar macros, retain real IDL declarations,
+    # and match /env win32's target width instead of the host's x64 width.
+    set(_openatl_midl_cpp_options
+      "-E -x c --target=i686-w64-mingw32 -U__stdcall -U__cdecl -U__fastcall -U_stdcall -U_cdecl -U_fastcall @${_openatl_midl_rsp}")
+    list(APPEND _openatl_midl_cpp_args
+      /cpp_cmd "${OPENATL_COMMAP_PINNED_CLANG_EXECUTABLE}"
+      /cpp_opt "${_openatl_midl_cpp_options}")
+  endif()
+  set(_openatl_commap_generated "${CMAKE_CURRENT_BINARY_DIR}/microsoft-commap")
+  file(MAKE_DIRECTORY "${_openatl_commap_generated}")
+  set(_openatl_commap_header "${_openatl_commap_generated}/COMMap.h")
+  set(_openatl_commap_iid "${_openatl_commap_generated}/COMMap_i.c")
+  set(_openatl_commap_tlb "${_openatl_commap_generated}/COMMap.tlb")
+  add_custom_command(
+    OUTPUT "${_openatl_commap_header}" "${_openatl_commap_iid}"
+           "${_openatl_commap_tlb}"
+    COMMAND "${OPENATL_COMMAP_MIDL_EXECUTABLE}" /nologo /env win32
+      ${_openatl_midl_cpp_args} ${_openatl_midl_include_flags}
+      /out "${_openatl_commap_generated}" /h COMMap.h
+      /iid COMMap_i.c /tlb COMMap.tlb "${_openatl_commap_idl}"
+    DEPENDS "${_openatl_commap_idl}"
+    COMMENT "Actual Windows SDK MIDL: original Microsoft COMMap.idl"
+    VERBATIM)
+  add_custom_target(openatl_microsoft_commap_midl ALL DEPENDS
+    "${_openatl_commap_header}" "${_openatl_commap_iid}"
+    "${_openatl_commap_tlb}")
+  add_dependencies(openatl_com_server_tests openatl_microsoft_commap_midl)
+  set_source_files_properties("${_openatl_commap_iid}"
+    PROPERTIES GENERATED TRUE LANGUAGE CXX)
+  target_sources(openatl_com_server_tests PRIVATE
+    "${_openatl_commap_iid}"
+    "${_openatl_commap_original}/commap_midl_native.cpp")
+  target_include_directories(openatl_com_server_tests PRIVATE
+    "${_openatl_commap_generated}")
+  target_compile_definitions(openatl_com_server_tests PRIVATE
+    OPENATL_ORIGINAL_COMMAP_MIDL=1)
+  add_test(NAME openatl.microsoft_commap_midl
+    COMMAND openatl_com_server_tests --commap-tlb "${_openatl_commap_tlb}")
+  set_tests_properties(openatl.microsoft_commap_midl PROPERTIES TIMEOUT 30)
+endif()
+
 foreach(mode IN ITEMS core sta mta module)
   add_test(NAME openatl.com_server_${mode} COMMAND openatl_com_server_tests --${mode})
   set_tests_properties(openatl.com_server_${mode} PROPERTIES
