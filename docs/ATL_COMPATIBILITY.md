@@ -30,6 +30,7 @@ target. Missing standard headers and APIs remain compatibility gaps; see the
 | `BEGIN_COM_MAP` / `END_COM_MAP` | First simple entry supplies canonical IUnknown; typed pointer adjustments |
 | `COM_INTERFACE_ENTRY`, `COM_INTERFACE_ENTRY_IID` | Interface type or explicit IID mapping |
 | `COM_INTERFACE_ENTRY2`, `COM_INTERFACE_ENTRY2_IID` | Select the inheritance branch for an ambiguous base interface |
+| `COM_INTERFACE_ENTRY_CHAIN(Base)` | Chain a base ATL COM map without double AddRef; preserve outer-first canonical `IUnknown` or use the base identity for a chain-only map. Native MI/QI/identity tests cover both forms. |
 | `DECLARE_NOT_AGGREGATABLE` | Select the nonaggregated creator |
 | `DECLARE_PROTECT_FINAL_CONSTRUCT` | Retain/release the construction guard reference |
 | WTL `CAppModule::Init` | `Init(hInstance)` and ordinary `Init(nullptr, hInstance)`; nonempty object maps/type-library IDs currently fail explicitly (missing compatibility) |
@@ -83,8 +84,9 @@ policy. **Full RGS grammar and TypeLib registration remain unimplemented.**
 This isolated native admission does not qualify the original ATL applications'
 complete compile/link/activation. See [server registration](COM_SERVER.md).
 
-**Tracked compatibility gaps:** expanded ATL object-map entry variants,
-chained interface maps, aggregation and tear-offs, RGS-driven persistent
+**Tracked compatibility gaps:** expanded ATL object-map entry variants
+(including aggregation, automatic aggregates and tear-offs),
+type-info dispatch and RGS-driven persistent
 class registration, `IDispatchImpl`/type libraries,
 connection-point server templates, RGS, SAFEARRAY wrappers, windowless
 hosting, resource-based ActiveX dialogs and complete control/server support.

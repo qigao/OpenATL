@@ -201,6 +201,23 @@ public: \
           return S_OK; \
       } _atlFirst = false; }
 #define COM_INTERFACE_ENTRY2(x, via) COM_INTERFACE_ENTRY2_IID(__uuidof(x), x, via)
+// Chain to an existing ATL base COM map without invoking QueryInterface:
+// the outermost CComObject::QueryInterface adds the one owning reference.
+// A chained map only supplies a borrowed, correctly adjusted interface ptr.
+// In particular, the outer map's first simple entry still defines the
+// canonical IUnknown; a chain-only outer map inherits its base identity.
+#define COM_INTERFACE_ENTRY_CHAIN(base) \
+    { \
+        void* _atlChained = nullptr; \
+        const HRESULT _atlChainHr = \
+            static_cast<base*>(this)->_OpenATLFindInterface(iid, &_atlChained); \
+        if (_atlChainHr == S_OK && _atlChained) { \
+            *output = _atlChained; \
+            return S_OK; \
+        } \
+        if (SUCCEEDED(_atlChainHr)) return E_UNEXPECTED; \
+        if (_atlChainHr != E_NOINTERFACE) return _atlChainHr; \
+    }
 #define END_COM_MAP() \
         (void)_atlFirst; \
         return E_NOINTERFACE; \
