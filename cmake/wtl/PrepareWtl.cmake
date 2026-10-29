@@ -41,18 +41,18 @@ endforeach()
 # Do not write atlapp.h to the build-local directory. Its digest is checked
 # byte-for-byte against the installed vcpkg original after adapter processing.
 
-# The Microsoft compiler accepts a CWindow -> HWND -> CButton copy
-# initialization used by BmpView. Supply that conversion directly on Clang;
-# preserve every existing constructor and the public HWND representation.
+# WTL #7's one source package owns Clang CButton/CEdit CWindow
+# direct borrows, with exact copy/assignment overloads guarded by MinGW.
+# The build-local adapter must no longer add another constructor provider.
 set(_wtl_ui_header "${_wtl_headers}/atlctrls.h")
 file(READ "${_wtl_ui_header}" _wtl_ui_text)
 foreach(_control IN ITEMS CButtonT CEditT)
-  _openatl_replace_once(
-    "${_control}(HWND hWnd = NULL) : TBase(hWnd)"
-    "${_control}(const ATL::CWindow& window) : TBase(window.m_hWnd) { }\n\t${_control}& operator=(const ATL::CWindow& window) { this->m_hWnd = window.m_hWnd; return *this; }\n\t${_control}(HWND hWnd = NULL) : TBase(hWnd)"
-    "${_control} CWindow copy initialization")
+  string(FIND "${_wtl_ui_text}" "${_control}(const ATL::CWindow& window)" _wtl_borrow_ctor)
+  string(FIND "${_wtl_ui_text}" "${_control}< TBase >& operator =(const ATL::CWindow& window)" _wtl_borrow_assign)
+  if(_wtl_borrow_ctor EQUAL -1 OR _wtl_borrow_assign EQUAL -1)
+    message(FATAL_ERROR "WTL #7 installed Clang HWND borrow constructor/assignment missing: ${_control}")
+  endif()
 endforeach()
-file(WRITE "${_wtl_ui_header}" "${_wtl_ui_text}")
 
 # mingw-w64's GetThemePartSize declares the SDK input RECT mutable. Pass a
 # local copy while retaining WTL's standard const RECT public signature.

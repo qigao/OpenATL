@@ -20,7 +20,7 @@ an independent mandatory regression suite.
 
 **Temporary Draft qualification pin:** This branch uses the exact pending
 [vcpkg-cache PR #237](https://github.com/qigao/vcpkg-cache/pull/237)
-HEAD `16d756378ded9c6e928d834b05610bbd9aa7508b` for WTL #7. Only a *merged* `vcpkg-cache
+HEAD `0b0250966d3f4b164419cffc658e226ec3c3fe86` for WTL #7. Only a *merged* `vcpkg-cache
 master` commit may replace that pin before PR #45 can be considered
 for any merge. The new port keeps the original ZIP SHA512 and preserves
 WTL APIs while adding minimal standard-C++ Clang parsing/capacity fixes.
@@ -39,14 +39,17 @@ mismatch, or runtime failure is RED — do not silently return to the
 adapted path or skip the original mode. The next strict llvm-mingw failure came from unchanged
 `BmpView/props.h`: copy-initializing `WTL::CButton/CEdit` from
 `ATL::CWindow` uses an MSVC conversion extension that Clang rejects.
-OpenATL's MinGW-only `ATL::CWindow` now supplies a narrowly
-constrained conversion **only** to `WTL::CButtonT<CWindow>` and
-`WTL::CEditT<CWindow>`. A broader derived-control conversion was
-rejected because it introduced ambiguous assignment overloads in
-`CComboBox`, `CListViewCtrl`, and other WTL controls. The original
-WTL control and sample files remain unmodified; native tests verify
-the two borrowed-control copies and ordinary HWND-based assignment
-to representative unrelated controls.
+The MinGW-only OpenATL `CWindow` conversion template was
+removed entirely: even a narrowly constrained copy conversion made
+`Wizard97Test`'s `CButton = CWindow` ambiguous with the existing
+`operator=(HWND)`. The sole WTL #7 port now adds explicit
+MinGW-only `CButtonT/CEditT` HWND-borrow constructors and assignments
+to those classes, preserving original ownership and all existing
+control APIs. Native strict original-header tests qualify both
+copy-initialization **and** assignment from `CWindow`, while
+checking unrelated `CComboBox`, `CListViewCtrl` etc. remain
+unambiguous. The original WTL release ZIP and all examples are
+preserved; this additive compiler patch is audited by vcpkg-cache.
 
 The first strict llvm-mingw attempt diagnosed the SDK-level
 `GetThemePartSize` mismatch: original WTL expects a `const RECT*`,

@@ -6,7 +6,7 @@ import subprocess
 import sys
 ROOT=Path(__file__).resolve().parents[1]
 SHA="086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309"
-CACHE="16d756378ded9c6e928d834b05610bbd9aa7508b"
+CACHE="0b0250966d3f4b164419cffc658e226ec3c3fe86"
 manifest=json.loads((ROOT/"vcpkg.json").read_text("utf-8"))
 cmake=(ROOT/"cmake/OpenATLWTL.cmake").read_text("utf-8")
 adapter=(ROOT/"cmake/wtl/PrepareWtl.cmake").read_text("utf-8")
@@ -43,13 +43,15 @@ if ('file(SHA256 "${_wtl_headers}/atlapp.h"' not in cmake_source or
     fail.append("build-local atlapp.h must be byte-identical to vcpkg original")
 atlwin_src=(ROOT/"include/atlwin.h").read_text("utf-8")
 borrow_src=(ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")
-if ("std::is_same_v<T, WTL::CButtonT<CWindow>>" not in atlwin_src or
-        "std::is_same_v<T, WTL::CEditT<CWindow>>" not in atlwin_src or
-        "std::is_base_of_v<CWindow, T>" in atlwin_src or
+if ("operator T() const" in atlwin_src or
+        "template<class TBase> class CButtonT;" in atlwin_src or
+        "WTL #7 installed Clang HWND borrow constructor/assignment missing" not in adapter or
         "OriginalWtlBorrowConversion()" not in borrow_src or
+        "assignedButton = borrowed;" not in borrow_src or
+        "assignedEdit = borrowed;" not in borrow_src or
         "combo = borrowed;" not in borrow_src or
         "view = borrowed;" not in borrow_src):
-    fail.append("WTL CButton/Edit conversion must remain narrow and avoid other control assignment ambiguity")
+    fail.append("WTL #7 direct Button/Edit borrow and HWND assignment must avoid ATL conversion ambiguities")
 atlbase_src=(ROOT/"include/atlbase.h").read_text("utf-8")
 if ('inline HRESULT WINAPI GetThemePartSize(' not in atlbase_src or
         'input ? &copied : nullptr' not in atlbase_src):

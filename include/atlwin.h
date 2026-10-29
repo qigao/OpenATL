@@ -12,16 +12,6 @@
 #include <olectl.h>
 #include <shellapi.h>
 #include <errno.h>
-#include <type_traits>
-
-// Forward-declare the exact original WTL10 non-owning wrappers whose sample
-// uses MSVC's nonstandard CWindow -> HWND -> control copy initialization.
-// Do NOT enable arbitrary T(CWindow): it makes standard WTL HWND assignment
-// overloads ambiguous under Clang.
-namespace WTL {
-template<class TBase> class CButtonT;
-template<class TBase> class CEditT;
-}
 
 // WM_FORWARDMSG - used by WTL for message forwarding
 #ifndef WM_FORWARDMSG
@@ -384,20 +374,11 @@ public:
         return *this;
     }
 
+    // Standard ATL borrowed HWND conversion. Original WTL #7 installs
+    // MinGW-only direct CButton/CEdit borrowing overloads, avoiding
+    // ambiguous control-copy vs HWND assignment without an ATL-side
+    // catch-all conversion template.
     operator HWND() const noexcept { return m_hWnd; }
-
-#if defined(__MINGW32__)
-    // Only BmpView's exact WTL10 non-owning CButton/CEdit borrow copies
-    // need this MinGW conversion. Broad T(CWindow) also makes every WTL
-    // control's assignment from CWindow ambiguous against operator=(HWND).
-    template<class T, typename std::enable_if_t<
-        (std::is_same_v<T, WTL::CButtonT<CWindow>> ||
-         std::is_same_v<T, WTL::CEditT<CWindow>>) &&
-        std::is_constructible_v<T, HWND>, int> = 0>
-    operator T() const noexcept(std::is_nothrow_constructible_v<T, HWND>) {
-        return T(m_hWnd);
-    }
-#endif
 
     static LRESULT SendMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam) noexcept
     {
