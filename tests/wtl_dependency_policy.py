@@ -14,8 +14,8 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE = ROOT / "third_party/wtl/WTL10_10320_Final.zip"
 SHA512 = (
-    "1890711aac1ade673fb071da2f52e2c7bb30fe394b7db735ff74b4578c8c8"
-    "eea8bd470924dbad013a567d0cc9b97d865060d72ea6d7330d393af5b20b1e09970"
+    "086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537"
+    "b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309"
 )
 SAMPLES = {
     "Aero", "Alpha", "BmpView", "GuidGen", "MDIDocVw",

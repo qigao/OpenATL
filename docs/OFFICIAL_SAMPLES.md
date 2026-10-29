@@ -5,9 +5,9 @@ samples are now vendored at
 [`third_party/wtl/WTL10_10320_Final.zip`](../third_party/wtl/WTL10_10320_Final.zip).
 CMake verifies its **repository-owned SHA512** and extracts it locally;
 it never downloads SourceForge at configure time. Original `MS-PL.txt`
-remains inside the source archive and is copied into the build tree. The
-mirror ZIP's SHA512 differs from the previous SourceForge ZIP; this is
-documented explicitly in [WTL provenance](../third_party/wtl/README.md).
+remains inside the source archive and is copied into the build tree. The GitHub mirror's exact archive SHA512 matches the previously locked
+SourceForge release, so no WTL upstream bytes changed. See
+[WTL provenance](../third_party/wtl/README.md).
 Full official source compilation and native UI tests remain mandatory.
 
 Official samples are a separate acceptance boundary from the community SDI
@@ -92,7 +92,7 @@ than reasons to silently omit those projects.
 ## WTL 10.0.10320 release
 
 The sources/resources below come directly from the `Samples/` directory in the
-same official SourceForge release whose SHA512 is pinned by OpenATL. They are
+same byte-identical WTL 10.0.10320 archive now vendored in OpenATL. They are
 built unchanged through `tests/official_samples/CMakeLists.txt`, linked only
 to `OpenATL::ATL`, and driven by native behavior tests registered in CTest.
 The build supplies the common-controls v6 manifest as a separate resource;

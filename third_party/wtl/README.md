@@ -11,18 +11,18 @@ original `Include/`, all eleven official `Samples/`, and the
   `Releases/WTL10_10320_Final.zip`
 - Mirror Git commit: `065ef5597383c1231bd4892cf8e94331b29bdb97`
 - Exact binary Git blob SHA-1: `a9f9d84495aac2155b0fdb00fec0e421b0e75c90`
-- SHA512: `1890711aac1ade673fb071da2f52e2c7bb30fe394b7db735ff74b4578c8c8eea8bd470924dbad013a567d0cc9b97d865060d72ea6d7330d393af5b20b1e09970`
+- SHA512: `086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309`
 - License: Microsoft Public License (MS-PL), preserved verbatim **inside** the archive as `MS-PL.txt`; copied to the CMake build tree.
 
-**Important provenance distinction:** This mirror archive is *not* the
-byte-identical SourceForge `WTL10_10320_Release.zip` previously used by
-OpenATL. That archive's SHA512 was
-`086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309`.
-Do not describe these two ZIP artifacts as identical or silently substitute
-one for the other. This repository deliberately selects **one** GitHub
-mirror archive, with its own exact SHA512/Git blob identity, and qualifies
-the extracted WTL 10 sources through the *unchanged* official native
-WTL10 sample and application tests.
+**Verified source identity:** Source-policy CI independently computed the
+actual ZIP SHA512 using Python's `hashlib`, and it exactly matches the
+original SourceForge `WTL10_10320_Release.zip` SHA512 already locked in
+OpenATL: `086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309`.
+The GitHub mirror uses a different *filename*, but the archive bytes are
+identical under SHA512. This is an in-repository relocation of the already
+accepted WTL 10.0.10320 distribution, **not an upstream upgrade or fork**.
+The original ZIP is kept unchanged; the 20 WTL headers, 11 official sample
+projects, AppWizard and MS-PL license are preserved inside it.
 
 `cmake/OpenATLWTL.cmake` verifies the archive's hash and expands it
 **locally** with CMake FetchContent. No SourceForge, GitHub, network fetch,

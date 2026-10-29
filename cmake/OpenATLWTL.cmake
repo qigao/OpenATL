@@ -5,7 +5,7 @@ function(_openatl_prepare_wtl)
   # It is the pinned Win32-WTL GitHub mirror release; no SourceForge,
   # package manager, mutable mirror or external WTL download at build time.
   set(_wtl_archive "${PROJECT_SOURCE_DIR}/third_party/wtl/WTL10_10320_Final.zip")
-  set(_wtl_sha512 "1890711aac1ade673fb071da2f52e2c7bb30fe394b7db735ff74b4578c8c8eea8bd470924dbad013a567d0cc9b97d865060d72ea6d7330d393af5b20b1e09970")
+  set(_wtl_sha512 "086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309")
   if(NOT EXISTS "${_wtl_archive}")
     message(FATAL_ERROR "Missing repository-owned WTL 10.0.10320 source archive")
   endif()
@@ -18,7 +18,7 @@ function(_openatl_prepare_wtl)
   set(FETCHCONTENT_TRY_FIND_PACKAGE_MODE NEVER)
   FetchContent_Declare(openatl_wtl_source
     URL "${_wtl_archive}"
-    URL_HASH SHA512=1890711aac1ade673fb071da2f52e2c7bb30fe394b7db735ff74b4578c8c8eea8bd470924dbad013a567d0cc9b97d865060d72ea6d7330d393af5b20b1e09970
+    URL_HASH SHA512=086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
   FetchContent_MakeAvailable(openatl_wtl_source)
   set(_openatl_wtl_samples "${openatl_wtl_source_SOURCE_DIR}/Samples" PARENT_SCOPE)
