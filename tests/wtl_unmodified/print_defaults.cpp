@@ -3,7 +3,11 @@
 // A missing host default printer is explicit UNQUALIFIED evidence, not a
 // successful printer UI test. The separate real modal-UI gate stays open.
 #include <atlbase.h>
+#include <atlcom.h>
 #include <atlwin.h>
+#include <atlapp.h>
+#include <atlframe.h>
+#include <atlctrls.h>
 #include <atldlgs.h>
 #include <winspool.h>
 #include <cstddef>
