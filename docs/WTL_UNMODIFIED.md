@@ -18,13 +18,13 @@ package files, rewrite original WTL header bodies, skip existing samples
 or accept a second provider. The existing adapted qualification remains
 an independent mandatory regression suite.
 
-**Temporary Draft qualification pin:** This branch uses the exact pending
-[vcpkg-cache PR #237](https://github.com/qigao/vcpkg-cache/pull/237)
-HEAD `0b0250966d3f4b164419cffc658e226ec3c3fe86` for WTL #7. Only a *merged* `vcpkg-cache
-master` commit may replace that pin before PR #45 can be considered
-for any merge. The new port keeps the original ZIP SHA512 and preserves
-WTL APIs while adding minimal standard-C++ Clang parsing/capacity fixes.
-Production master still depends on previously merged WTL #6.
+**Merged upstream master identity:** [vcpkg-cache PR #237](https://github.com/qigao/vcpkg-cache/pull/237)
+has passed exact-head port CI and downstream original WTL/Clang qualification,
+and is merged. This branch now pins `vcpkg-cache master@8359cdbdf25c1f58cfc7230cc6318dc2fdb804fb`
+and WTL `10.0.10320#7`, never an unmerged branch. Its source archive
+SHA512 is unchanged, and only minimal source-level Clang compatibility
+patches are applied in the sole vcpkg WTL port. Existing OpenATL
+`master` remains on WTL #6 until its own qualification and approval.
 
 ## Whole-project original header admission
 

@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: qigao/vcpkg-cache
-          ref: 0b0250966d3f4b164419cffc658e226ec3c3fe86
+          ref: 8359cdbdf25c1f58cfc7230cc6318dc2fdb804fb
           path: tools/vcpkg-cache
       - uses: actions/setup-python@v5
         with:
@@ -198,7 +198,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: qigao/vcpkg-cache
-          ref: 0b0250966d3f4b164419cffc658e226ec3c3fe86
+          ref: 8359cdbdf25c1f58cfc7230cc6318dc2fdb804fb
           path: tools/vcpkg-cache
       - uses: actions/setup-python@v5
         with:
@@ -280,7 +280,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: qigao/vcpkg-cache
-          ref: 0b0250966d3f4b164419cffc658e226ec3c3fe86
+          ref: 8359cdbdf25c1f58cfc7230cc6318dc2fdb804fb
           path: tools/vcpkg-cache
       - uses: actions/setup-python@v5
         with:
@@ -465,7 +465,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: qigao/vcpkg-cache
-          ref: 0b0250966d3f4b164419cffc658e226ec3c3fe86
+          ref: 8359cdbdf25c1f58cfc7230cc6318dc2fdb804fb
           path: tools/vcpkg-cache
       - uses: actions/setup-python@v5
         with:
