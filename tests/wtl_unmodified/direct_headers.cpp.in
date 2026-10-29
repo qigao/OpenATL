@@ -24,6 +24,8 @@ static_assert(std::is_base_of_v<WTL::CAppModule, WTL::CServerAppModule>,
 static_assert(std::is_class_v<WTL::CPrintDialogEx>,
               "Original WTL COM callback-based PrintDlgEx must be available");
 
+bool RunLegacyObjectMapTests();
+
 int main()
 {
     HINSTANCE image = ::GetModuleHandleW(nullptr);
@@ -47,12 +49,7 @@ int main()
         app.Term();
         if (hr != CO_E_NOTINITIALIZED) return 8;
     }
-    // Non-null raw legacy object maps are not yet qualified for COM server
-    // registration. Fail explicitly instead of silently accepting a stub.
-    {
-        ATL::CComModule module;
-        auto* unsupported = reinterpret_cast<ATL::_ATL_OBJMAP_ENTRY*>(1);
-        if (module.Init(unsupported, image, nullptr) != E_NOTIMPL) return 9;
-    }
-    return 0;
+    // Real original ATL object-map registration, COM class activation,
+    // wrong-thread rejection, reverse rollback and factory retirement.
+    return RunLegacyObjectMapTests() ? 0 : 9;
 }
