@@ -86,3 +86,14 @@ artifact substitution *before executing any binary*. The legacy flat
 manifest format remains valid only for the non-`original` artifact set.
 The source-only job runs six negative-contract tests without claiming
 printer UI or detached StartMonitor ownership is qualified.
+
+## Exact PR HEAD checkout (not the synthetic merge ref)
+
+GitHub Actions `pull_request` events ordinarily set `GITHUB_SHA` to a
+synthetic merge commit. All seven checkout steps in this workflow now pin
+`github.event.pull_request.head.sha` (and `github.sha` for push/manual
+events). The producer and actual Windows ARM64 runners both read
+`git rev-parse HEAD`, compare it to
+`OPENATL_EXPECTED_CHECKOUT_SHA`, and fail closed on missing or mismatched
+commit IDs. Original-WTL artifact provenance therefore refers to the
+**actual PR commit**, not simply an event-provided merge SHA.

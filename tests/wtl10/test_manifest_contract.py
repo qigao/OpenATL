@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
+import os
+from unittest.mock import patch
 import tempfile
 import unittest
 
-from manifest_contract import (make_original_manifest, read_manifest,
+from manifest_contract import (current_checkout_sha, make_original_manifest, read_manifest,
                                verify_manifest, verify_installed_wtl_stamp,
                                WTL_STAMP)
 
@@ -67,6 +69,28 @@ class ManifestContractTests(unittest.TestCase):
                             '","sample.exe":"' + "b" * 64 + '"}', "utf-8")
             with self.assertRaises(ValueError):
                 read_manifest(path)
+
+    def test_checkout_matches_actual_git_head_not_synthetic_merge(self) -> None:
+        with patch("manifest_contract.subprocess.check_output",
+                   return_value=self.sha + "\\n") as git:
+            with patch.dict(os.environ, {
+                "GITHUB_ACTIONS": "true",
+                "GITHUB_SHA": "d" * 40,  # synthetic merge; must be ignored
+                "OPENATL_EXPECTED_CHECKOUT_SHA": self.sha,
+            }, clear=True):
+                self.assertEqual(current_checkout_sha(), self.sha)
+                git.assert_called_once()
+
+    def test_checkout_rejects_mismatch_missing_and_bad_hash(self) -> None:
+        with patch("manifest_contract.subprocess.check_output",
+                   return_value=self.sha + "\\n"):
+            for expected in ("d" * 40, "", "bad-sha"):
+                with self.subTest(expected=expected):
+                    with patch.dict(os.environ, {
+                        "GITHUB_ACTIONS": "true",
+                        "OPENATL_EXPECTED_CHECKOUT_SHA": expected,
+                    }, clear=True), self.assertRaises(ValueError):
+                        current_checkout_sha()
 
     def test_real_package_stamp_is_required(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -27,17 +27,21 @@ _TRIPLET = re.compile(r"[A-Za-z0-9_.+-]+")
 
 
 def current_checkout_sha() -> str:
-    sha = os.environ.get("GITHUB_SHA")
-    if not sha:
-        if os.environ.get("GITHUB_ACTIONS") == "true":
-            raise ValueError("GITHUB_SHA missing in CI")
-        sha = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"],
-            cwd=Path(__file__).resolve().parents[2],
-            text=True, timeout=10,
-        ).strip()
+    # Always measure the actual working tree. On pull_request workflows,
+    # GITHUB_SHA designates GitHub's synthetic merge commit, not the head
+    # being qualified; relying on it makes provenance silently incorrect.
+    sha = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"],
+        cwd=Path(__file__).resolve().parents[2],
+        text=True, timeout=10,
+    ).strip()
     if not _SHA.fullmatch(sha):
         raise ValueError("checkout SHA must be 40 lowercase hex digits")
+    expected = os.environ.get("OPENATL_EXPECTED_CHECKOUT_SHA", "")
+    if os.environ.get("GITHUB_ACTIONS") == "true" and not expected:
+        raise ValueError("exact PR/push checkout SHA missing in CI")
+    if expected and (not _SHA.fullmatch(expected) or sha != expected):
+        raise ValueError("actual checkout differs from exact PR/push SHA")
     return sha
 
 

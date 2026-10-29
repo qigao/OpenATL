@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# pull_request GITHUB_SHA names GitHub's synthetic merge, not the PR HEAD.
+# Every builder and real ARM64 consumer checks out and verifies this same SHA.
+env:
+  OPENATL_EXPECTED_CHECKOUT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 # Keep the exact PR HEAD qualified while avoiding obsolete pending
 # attempts for earlier commits on that same pull request. Separate PRs
 # and manual dispatch refs retain independent job groups.
@@ -23,6 +28,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - run: python3 tests/source_tree_policy.py
       - run: python3 tests/atl_surface_policy.py
       - run: python3 tests/wtl_dependency_policy.py
@@ -36,6 +43,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/checkout@v4
         with:
           repository: qigao/vcpkg-cache
@@ -244,6 +253,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/checkout@v4
         with:
           repository: qigao/vcpkg-cache
@@ -326,6 +337,8 @@ jobs:
             vc_arch: amd64_arm64
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/checkout@v4
         with:
           repository: qigao/vcpkg-cache
@@ -524,6 +537,8 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/download-artifact@v4
         with:
           name: openatl-llvm-arm64
@@ -544,6 +559,8 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/download-artifact@v4
         with:
           name: openatl-msvc-arm64
@@ -571,6 +588,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/checkout@v4
         with:
           repository: qigao/vcpkg-cache

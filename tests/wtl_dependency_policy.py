@@ -56,6 +56,13 @@ for required in ("OPENATL_WTL_FULL_ORIGINAL_WIN32_OK",
                  "Native ARM64 WTL10 full-original llvm-mingw CTest equivalents x5"):
     if required not in workflow:
         fail.append("original-only WTL compiler/native ARM64 gate missing: "+required)
+# Every builder and native artifact consumer must use the actual PR HEAD,
+# never GitHub's synthetic pull_request merge SHA.
+exact_ref = "ref: ${{ github.event.pull_request.head.sha || github.sha }}"
+if (workflow.count(exact_ref) != 7 or
+        "OPENATL_EXPECTED_CHECKOUT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}" not in workflow or
+        "current_checkout_sha" not in (ROOT / "tests/wtl10/manifest_contract.py").read_text("utf-8")):
+    fail.append("every CI checkout and native ARM64 consumer must bind exact PR HEAD")
 if workflow.count(CACHE) != 4 or workflow.count("setup-vcpkg-curl-cache.py") != 4:
     fail.append("WTL vcpkg setup must cover all four native/cross CI build jobs")
 if "wtltest-ui-only.patch" in workflow or "--preset" not in workflow:
