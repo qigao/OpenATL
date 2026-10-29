@@ -113,3 +113,16 @@ handle, the fixture is confined to a separate process and calls
 worker. **This proves only real API startup/idle notification**, not a
 join, concurrent shutdown, safe DLL unload, or full COM server retirement.
 Those remain a hard Draft blocker in Issue #44.
+
+## 2026-10-29 hosted HSP preset regression (CI #40889043223)
+
+MSVC x64 native WTL tests passed, but the second `cmake --preset msvc-x64`
+reconfiguration re-applied the preset's intentional
+`OPENATL_REQUIRE_CET_RUNTIME=ON` default after the first hosted invocation
+had overridden it to OFF. The hosted GitHub Windows image reported
+`parent_enabled=0`: **a genuine HSP-enforcement qualification failure**,
+not a WTL compilation failure. The second hosted reconfigure now explicitly
+sets OFF, checks the exact CMakeCache value, and logs HSP as **UNQUALIFIED**.
+The canonical `msvc-x64` preset still defaults to ON, and
+`.github/workflows/openatl-hsp-dedicated.yml` still requires real hardware
+HSP ten times under each compiler; no HSP bypass or test removal is accepted.

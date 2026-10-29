@@ -479,12 +479,22 @@ jobs:
             & $tool @argv
             if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
           }
+          # The shared msvc-x64 preset intentionally defaults to mandatory
+          # hardware HSP=ON for the separately qualified dedicated runner.
+          # Every hosted reconfigure MUST override it: otherwise this second
+          # CMake invocation re-enables CET HSP on a runner that has no HSP.
           Run cmake @('--preset','msvc-x64',
                       '-DOPENATL_WTL_FULL_ORIGINAL=ON',
-                      '-DOPENATL_BUILD_WTL_UNMODIFIED=ON')
+                      '-DOPENATL_BUILD_WTL_UNMODIFIED=ON',
+                      '-DOPENATL_REQUIRE_CET_RUNTIME=OFF')
+          $cache=Get-Content 'build-msvc-x64/CMakeCache.txt'
+          if ($cache -notcontains 'OPENATL_REQUIRE_CET_RUNTIME:BOOL=OFF') {
+            throw 'Hosted WTL x64 reconfigure unexpectedly enabled mandatory HSP'
+          }
+          Write-Host '::notice::Hosted Windows x64 HSP remains UNQUALIFIED; openatl-hsp-dedicated.yml requires real HSP x10, no fallback.'
           Run cmake @('--build','--preset','msvc-x64','--parallel','2')
           Run ctest @('--preset','msvc-x64','--repeat','until-fail:5')
-          Write-Host 'OPENATL_WTL_FULL_ORIGINAL_MSVC_X64_OK original=1 adapter=0 native=1 repeats=5'
+          Write-Host 'OPENATL_WTL_FULL_ORIGINAL_MSVC_X64_OK original=1 adapter=0 native=1 repeats=5 hsp=UNQUALIFIED'
       - uses: actions/upload-artifact@v4
         if: matrix.target == 'arm64'
         with:

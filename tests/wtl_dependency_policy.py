@@ -63,6 +63,26 @@ if (workflow.count(exact_ref) != 7 or
         "OPENATL_EXPECTED_CHECKOUT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}" not in workflow or
         "current_checkout_sha" not in (ROOT / "tests/wtl10/manifest_contract.py").read_text("utf-8")):
     fail.append("every CI checkout and native ARM64 consumer must bind exact PR HEAD")
+# The msvc-x64 preset is deliberately hardware-strict, but hosted Windows
+# has no promised HSP. Both hosted configure passes must explicitly select OFF,
+# and the strict separate self-hosted workflow must remain intact.
+presets=json.loads((ROOT/"CMakeUserPresets.json").read_text("utf-8"))
+x64=next((p for p in presets["configurePresets"] if p["name"]=="msvc-x64"), None)
+if not x64 or x64["cacheVariables"].get("OPENATL_REQUIRE_CET_RUNTIME") != "ON":
+    fail.append("dedicated MSVC x64 preset must retain HSP=ON")
+hosted=workflow.split("  msvc-windows:",1)[-1].split("  windows-arm64-llvm:",1)[0]
+original_x64=hosted.split(
+    "      - name: Full original WTL10 on MSVC x64 — source-only headers, CTest x5",1)[-1].split(
+    "      - uses: actions/upload-artifact@v4",1)[0]
+if ("$cmakeArgs+='-DOPENATL_REQUIRE_CET_RUNTIME=OFF'" not in hosted or
+        "'-DOPENATL_REQUIRE_CET_RUNTIME=OFF'" not in original_x64 or
+        "OPENATL_REQUIRE_CET_RUNTIME:BOOL=OFF" not in original_x64):
+    fail.append("every hosted MSVC x64 configure must fail-closed on HSP=OFF")
+dedicated=(ROOT/".github/workflows/openatl-hsp-dedicated.yml").read_text("utf-8")
+if ("runs-on: [self-hosted, windows, x64, openatl-cet-hsp]" not in dedicated or
+        dedicated.count("('--require-hardware')") != 2 or
+        dedicated.count("-le 10") != 2):
+    fail.append("dedicated real HSP x10 for both MSVC/llvm must remain strict")
 if workflow.count(CACHE) != 4 or workflow.count("setup-vcpkg-curl-cache.py") != 4:
     fail.append("WTL vcpkg setup must cover all four native/cross CI build jobs")
 if "wtltest-ui-only.patch" in workflow or "--preset" not in workflow:
