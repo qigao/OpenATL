@@ -51,6 +51,12 @@ and COM maps: `CComObjectRootEx`, `CComObject`, `CComCoClass`, `CComCreator`,
 See the [ATL compatibility matrix](docs/ATL_COMPATIBILITY.md) for supported
 semantics and limits. `CAtlDllModuleT` is implemented for explicit class
 tables; static `OBJECT_ENTRY_AUTO` factory discovery is supported.
+The original WTL 10.0.10320 header and sample source archive is vendored
+under `third_party/wtl/`, with strict SHA512, Git blob provenance and its
+MS-PL license preserved. CMake unpacks this local source for the original
+WTL10 suite; the build no longer downloads WTL from SourceForge. See
+[WTL provenance](third_party/wtl/README.md).
+
 Class-directed `UpdateRegistry` and a bounded original `REGISTRY` resource
 path are implemented. `ATL::IDispatchImpl` queries real Windows type
 information and invokes `ITypeInfo`. A new file-backed
@@ -87,14 +93,14 @@ link dependencies. Consumers can include `<atlbase.h>`, `<atlcom.h>`,
 manual header lookup, `OpenATL::WTL` target or Microsoft ATL installation is
 needed. Products using optional image codecs still link `gdiplus` explicitly.
 
-During the first CMake configuration, OpenATL fetches the official WTL
-`10.0.10320` release with a pinned SHA512, copies its headers into the build
-directory and applies the source-owned adapter. The upstream tree and consumer
-files are never patched. A fresh build needs access to SourceForge; populated
-builds reuse their FetchContent sources. Controlled offline builds can supply
-the exact unpacked release through CMake's standard
-`FETCHCONTENT_SOURCE_DIR_OPENATL_WTL_SOURCE` setting. Missing/invalid content
-fails configuration. vcpkg remains available for the application's other
+During the first CMake configuration, OpenATL unpacks the **checked-in**
+original WTL `10.0.10320` release ZIP with the **same SHA512 previously
+verified from SourceForge**, copies its headers into the build directory and
+applies the source-owned adapter. Neither first nor warm configuration
+requires SourceForge, GitHub or any external WTL source download. The
+upstream ZIP and consumer files are never patched. Missing or corrupted
+vendored inputs fail configuration; no alternate WTL source provider is
+selected. vcpkg remains available for the application's other
 dependencies; OpenATL does not change the application's vcpkg configuration.
 OpenATL itself remains a source-tree CMake INTERFACE target with no
 install/export/package-config workflow.
@@ -244,7 +250,7 @@ malformed strings, values, errors, access masks and cleanup without COM
 initialization. Applications using its registry methods explicitly link
 Windows `advapi32`, supplied by `OpenATL::ATL`.
 
-The former 14-file `scripts/` directory has been deleted. GitHub Actions now obtains pinned WTL through CMake FetchContent and invokes CMake/CTest presets, and validates Windows x64/ARM64 PE files. Real ARM64 SHA-256 and runtime checks are defined as acceptance tests in `tests/wtl10/native_arm64.py`. No standalone build wrapper or Installed SDK is provided.
+The former 14-file `scripts/` directory has been deleted. GitHub Actions now unpacks the checked-in, SHA512-verified WTL ZIP via local CMake FetchContent, runs CMake/CTest presets and validates Windows x64/ARM64 PE files. Real ARM64 SHA-256 and runtime checks are defined as acceptance tests in `tests/wtl10/native_arm64.py`. No standalone build wrapper or Installed SDK is provided.
 
 ## Required CI
 
