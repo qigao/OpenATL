@@ -31,10 +31,14 @@ mismatch, or runtime failure is RED — do not silently return to the
 adapted path or skip the original mode. The next strict llvm-mingw failure came from unchanged
 `BmpView/props.h`: copy-initializing `WTL::CButton/CEdit` from
 `ATL::CWindow` uses an MSVC conversion extension that Clang rejects.
-OpenATL's MinGW-only `ATL::CWindow` now supplies a constrained conversion
-operator to non-owning subclasses constructible from `HWND`. The original
-WTL control and sample files remain unmodified; native original-WTL
-tests check both borrowed control wrappers keep the same HWND identity.
+OpenATL's MinGW-only `ATL::CWindow` now supplies a narrowly
+constrained conversion **only** to `WTL::CButtonT<CWindow>` and
+`WTL::CEditT<CWindow>`. A broader derived-control conversion was
+rejected because it introduced ambiguous assignment overloads in
+`CComboBox`, `CListViewCtrl`, and other WTL controls. The original
+WTL control and sample files remain unmodified; native tests verify
+the two borrowed-control copies and ordinary HWND-based assignment
+to representative unrelated controls.
 
 The first strict llvm-mingw attempt diagnosed the SDK-level
 `GetThemePartSize` mismatch: original WTL expects a `const RECT*`,

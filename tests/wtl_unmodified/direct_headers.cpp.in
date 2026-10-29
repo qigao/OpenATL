@@ -89,8 +89,22 @@ bool OriginalWtlBorrowConversion() {
     ATL::CWindow borrowed{static_cast<HWND>(nullptr)};
     WTL::CButton button = borrowed;
     WTL::CEdit edit = borrowed;
+    // Ordinary WTL HWND-based assignment must keep exactly one usable
+    // conversion; broad templated CWindow -> any control makes this RED.
+    WTL::CComboBox combo;
+    WTL::CListBox list;
+    WTL::CListViewCtrl view;
+    WTL::CUpDownCtrl spin;
+    combo = borrowed;
+    list = borrowed;
+    view = borrowed;
+    spin = borrowed;
     return static_cast<HWND>(button) == nullptr &&
-           static_cast<HWND>(edit) == nullptr;
+           static_cast<HWND>(edit) == nullptr &&
+           static_cast<HWND>(combo) == nullptr &&
+           static_cast<HWND>(list) == nullptr &&
+           static_cast<HWND>(view) == nullptr &&
+           static_cast<HWND>(spin) == nullptr;
 }
 #endif
 

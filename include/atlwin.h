@@ -14,6 +14,15 @@
 #include <errno.h>
 #include <type_traits>
 
+// Forward-declare the exact original WTL10 non-owning wrappers whose sample
+// uses MSVC's nonstandard CWindow -> HWND -> control copy initialization.
+// Do NOT enable arbitrary T(CWindow): it makes standard WTL HWND assignment
+// overloads ambiguous under Clang.
+namespace WTL {
+template<class TBase> class CButtonT;
+template<class TBase> class CEditT;
+}
+
 // WM_FORWARDMSG - used by WTL for message forwarding
 #ifndef WM_FORWARDMSG
 #define WM_FORWARDMSG 0x037F
@@ -378,14 +387,12 @@ public:
     operator HWND() const noexcept { return m_hWnd; }
 
 #if defined(__MINGW32__)
-    // Original WTL's CButtonT/CEditT wrappers borrow HWND without owning it.
-    // Clang rejects MSVC's two-implicit-conversions shortcut:
-    // CWindow -> HWND -> CButtonT. A constrained, single C++ conversion
-    // preserves the exact original WTL source and its borrowed HWND identity.
-    // Do not offer conversion to owning windows or arbitrary target types.
+    // Only BmpView's exact WTL10 non-owning CButton/CEdit borrow copies
+    // need this MinGW conversion. Broad T(CWindow) also makes every WTL
+    // control's assignment from CWindow ambiguous against operator=(HWND).
     template<class T, typename std::enable_if_t<
-        std::is_base_of_v<CWindow, T> &&
-        !std::is_same_v<T, CWindow> &&
+        (std::is_same_v<T, WTL::CButtonT<CWindow>> ||
+         std::is_same_v<T, WTL::CEditT<CWindow>>) &&
         std::is_constructible_v<T, HWND>, int> = 0>
     operator T() const noexcept(std::is_nothrow_constructible_v<T, HWND>) {
         return T(m_hWnd);

@@ -36,11 +36,14 @@ if ('file(SHA256 "${_wtl_headers}/atlapp.h"' not in cmake_source or
         "WTL original CAppModule/CServerAppModule source identity mismatch" not in cmake_source):
     fail.append("build-local atlapp.h must be byte-identical to vcpkg original")
 atlwin_src=(ROOT/"include/atlwin.h").read_text("utf-8")
-if ("std::is_base_of_v<CWindow, T>" not in atlwin_src or
-        "operator T() const" not in atlwin_src or
-        "OriginalWtlBorrowConversion()" not in
-             (ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")):
-    fail.append("MinGW unchanged WTL CButton/CEdit borrowed-window conversion required")
+borrow_src=(ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")
+if ("std::is_same_v<T, WTL::CButtonT<CWindow>>" not in atlwin_src or
+        "std::is_same_v<T, WTL::CEditT<CWindow>>" not in atlwin_src or
+        "std::is_base_of_v<CWindow, T>" in atlwin_src or
+        "OriginalWtlBorrowConversion()" not in borrow_src or
+        "combo = borrowed;" not in borrow_src or
+        "view = borrowed;" not in borrow_src):
+    fail.append("WTL CButton/Edit conversion must remain narrow and avoid other control assignment ambiguity")
 atlbase_src=(ROOT/"include/atlbase.h").read_text("utf-8")
 if ('inline HRESULT WINAPI GetThemePartSize(' not in atlbase_src or
         'input ? &copied : nullptr' not in atlbase_src):
