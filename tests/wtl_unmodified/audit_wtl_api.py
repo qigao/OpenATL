@@ -57,6 +57,20 @@ def main() -> int:
     print("WTL_REGISTRY_MAP_MACROS " + ",".join(macros))
     if len(signatures) > 100:
         print(f"WTL_REGISTRY_API remaining={len(signatures) - 100}")
+
+    # The original ReadOne() return semantics are being qualified by native
+    # HKCU behavior tests. Log the bounded *pinned source* method bodies to
+    # diagnose error handling, without guessing or modifying any WTL code.
+    for label, anchor, limit in (
+        ("DWORD", "LSTATUS ReadProp(LPCTSTR lpstrRegValue, TProp& prop)", 15),
+        ("ONE", "static bool ReadOne(LPCTSTR lpstrRegKey", 20),
+        ("WRITE_ONE", "static bool WriteOne(LPCTSTR lpstrRegKey", 20),
+    ):
+        position = next((i for i, line in enumerate(section) if anchor in line), -1)
+        if position < 0:
+            raise ValueError("missing original WTL method for " + label)
+        for i in range(position, min(len(section), position + limit)):
+            print(f"WTL_REGISTRY_BODY_{label} {start_line+i}: {section[i][:190]}")
     return 0
 
 if __name__ == "__main__":
