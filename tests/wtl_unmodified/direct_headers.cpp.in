@@ -31,19 +31,28 @@ int main()
     {
         WTL::CAppModule app;
         HRESULT hr = app.Init(nullptr, image, nullptr);
-        if (FAILED(hr)) return 2;
+        if (FAILED(hr) || app.m_dwMainThreadID != ::GetCurrentThreadId() ||
+            app.GetModuleInstance() != image ||
+            app.GetResourceInstance() != image) return 2;
+        if (app.Init(nullptr, image, nullptr) != HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS))
+            return 3;
+        WTL::CMessageLoop messages;
+        if (!app.AddMessageLoop(&messages)) return 4;
+        if (app.GetMessageLoop() != &messages) return 5;
+        if (!app.RemoveMessageLoop()) return 6;
+        if (app.GetMessageLoop() != nullptr) return 7;
         APTTYPE apartment = APTTYPE_CURRENT;
         APTTYPEQUALIFIER qualifier = APTTYPEQUALIFIER_NONE;
         hr = ::CoGetApartmentType(&apartment, &qualifier);
         app.Term();
-        if (hr != CO_E_NOTINITIALIZED) return 3;
+        if (hr != CO_E_NOTINITIALIZED) return 8;
     }
     // Non-null raw legacy object maps are not yet qualified for COM server
     // registration. Fail explicitly instead of silently accepting a stub.
     {
         ATL::CComModule module;
         auto* unsupported = reinterpret_cast<ATL::_ATL_OBJMAP_ENTRY*>(1);
-        if (module.Init(unsupported, image, nullptr) != E_NOTIMPL) return 4;
+        if (module.Init(unsupported, image, nullptr) != E_NOTIMPL) return 9;
     }
     return 0;
 }
