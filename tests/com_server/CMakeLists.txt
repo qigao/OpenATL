@@ -39,6 +39,11 @@ add_executable(openatl_com_server_tests
   server.cpp atl_compat.cpp atl_module.cpp
   rgs_parser_tests.cpp rgs_registry_tests.cpp interfaces.h)
 target_include_directories(openatl_com_server_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+# Inline RGS registration functions must have identical definitions in
+# EVERY translation unit of the test executable. Otherwise the test-only
+# fault hook can be optimized out by a differently compiled inline copy.
+# This define applies only to the native TEST executable, never the DLL.
+target_compile_definitions(openatl_com_server_tests PRIVATE OPENATL_RGS_TEST_FAULT=1)
 target_link_libraries(openatl_com_server_tests PRIVATE OpenATL::ATL)
 add_dependencies(openatl_com_server_tests openatl_com_server_fixture)
 set_target_properties(openatl_com_server_fixture openatl_com_server_tests PROPERTIES

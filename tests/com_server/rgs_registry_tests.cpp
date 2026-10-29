@@ -3,7 +3,9 @@
 // All registry writes are confined to a newly owned, GUID-named subtree of
 // HKCU\Software. RegDeleteTree is used ONLY by this test fixture to clean
 // that isolated subtree. Production RGS execution uses nonrecursive deletes.
-#define OPENATL_RGS_TEST_FAULT 1
+#if !defined(OPENATL_RGS_TEST_FAULT)
+#error Native RGS fault admission must be configured for every test translation unit
+#endif
 #include <openatl/rgs_registration.h>
 #include "openatl_rgs_fixtures.generated.h"
 
