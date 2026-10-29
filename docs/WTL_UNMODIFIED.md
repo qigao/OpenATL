@@ -65,6 +65,16 @@ patch — never by deleting upstream WTL declarations.
 A GREEN for this qualification is still not proof of original
 `StartMonitor()` concurrent retirement or genuine PrintDlgEx printer UI behavior.
 
+Both x64 native toolchains now qualify **two independent modes in the
+same exact-head CI**: the unchanged adapted suite first, followed by a
+complete same-build-directory reconfiguration to
+`OPENATL_WTL_FULL_ORIGINAL=ON`, all-source rebuild and CTest x5. This
+preserves the existing regression gates and explicitly detects any
+Clang/MSVC x64 API gap without modifying WTL headers. The ARM64
+cross-compiled native artifacts retain their existing separate hash and
+runtime admissions; an ARM64 *full-original* route is still a
+subsequent explicit parity gate.
+
 ## First direct-source acceptance
 
 * Restore `ATL::CComModule` and its correct class-object/lock/registry
