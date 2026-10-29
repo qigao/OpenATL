@@ -67,8 +67,10 @@ acceptance, full Automation semantics, aggregation and original Microsoft
 COMMap DLL builds remain separate gates. Native Windows qualification also
 generates and reads a genuine TypeLib from the **unchanged original Microsoft
 COMMap.idl** through SDK MIDL. This is original-IDL input admission,
-not full project source compatibility. `CComModule`
-is currently absent and will be evaluated against actual ATL consumers. Windowed ActiveX
+not full project source compatibility. `CComModule` now has bounded
+legacy object-map registration, class-factory cookie and lifetime tests;
+complete monitored WTL server shutdown remains an independent gate.
+Windowed ActiveX
 containment and typed Automation event sinks are described in
 [the hosting contract](docs/ACTIVEX_HOST.md); resource-based ActiveX dialogs
 and windowless hosting remain pending. MFC is not a dependency.
@@ -94,9 +96,10 @@ overlay before CMake configure. Standard vcpkg toolchain users supply
 `VCPKG_INSTALLED_DIR` / `VCPKG_TARGET_TRIPLET`; source-tree
 MSVC/llvm-mingw builds use `OPENATL_WTL_VCPKG_INSTALLED_DIR` and
 `OPENATL_WTL_VCPKG_TRIPLET` instead. CMake verifies the installed
-source stamp and complete sample/license resources. Build-local WTL API
-adaptation remains **unqualified for full feature parity**; the vcpkg
-package's original public headers are not modified in place.
+source stamp and complete sample/license resources. Draft #45 now uses
+the installed original WTL #7 headers in **every** build: no copied or
+rewritten local WTL header tree. Detached `StartMonitor` and real
+`PrintDlgEx` printer UI are still unqualified blockers.
 OpenATL is not itself an installed SDK.
 
 For qualification, use pinned CMake presets and the original Windows
@@ -213,23 +216,26 @@ fault injection. No external OpenATL checkout or runtime patch is used.
 CFG/CET and concurrency qualification is scoped to the native test fixtures;
 downstream products must validate their own lifetime and mitigation contracts.
 The current source-tree build is qualified; installed/exported integration
-may be developed with independent acceptance under issue #4. Managed WTL
-sources and adapted headers remain build dependencies.
+may be developed with independent acceptance under issue #4.
+Only the exact installed vcpkg WTL public headers are build dependencies.
 
 ## CI structure
 
-The pinned WTL UI adapter retains MRU menu helpers, CFindFile and ordinary
-HKCU registry MRU persistence through source-owned CRegKey, with native menu,
-capacity, dedup, reorder and persistence tests. It still removes the separate
-CRegProperty serializer, Internet Explorer registry hyperlink colors and
-COM-based extended print callbacks. WTL itself acquires no server API or
-registration shim. Win32 CRegKey
+Original WTL now retains MRU menus, CFindFile, HKCU registry settings,
+`CRegPropertyImpl<T>`, HyperLink color reads, `CPrintDialogEx`
+callbacks and `CServerAppModule` interfaces. Their native tests use
+source-owned OpenATL COM client/server and `CRegKey`. Win32 CRegKey
 is confined to `include/atlreg.h`; native HKCU tests cover ownership,
 malformed strings, values, errors, access masks and cleanup without COM
 initialization. Applications using its registry methods explicitly link
 Windows `advapi32`, supplied by `OpenATL::ATL`.
 
-The former 14-file `scripts/` directory has been deleted. GitHub Actions now unpacks the checked-in, SHA512-verified WTL ZIP via local CMake FetchContent, runs CMake/CTest presets and validates Windows x64/ARM64 PE files. Real ARM64 SHA-256 and runtime checks are defined as acceptance tests in `tests/wtl10/native_arm64.py`. No standalone build wrapper or Installed SDK is provided.
+The former 14-file `scripts/` directory has been deleted. GitHub
+Actions installs the SHA512-pinned WTL archive solely via the merged
+`qigao/vcpkg-cache` port, compiles the original WTL examples against
+OpenATL and runs native/PE/ARM64 tests. Real ARM64 SHA256 and
+runtime proof use `tests/wtl10/native_arm64.py`; no standalone build
+wrapper or Installed OpenATL SDK is supplied.
 
 ## Required CI
 
@@ -237,8 +243,9 @@ The former 14-file `scripts/` directory has been deleted. GitHub Actions now unp
   Windows x64+ARM64 cross compilation and real WTL10 SDI resource link.
 - **MSVC** x64 native and HostX64→ARM64 build plus real Windows ARM64,
   compiling the same pinned *clean-room* OpenATL (never Microsoft's ATL).
-- **WTL dependency provenance**: SHA512-pinned release, build-local adapter,
-  transitive includes/linkage and unmodified SDI, on native and cross hosts.
+- **WTL dependency provenance**: SHA512-pinned vcpkg source, no local
+  adapter, transitive includes/linkage and unmodified SDI, on native
+  and cross hosts.
 - Separate native assertions: UI and the repository-owned file/string/sync
   utilities run **without COM initialization**; the standalone Unicode
   `CPath` test exercises actual Windows file creation and path handling.

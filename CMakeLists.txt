@@ -100,12 +100,9 @@ endif()
 
 option(OPENATL_BUILD_QUALIFICATION "Compile native UI, ATL utility and COM client/server tests" OFF)
 option(OPENATL_BUILD_OFFICIAL_SUITE "Build every unchanged WTL release sample (upstream Win32 ABI)" OFF)
-# This is a separate, strict feature-parity gate. It deliberately uses the
-# ORIGINAL vcpkg WTL headers rather than our currently adapted build copy.
-option(OPENATL_BUILD_WTL_UNMODIFIED "Qualify original vcpkg WTL headers directly against OpenATL" OFF)
-if(OPENATL_WTL_FULL_ORIGINAL AND NOT OPENATL_BUILD_QUALIFICATION)
-  message(FATAL_ERROR "The full original WTL source admission is qualification-only")
-endif()
+# Original WTL is the only include source for all consumers.
+# This optional switch enables additional real native WTL API tests.
+option(OPENATL_BUILD_WTL_UNMODIFIED "Run original WTL API native contract tests" OFF)
 if(OPENATL_BUILD_WTL_UNMODIFIED AND NOT OPENATL_BUILD_QUALIFICATION)
   message(FATAL_ERROR "Original WTL compatibility requires native qualification")
 endif()
