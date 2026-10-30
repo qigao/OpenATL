@@ -6,7 +6,6 @@ binds real native execution to the checked-out code and pinned WTL producer.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -44,18 +43,17 @@ def current_checkout_sha() -> str:
 
 
 def verify_repository_wtl_stamp(root: Path | None = None) -> None:
-    """Verify all 296 committed source/resource bytes; no external WTL provider."""
-    root = Path(root) if root is not None else WTL_SOURCE_ROOT
-    manifest_path = root / "source-manifest.json"
-    manifest = json.loads(manifest_path.read_text("utf-8"))
-    if (manifest.get("schema") != 1 or
-            manifest.get("name") != "WTL" or
+    """Verify exact Git blobs plus the normalized clean checkout on every OS."""
+    repository = Path(__file__).resolve().parents[2]
+    root = Path(root) if root is not None else repository / "wtl"
+    manifest = json.loads((root / "source-manifest.json").read_text("utf-8"))
+    if (manifest.get("schema") != 1 or manifest.get("name") != "WTL" or
             manifest.get("version") != "10.0.10320" or
             manifest.get("archive_sha512") != WTL_ARCHIVE_SHA512 or
             manifest.get("patch_repository") != "qigao/vcpkg-cache" or
             manifest.get("patch_commit") !=
             "ddb500fb7c1472107efbd79ea92d7552cb01f452"):
-        raise ValueError("vendored WTL version, patch or release provenance mismatch")
+        raise ValueError("vendored WTL source, patch or release provenance mismatch")
     files = manifest.get("files")
     if not isinstance(files, dict) or len(files) != 296:
         raise ValueError("vendored WTL source inventory is incomplete")
@@ -64,22 +62,47 @@ def verify_repository_wtl_stamp(root: Path | None = None) -> None:
             "Include/atlctrlw.h", "Include/atlctrlx.h",
             "Include/atlmisc.h", "Include/atlribbon.h"}:
         raise ValueError("WTL patch inventory has drifted")
+
+    # Git checkout can use core.autocrlf on native Windows. Hash the original
+    # committed blob identities, then independently require a clean checkout
+    # using Git's actual text/attribute normalization. Raw working-file SHA1
+    # would falsely reject pristine CRLF files.
+    listing = subprocess.check_output(
+        ["git", "-C", str(repository), "ls-tree", "-r", "-z", "HEAD", "--", "wtl"],
+        timeout=15,
+    )
+    git_blobs: dict[str, str] = {}
+    for entry in listing.split(b"\x00"):
+        if not entry:
+            continue
+        metadata, filename = entry.split(b"\t", 1)
+        mode, kind, digest = metadata.split(b" ")
+        if kind != b"blob":
+            raise ValueError("WTL source tree contains a non-blob entry")
+        full_path = filename.decode("utf-8")
+        if not full_path.startswith("wtl/"):
+            raise ValueError("WTL source tree path escaped repository")
+        git_blobs[full_path[4:]] = digest.decode("ascii")
+    allowed = set(files) | {"SOURCE.md", "source-manifest.json"}
+    if set(git_blobs) != allowed:
+        raise ValueError("committed WTL source inventory is incomplete or enlarged")
     for relative, expected in files.items():
         if (not isinstance(relative, str) or
                 not isinstance(expected, str) or not _SHA.fullmatch(expected) or
                 relative.startswith("/") or ".." in Path(relative).parts):
             raise ValueError("invalid WTL file manifest entry")
-        path = root / relative
-        payload = path.read_bytes()
-        actual = hashlib.sha1(
-            b"blob " + str(len(payload)).encode("ascii") + b"\x00" + payload
-        ).hexdigest()
-        if actual != expected:
-            raise ValueError(f"vendored WTL file differs from manifest: {relative}")
-    tracked = {p.relative_to(root).as_posix() for p in root.rglob("*")
-               if p.is_file()}
-    if tracked != set(files) | {"source-manifest.json", "SOURCE.md"}:
-        raise ValueError("unexpected or missing file in vendored WTL tree")
+        if git_blobs.get(relative) != expected or not (root / relative).is_file():
+            raise ValueError(f"vendored WTL Git blob differs: {relative}")
+    actual = {p.relative_to(root).as_posix() for p in root.rglob("*")
+              if p.is_file()}
+    if actual != allowed:
+        raise ValueError("WTL checkout missing files or contains extra source")
+    clean = subprocess.run(
+        ["git", "-C", str(repository), "diff", "--quiet", "HEAD", "--", "wtl"],
+        timeout=15, check=False,
+    )
+    if clean.returncode != 0:
+        raise ValueError("WTL worktree is not identical to committed source")
 
 
 def _provenance(toolchain: str, checkout_sha: str) -> dict[str, object]:
