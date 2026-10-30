@@ -11,8 +11,7 @@ import unittest
 
 from native_arm64 import native_stdout_ok
 from manifest_contract import (current_checkout_sha, make_original_manifest, read_manifest,
-                               verify_manifest, verify_installed_wtl_stamp,
-                               WTL_STAMP)
+                               verify_manifest, verify_repository_wtl_stamp)
 
 
 class ManifestContractTests(unittest.TestCase):
@@ -115,21 +114,12 @@ class ManifestContractTests(unittest.TestCase):
             with self.subTest(case=case):
                 self.assertFalse(native_stdout_ok(name, args, case))
 
-    def test_real_package_stamp_is_required(self) -> None:
+    def test_repository_wtl_source_manifest_is_required(self) -> None:
+        verify_repository_wtl_stamp()
         with tempfile.TemporaryDirectory() as directory:
-            prefix = Path(directory) / "test-triplet" / "share" / "wtl"
-            prefix.mkdir(parents=True)
-            stamp = prefix / "openatl-wtl-source.txt"
-            stamp.write_text(WTL_STAMP, encoding="utf-8")
-            from unittest.mock import patch
-            with patch.dict("os.environ", {
-                "OPENATL_WTL_VCPKG_INSTALLED_DIR": directory,
-                "OPENATL_WTL_VCPKG_TRIPLET": "test-triplet",
-            }):
-                verify_installed_wtl_stamp("")
-                stamp.write_text(WTL_STAMP.replace("#7", "#6"), encoding="utf-8")
-                with self.assertRaises(ValueError):
-                    verify_installed_wtl_stamp("")
+            with self.assertRaises((OSError, ValueError)):
+                verify_repository_wtl_stamp(Path(directory))
+
 
 
 if __name__ == "__main__":

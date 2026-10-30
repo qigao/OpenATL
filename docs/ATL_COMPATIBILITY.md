@@ -5,7 +5,7 @@ Server applications**, together with Win32/WTL. The current implementation
 qualifies a subset; missing APIs are implementation backlog, not permanently
 excluded. Microsoft's internal ATL ABI/layout is not currently claimed
 compatible. See [the project charter](PROJECT_SCOPE.md).
-Consumers link only `OpenATL::ATL`; it supplies both ATL and adapted WTL headers.
+Consumers link only `OpenWTL::WTL`; it exposes the complete patched repository WTL frontend and private ATL/COM backend.
 
 The acceptance target is now all official WTL samples and all pure ATL
 Microsoft samples, unchanged on both MSVC and MinGW, with no MFC dependency.

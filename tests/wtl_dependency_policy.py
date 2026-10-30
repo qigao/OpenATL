@@ -1,166 +1,161 @@
 #!/usr/bin/env python3
-"""No second WTL source; preserve full WTL official sample test gates."""
+"""Fail closed on missing/replaced repository WTL, legacy targets and CI gates."""
+from __future__ import annotations
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
-ROOT=Path(__file__).resolve().parents[1]
-def wfOriginalArm64GateMissing(text):
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tests" / "wtl10"))
+from manifest_contract import verify_repository_wtl_stamp  # noqa: E402
+
+def main() -> int:
+    fail: list[str] = []
+    tracked = set(subprocess.check_output(
+        ["git", "-C", str(ROOT), "ls-files", "-z"], timeout=30
+    ).decode().split("\0"))
+    try:
+        verify_repository_wtl_stamp()
+    except (ValueError, OSError, KeyError) as error:
+        fail.append("source+resource integrity: " + str(error))
+    if "vcpkg.json" in tracked or (ROOT / "vcpkg.json").exists():
+        fail.append("WTL must not be installed from vcpkg")
+    cmake = (ROOT / "CMakeLists.txt").read_text("utf-8")
+    config = (ROOT / "cmake/OpenATLWTL.cmake").read_text("utf-8")
+    for token in (
+        "add_library(openatl_atl INTERFACE)",
+        "add_library(openwtl_wtl INTERFACE)",
+        "add_library(OpenWTL::WTL ALIAS openwtl_wtl)",
+        "target_link_libraries(openwtl_wtl INTERFACE openatl_atl)",
+        "add_subdirectory(tests/com_server)",
+    ):
+        if token not in cmake:
+            fail.append("required backend/frontend target contract absent: " + token)
+    if "OpenATL::ATL" in cmake or "add_library(OpenATL::ATL" in cmake:
+        fail.append("obsolete public target OpenATL::ATL must not remain")
+    for token in (
+        'set(_wtl_root "${CMAKE_CURRENT_SOURCE_DIR}/wtl")',
+        'target_include_directories(openwtl_wtl BEFORE INTERFACE "${_wtl_source}")',
+        'set(_openatl_wtl_samples "${_wtl_root}/Samples")',
+        'set(_openatl_wtl_original_include "${_wtl_source}")',
+        "MS-PL.txt", "AppWizard/Setup.js",
+    ):
+        if token not in config:
+            fail.append("local WTL target/source contract absent: " + token)
+    for forbidden in (
+        "VCPKG_INSTALLED_DIR", "VCPKG_OVERLAY", "vcpkg-cache",
+        "file(DOWNLOAD", "file(COPY", "FetchContent",
+        "PrepareWtl.cmake", "downloads.sourceforge.net",
+    ):
+        if forbidden in config:
+            fail.append("alternate WTL source or adapter in CMake: " + forbidden)
+    for path in ("tests/atl_host/CMakeLists.txt",
+                 "tests/com_server/CMakeLists.txt",
+                 "tests/official_samples/CMakeLists.txt",
+                 "tests/ratl_samples/CMakeLists.txt",
+                 "tests/wtl_unmodified/CMakeLists.txt"):
+        text = (ROOT / path).read_text("utf-8")
+        if "OpenATL::ATL" in text or "OpenWTL::WTL" not in text:
+            fail.append("legacy target or missing public target in " + path)
+    wtl = ROOT / "wtl"
+    for sample in ("Aero", "Alpha", "BmpView", "GuidGen", "MDIDocVw",
+                   "MemDlg", "MTPad", "MTPad7", "TabBrowser",
+                   "WTLExplorer", "Wizard97Test"):
+        if not (wtl / "Samples" / sample).is_dir():
+            fail.append("original WTL sample omitted: " + sample)
+    for required in ("wtl/MS-PL.txt", "wtl/SOURCE.md",
+                     "wtl/Include/atlapp.h", "wtl/Include/atlmisc.h",
+                     "wtl/Include/atlctrls.h", "wtl/AppWizard/Setup.js"):
+        if required not in tracked:
+            fail.append("required vendored release file untracked: " + required)
+    workflow = (ROOT / ".github/workflows/openatl-qualification.yml").read_text("utf-8")
+    for forbidden in (
+        "repository: qigao/vcpkg-cache", "setup-vcpkg-curl-cache.py",
+        "OPENATL_WTL_VCPKG_INSTALLED_DIR", "qigao-wtl10-headers",
+        "Install pinned WTL10 from the selected vcpkg overlay",
+    ):
+        if forbidden in workflow:
+            fail.append("CI still uses external WTL provider: " + forbidden)
     for marker in (
-        "openatl-llvm-arm64-original",
+        "OPENATL_WTL_FULL_ORIGINAL_MSVC_X64_OK",
+        "OPENATL_WTL_FULL_ORIGINAL_LLVM_X64_OK",
         "openatl-msvc-arm64-original",
+        "openatl-llvm-arm64-original",
+        "OPENATL_WTL_ORIGINAL_ARM64_MSVC_BUILD_OK",
+        "OPENATL_WTL_ORIGINAL_ARM64_LLVM_BUILD_OK",
         "Native ARM64 WTL10 full-original llvm-mingw CTest equivalents x5",
         "Native ARM64 WTL10 full-original MSVC CTest equivalents x5",
-        "OPENATL_WTL_ORIGINAL_ARM64_LLVM_BUILD_OK",
-        "OPENATL_WTL_ORIGINAL_ARM64_MSVC_BUILD_OK",
+        "tests/wtl_unmodified/audit_wtl_api.py",
+        "python3 tests/wtl_dependency_policy.py",
     ):
-        if marker not in text:
-            return True
-    return False
-SHA="086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309"
-CACHE="8359cdbdf25c1f58cfc7230cc6318dc2fdb804fb"
-manifest=json.loads((ROOT/"vcpkg.json").read_text("utf-8"))
-cmake=(ROOT/"cmake/OpenATLWTL.cmake").read_text("utf-8")
-adapter_path=ROOT/"cmake/wtl/PrepareWtl.cmake"
-workflow=(ROOT/".github/workflows/openatl-qualification.yml").read_text("utf-8")
-tracked=set(subprocess.check_output(["git","-C",str(ROOT),"ls-files","-z"]).decode().split("\0"))
-fail=[]
-if "third_party/wtl/WTL10_10320_Final.zip" in tracked or (ROOT/"third_party/wtl/WTL10_10320_Final.zip").exists():
-    fail.append("repository WTL ZIP duplicated vcpkg source")
-if manifest.get("dependencies") != ["wtl"] or manifest.get("overrides") != [{"name":"wtl","version":"10.0.10320","port-version":7}]:
-    fail.append("WTL vcpkg manifest/version is not exact")
-for token in (SHA, "openatl-wtl-source.txt", "provider=vcpkg-cache/ports/wtl",
-              "Samples/GuidGen/GuidGen.cpp", "AppWizard/Setup.js",
-              'target_include_directories(openatl_atl INTERFACE "${_wtl_source}")'):
-    if token not in cmake: fail.append("WTL source gate missing: "+token)
-for token in ("FetchContent", "third_party/wtl", "downloads.sourceforge.net", "file(DOWNLOAD"):
-    if token in cmake: fail.append("Forbidden alternate WTL provider: "+token)
-if ('option(OPENATL_WTL_FULL_ORIGINAL' not in cmake or
-        'if(NOT OPENATL_WTL_FULL_ORIGINAL)' not in cmake or
-        "Original vcpkg WTL is mandatory" not in cmake or
-        "The full original WTL source admission is qualification-only" in
-             (ROOT/"CMakeLists.txt").read_text("utf-8")):
-    fail.append("only original installed vcpkg WTL may be configured in consumer mode")
-if adapter_path.exists() or "cmake/wtl/PrepareWtl.cmake" in tracked:
-    fail.append("legacy build-local WTL adapter must be completely deleted")
-for token in ("file(COPY", "file(REMOVE_RECURSE", "PrepareWtl.cmake",
-              "wtl/adapter.sha256", "file(DOWNLOAD", "FetchContent"):
-    if token in cmake:
-        fail.append("original WTL provider or build-local copy violation: "+token)
-for required in ("OPENATL_WTL_FULL_ORIGINAL_WIN32_OK",
-                 "OPENATL_WTL_FULL_ORIGINAL_LLVM_I686_OK",
-                 "OPENATL_WTL_FULL_ORIGINAL_MSVC_X64_OK",
-                 "OPENATL_WTL_FULL_ORIGINAL_LLVM_X64_OK",
-                 "openatl-msvc-arm64-original", "openatl-llvm-arm64-original",
-                 "Native ARM64 WTL10 full-original MSVC CTest equivalents x5",
-                 "Native ARM64 WTL10 full-original llvm-mingw CTest equivalents x5"):
-    if required not in workflow:
-        fail.append("original-only WTL compiler/native ARM64 gate missing: "+required)
-# Every builder and native artifact consumer must use the actual PR HEAD,
-# never GitHub's synthetic pull_request merge SHA.
-exact_ref = "ref: ${{ github.event.pull_request.head.sha || github.sha }}"
-if (workflow.count(exact_ref) != 7 or
-        "OPENATL_EXPECTED_CHECKOUT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}" not in workflow or
-        "current_checkout_sha" not in (ROOT / "tests/wtl10/manifest_contract.py").read_text("utf-8")):
-    fail.append("every CI checkout and native ARM64 consumer must bind exact PR HEAD")
-# The msvc-x64 preset is deliberately hardware-strict, but hosted Windows
-# has no promised HSP. Both hosted configure passes must explicitly select OFF,
-# and the strict separate self-hosted workflow must remain intact.
-presets=json.loads((ROOT/"CMakeUserPresets.json").read_text("utf-8"))
-x64=next((p for p in presets["configurePresets"] if p["name"]=="msvc-x64"), None)
-if not x64 or x64["cacheVariables"].get("OPENATL_REQUIRE_CET_RUNTIME") != "ON":
-    fail.append("dedicated MSVC x64 preset must retain HSP=ON")
-hosted=workflow.split("  msvc-windows:",1)[-1].split("  windows-arm64-llvm:",1)[0]
-original_x64=hosted.split(
-    "      - name: Full original WTL10 on MSVC x64 — source-only headers, CTest x5",1)[-1].split(
-    "      - uses: actions/upload-artifact@v4",1)[0]
-if ("$cmakeArgs+='-DOPENATL_REQUIRE_CET_RUNTIME=OFF'" not in hosted or
-        "'-DOPENATL_REQUIRE_CET_RUNTIME=OFF'" not in original_x64 or
-        "OPENATL_REQUIRE_CET_RUNTIME:BOOL=OFF" not in original_x64):
-    fail.append("every hosted MSVC x64 configure must fail-closed on HSP=OFF")
-dedicated=(ROOT/".github/workflows/openatl-hsp-dedicated.yml").read_text("utf-8")
-if ("runs-on: [self-hosted, windows, x64, openatl-cet-hsp]" not in dedicated or
-        dedicated.count("('--require-hardware')") != 2 or
-        dedicated.count("-le 10") != 2):
-    fail.append("dedicated real HSP x10 for both MSVC/llvm must remain strict")
-if workflow.count(CACHE) != 4 or workflow.count("setup-vcpkg-curl-cache.py") != 4:
-    fail.append("WTL vcpkg setup must cover all four native/cross CI build jobs")
-if "wtltest-ui-only.patch" in workflow or "--preset" not in workflow:
-    fail.append("official unchanged samples/native tests must remain configured")
-if (workflow.count("-DOPENATL_BUILD_WTL_UNMODIFIED=ON") < 7
-        or workflow.count("openatl_wtl_unmodified_headers") < 2):
-    fail.append("original WTL build must run on all CI compiler/RID profiles")
-native_script=(ROOT/"tests/wtl10/native_arm64.py").read_text("utf-8")
-if ('"openatl_wtl_unmodified_headers"' not in native_script or
-        "OPENATL_WTL_ORIGINAL_MAP_OK" not in native_script):
-    fail.append("native ARM64 must execute original WTL class factory/cookie contract")
-original_manifest=ROOT/"tests/wtl10/original_arm64_manifest.py"
-if (not original_manifest.is_file()
-        or 'OPENATL_WTL_FULL_ORIGINAL:BOOL=ON' not in original_manifest.read_text("utf-8")
-        or 'OPENATL_WTL_ORIGINAL_ARM64_PE_OK' not in original_manifest.read_text("utf-8")
-        or wfOriginalArm64GateMissing(workflow)):
-    fail.append("independent original ARM64 PE/SHA artifacts and 5x native behavior required")
-direct = (ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")
-if ("OriginalPrintDialogCallbackNoCom" not in direct or
-        "IPrintDialogCallback" not in direct or
-        "IObjectWithSite" not in direct):
-    fail.append("real original WTL PrintDlgEx/site behavior must be verified")
-if ("server_monitor.cpp" not in (ROOT/"tests/wtl_unmodified/CMakeLists.txt").read_text("utf-8")
-        or "RunServerMonitorTests()" not in (ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")):
-    fail.append("original WTL server monitor bounded worker join must remain native test")
-monitor_src=(ROOT/"tests/wtl_unmodified/server_monitor.cpp").read_text("utf-8")
-if ("module.StartMonitor()" not in monitor_src
-        or "::ExitProcess(status)" not in monitor_src
-        or "--start-monitor-process" not in native_script
-        or "openatl.wtl_original_start_monitor_process" not in
-            (ROOT/"tests/wtl_unmodified/CMakeLists.txt").read_text("utf-8")):
-    fail.append("original detached StartMonitor requires process-only native test; no join claim")
-if ("reg_property.cpp" not in (ROOT/"tests/wtl_unmodified/CMakeLists.txt").read_text("utf-8")
-        or "RunRegPropertyTests()" not in (ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")):
-    fail.append("original CRegProperty real HKCU native behavior must remain qualified")
-audit_script=(ROOT/"tests/wtl_unmodified/audit_wtl_api.py")
-if (not audit_script.is_file() or
-        "WTL_REGISTRY_API_INVENTORY_OK" not in audit_script.read_text("utf-8") or
-        "python tests/wtl_unmodified/audit_wtl_api.py" not in workflow):
-    fail.append("pinned original WTL registry API inventory must remain mandatory")
-if ("WTL_REGISTRY_MISSING_CONTRACT_OK" not in audit_script.read_text("utf-8") or
-        "ERROR_FILE_NOT_FOUND" not in (ROOT/"tests/wtl_unmodified/reg_property.cpp").read_text("utf-8")):
-    fail.append("original WTL optional missing and precise LSTATUS tests required")
-expanded=(ROOT/"tests/wtl_unmodified/reg_property.cpp").read_text("utf-8")
-if ("WTL_REGISTRY_EXTENDED_CONTRACT_OK" not in audit_script.read_text("utf-8")
-        or "BEGIN_REGPROP_MAP(MapProperties)" not in expanded
-        or "WTL::CRegProperty::BinaryProp" not in expanded
-        or "WTL::CRegProperty::CharArrayProp" not in expanded
-        or "ERROR_OUTOFMEMORY" not in expanded
-        or "ScopedFont" not in expanded):
-    fail.append("original WTL CRTP/binary/font/array native property gates required")
-link_src=(ROOT/"tests/wtl_unmodified/hyperlink_registry.cpp")
-direct_src=(ROOT/"tests/wtl_unmodified/direct_headers.cpp.in").read_text("utf-8")
-cmake_src=(ROOT/"tests/wtl_unmodified/CMakeLists.txt").read_text("utf-8")
-if (not link_src.is_file()
-        or "RegOverridePredefKey" not in link_src.read_text("utf-8")
-        or "RunOriginalHyperlinkRegistryTests()" not in direct_src
-        or "openatl.wtl_original_hyperlink_hkcu" not in cmake_src
-        or '"--hyperlink"' not in native_script):
-    fail.append("original WTL hyperlink HKCU isolated native behavior is mandatory")
-print_probe=ROOT/"tests/wtl_unmodified/print_defaults.cpp"
-if (not print_probe.is_file()
-        or "dialog.GetDefaults()" not in print_probe.read_text("utf-8")
-        or "::PrintDlgExW(&system)" not in print_probe.read_text("utf-8")
-        or "::CreateWindowExW" not in print_probe.read_text("utf-8")
-        or "::DestroyWindow" not in print_probe.read_text("utf-8")
-        or "PD_NOPAGENUMS" not in print_probe.read_text("utf-8")
-        or "OPENATL_WTL_PRINT_DEFAULTS_PARITY_OK" not in print_probe.read_text("utf-8")
-        or "GetDefaultPrinterW" not in print_probe.read_text("utf-8")
-        or "GlobalFree" not in print_probe.read_text("utf-8")
-        or "winspool" not in cmake_src
-        or "openatl.wtl_original_print_defaults_probe" not in cmake_src
-        or "RunOriginalPrintDefaultsProbe()" not in direct_src
-        or '"--print-defaults"' not in native_script
-        or "native_stdout_ok" not in native_script):
-    fail.append("real Win32 PrintDlgEx default-printer probe and cleanup required")
-if fail:
-    for item in fail: print("WTL_VCPKG_POLICY_FAIL "+item,file=sys.stderr)
-    raise SystemExit(1)
-print("WTL_VCPKG_POLICY_OK version=10.0.10320#7 single-source=1 "
-      "SHA512=pinned adapter=absent original-only=1 feature-parity=UNQUALIFIED")
+        if marker not in workflow:
+            fail.append("WTL original native gate removed: " + marker)
+    exact_ref = "ref: ${{ github.event.pull_request.head.sha || github.sha }}"
+    if workflow.count(exact_ref) != 5:
+        fail.append("source + both Windows compiler producers and real ARM64 runners must pin exact HEAD")
+    if workflow.count("-DOPENATL_BUILD_WTL_UNMODIFIED=ON") < 5:
+        fail.append("WTL original native tests must remain on both x64/ARM64 compiler paths")
+    # Only target Windows x64/ARM64. Linux is permitted for the small source
+    # integrity job, but must not compile a separate platform matrix.
+    for stale in ("msvc-win32-official:", "linux-macos-cross:",
+                  "llvm-i686", "msvc-x86", "msvc-salts",
+                  "Published Salts Unicode SDK"):
+        if stale in workflow:
+            fail.append("obsolete CI toolchain/target: " + stale)
+    for job in ("source-tree-only", "windows-llvm", "msvc-windows",
+                "windows-arm64-llvm", "windows-arm64-msvc"):
+        if workflow.count("  " + job + ":") != 1:
+            fail.append("required Windows x64/ARM64 job missing or duplicated: " + job)
+    if ("- target: x64" not in workflow or "- target: arm64" not in workflow or
+            "vc_arch: amd64" not in workflow or "vc_arch: amd64_arm64" not in workflow):
+        fail.append("MSVC Windows x64/ARM64 matrix must remain explicit")
+    presets = json.loads((ROOT / "CMakeUserPresets.json").read_text("utf-8"))
+    for kind in ("configurePresets", "buildPresets", "testPresets"):
+        actual = {p["name"] for p in presets.get(kind, [])}
+        if actual != {"llvm-x86_64", "llvm-aarch64", "msvc-x64", "msvc-arm64"}:
+            fail.append("only x64/ARM64 MSVC and llvm-mingw profiles allowed: " + kind)
+    cmake_src = (ROOT / "CMakeLists.txt").read_text("utf-8")
+    unicode_header = (ROOT / "include/openatl/unicode.h").read_text("utf-8")
+    for forbidden in ("find_package(Salts", "Salts::Unicode", "SALTS_ROOT",
+                      "option(OPENATL_USE_SALTS_UNICODE"):
+        if forbidden in cmake_src:
+            fail.append("Salts Unicode SDK dependency must be retired: " + forbidden)
+    if "#include <salts_" in unicode_header or "SALTS_UNICODE_" in unicode_header:
+        fail.append("public Unicode facade must use native Windows encoding only")
+    unicode_source = (ROOT / "include/openatl/text_encoding.h").read_text("utf-8")
+    for native in ("MultiByteToWideChar", "WideCharToMultiByte", "GetACP"):
+        if native not in unicode_source:
+            fail.append("required strict Win32 encoding API missing: " + native)
+    x64 = next((p for p in presets.get("configurePresets", [])
+                if p.get("name") == "msvc-x64"), {})
+    if x64.get("cacheVariables", {}).get("OPENATL_REQUIRE_CET_RUNTIME") != "ON":
+        fail.append("dedicated Windows x64 HSP requirement removed")
+    dedicated = (ROOT / ".github/workflows/openatl-hsp-dedicated.yml").read_text("utf-8")
+    if ("runs-on: [self-hosted, windows, x64, openatl-cet-hsp]" not in dedicated
+            or dedicated.count("('--require-hardware')") != 2):
+        fail.append("independent hardware HSP admission removed")
+    native_arm64 = (ROOT / "tests/wtl10/native_arm64.py").read_text("utf-8")
+    for marker in ("openatl_wtl_unmodified_headers",
+                   "OPENATL_WTL_ORIGINAL_MAP_OK",
+                   "OPENATL_WTL_START_MONITOR_PROCESS_OK"):
+        if marker not in native_arm64:
+            fail.append("ARM64 native behavior removed: " + marker)
+    for path in ("tests/wtl_unmodified/server_monitor.cpp",
+                 "tests/wtl_unmodified/reg_property.cpp",
+                 "tests/wtl_unmodified/hyperlink_registry.cpp",
+                 "tests/wtl_unmodified/print_defaults.cpp"):
+        if path not in tracked:
+            fail.append("real original WTL behavior test omitted: " + path)
+    if fail:
+        for error in fail:
+            print("OPENWTL_SOURCE_POLICY_RED " + error, file=sys.stderr)
+        return 1
+    print("OPENWTL_SOURCE_POLICY_OK version=10.0.10320 files=296 "
+          "provider=repo public=OpenWTL::WTL backend=internal "
+          "original_samples_preserved=11 native_matrix=msvc-llvm-x64-arm64")
+    return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,11 +1,10 @@
 # Official sample coverage
 
-The full WTL 10.0.10320 release (headers, all 11 unchanged Samples,
-AppWizard, MS-PL license) is now supplied by the pinned
-[qigao/vcpkg-cache WTL overlay](https://github.com/qigao/vcpkg-cache/pull/235),
-not by a second ZIP in OpenATL. The port downloads a SHA512-verified GitHub
-release archive and installs the original sample sources. The build uses
-those samples unchanged and must pass all existing native CI gates.
+The complete patched WTL 10.0.10320 release (headers, all 11 original
+Samples, AppWizard and MS-PL) now resides under `wtl/` in this repository.
+Its 296-file source manifest proves all included bytes; no second ZIP
+or vcpkg WTL installation is used. All original sample sources and
+resources remain unchanged, with the same native CI gates.
 
 Official samples are a separate acceptance boundary from the community SDI
 fixture (`kkhaike/wtltest`) and OpenATL's own conformance tests. Passing that
@@ -27,21 +26,19 @@ Its ATL/MFC implementation is not a build dependency: MSVC qualification
 uses `/X` and explicitly enumerates compiler/Windows SDK include directories
 without `atlmfc`, so a missing repository header produces a real failure.
 
-The original release projects target Win32. The full WTL build is selected by
-the `msvc-x86` and `llvm-i686` presets (`OPENATL_BUILD_OFFICIAL_SUITE=ON`).
-MTPad's callback signatures and Wizard97Test's return types depend on that
-32-bit ABI. Existing x64/ARM64 profiles remain regression profiles; passing
-them does not replace the full Win32 suite.
-
-Use the VS 2022 x86 developer environment for `msvc-x86`. For `llvm-i686`,
-provide `OPENATL_LLVM_MINGW_BIN` and `OPENATL_WINDOWS_SDK_BIN` (the versioned
-Windows SDK `bin/<version>/x86` directory). That profile uses SDK RC for the
-original TOOLBAR syntax and SDK UICC for Ribbon BML generation, with no MFC.
-UICC generates the missing BML in the build directory; archived `.cpp`, `.h`
-and `.rc` files remain unchanged.
+The original 11 examples are all preserved as immutable source/assets.
+The legacy full Win32-only project compilation (MSVC x86 / llvm-i686) is
+**historical evidence**, not part of the streamlined x64/ARM64 CI.
+Some original samples (including MTPad/Wizard97Test) rely on 32-bit ABI
+details and therefore are **not claimed** to pass on x64/ARM64. Current
+CI still builds and natively executes suitable original examples
+(GuidGen on both compilers; MemDlg under MSVC), plus real SDI and
+original WTL/ATL API behavior on x64 and real ARM64. A historical
+32-bit full-suite build may be requested explicitly, but it is not
+a mandatory CI target.
 
 For MinGW, the selected SDK's three Ribbon declaration headers are adapted in
-the build directory and supplied through `OpenATL::ATL`, including GUIDs and
+the build directory and supplied through `OpenWTL::WTL`, including GUIDs and
 the Property System import library. No consumer-specific Ribbon include roots,
 additional OpenATL library or Microsoft ATL/MFC implementation is required.
 These Windows SDK headers remain build inputs under the SDK's license.
@@ -50,11 +47,10 @@ Wizard97Test contains Windows-1252 characters in wide string literals. MSVC
 uses an explicit source charset; Clang's compiler input reader decodes that
 one file to UTF-8 in memory, preserving the original bytes on disk, C++ text,
 line locations and include resolution. This is character decoding, not a
-sample token/API patch. The build-local WTL adapter adds explicit control
-conversions, CRTP `template`/constant qualifications, and copies input-only
-values for MinGW SDK signatures that incorrectly lack const qualifiers.
+sample token/API patch. Existing compatibility changes are applied directly to the checked-in
+WTL headers, not a generated adapter or an original sample.
 
-Local full-suite build results (2026-10-28):
+Historical full Win32-suite build results (2026-10-28; outside current target matrix):
 
 | Sample | MSVC 14.44 Win32 | llvm-mingw Win32 |
 | --- | --- | --- |
@@ -89,9 +85,9 @@ than reasons to silently omit those projects.
 ## WTL 10.0.10320 release
 
 The sources/resources below come directly from the `Samples/` directory in the
-same SHA512-pinned WTL 10.0.10320 archive installed by vcpkg. They are
+repository-owned WTL 10.0.10320 source and manifest. They are
 built unchanged through `tests/official_samples/CMakeLists.txt`, linked only
-to `OpenATL::ATL`, and driven by native behavior tests registered in CTest.
+to `OpenWTL::WTL`, and driven by native behavior tests registered in CTest.
 The build supplies the common-controls v6 manifest as a separate resource;
 upstream source files are never rewritten.
 
@@ -106,7 +102,7 @@ does not invoke Copy or change the clipboard. MemDlg explicitly initializes
 COM in its original application entry point; its success is not evidence of
 a no-COM application. Neither sample modifies its original initialization.
 
-These samples exposed fixes owned by OpenATL and its build-local WTL adapter:
+These samples exposed fixes now owned by OpenATL and its repository WTL headers:
 
 - Standard default `using namespace ATL`, with `_ATL_NO_AUTOMATIC_NAMESPACE`
   as the opt-out.
@@ -119,9 +115,8 @@ These samples exposed fixes owned by OpenATL and its build-local WTL adapter:
 CI builds GuidGen for x64/ARM64 on both compilers and MemDlg for x64/ARM64 on
 MSVC; the native Windows jobs run their behavior tests five times. ARM64 tests
 require exact SHA256/PE/resource manifests (20 files / 27 cases for llvm-mingw,
-21 files / 28 cases for MSVC). Linux/macOS cross jobs build and inspect GuidGen;
-cross-building does not count as runtime admission. Current-head CI must pass
-before claiming these remote/native ARM64 results.
+21 files / 28 cases for MSVC). Linux/macOS cross-host jobs have been retired by the Windows x64/ARM64-only
+policy; current-head native Windows CI is required for any new qualification.
 
 The table above records the expanded compilation coverage. Runtime coverage
 in this section remains limited to GuidGen and MemDlg.
@@ -145,9 +140,8 @@ OpenATL headers. CTest loads the MIDL-generated TypeLib using
 and original `IChain`/`IOuter` IID/member-name DISPIDs.
 There is no registry installation or `regsvr32` post-build action.
 
-Linux/macOS cross-host builds cannot run Windows SDK MIDL; they verify
-original source provenance and remain required for existing Windows PE
-cross-build tests. This does **not** qualify MIDL on Linux/macOS.
+Windows x64/ARM64 build hosts use their selected Windows SDK MIDL;
+there are no Linux/macOS cross-host MIDL claims or jobs.
 
 This qualifies original **IDL code generation and binary TypeLib loading**,
 not original COMMap project compilation/link or native class activation.

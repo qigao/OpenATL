@@ -13,14 +13,14 @@ These are **project goals, not claims of present implementation**. The [compatib
 ## Current evidence and gaps
 
 - Repository-owned ATL headers under include/ are the production implementation, not a silent Microsoft ATL fallback.
-- The current source-tree target is OpenATL::ATL. It already exposes COM Client helpers and real explicit in-process COM Server factories, locks, registry registration and Windows native STA/MTA activation.
+- The public source-tree target is OpenWTL::WTL, which includes the internal openatl_atl backend. That backend supports COM Client helpers and real explicit in-process COM Server factories, locks, registry registration and Windows native STA/MTA activation.
 - Existing native tests exercise both sides; no-COM-init Win32/WTL UI continues to be a distinct supported case.
 - Standard CAtlDllModuleT, automatic/chained COM maps, aggregation, RGS, Automation/type libraries, SAFEARRAY wrappers and portions of ActiveX/control support are **unimplemented compatibility gaps**, not prohibited capabilities.
 - 11 official WTL samples have Win32 builds; 37 non-MFC Microsoft ATL projects remain a separate incomplete compatibility target.
 
 ## Acceptance
 
-Original unmodified [ATL/WTL examples](OFFICIAL_SAMPLES.md) and downstream consumers are the conformance sources; compile/link is not a substitute for native behavior. Qualify real Windows COM activation, apartment lifetime, identity, module locks/unload and registry rollback with MSVC and llvm-mingw. Distinguish native Windows execution from Linux/macOS cross-compilation and bind all CI claims to the actual HEAD.
+Original unmodified [ATL/WTL examples](OFFICIAL_SAMPLES.md) and downstream consumers are the conformance sources; compile/link is not a substitute for native behavior. Qualify real Windows COM activation, apartment lifetime, identity, module locks/unload and registry rollback with MSVC and llvm-mingw. Build only MSVC/llvm-mingw Windows x64/ARM64 in CI and bind all native CI claims to the exact HEAD.
 
 Source ownership, safe lifetimes, provenance, exact-head CI and truthful unsupported HRESULTs remain essential engineering criteria, not limits excluding COM Server.
 

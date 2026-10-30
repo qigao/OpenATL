@@ -72,7 +72,7 @@ foreach(sample IN LISTS samples)
     # The archive already contains UICC's .h/.rc; generate only their BML input.
     target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
   endif()
-  target_link_libraries(${target} PRIVATE OpenATL::ATL)
+  target_link_libraries(${target} PRIVATE OpenWTL::WTL)
   if(sample STREQUAL "Wizard97Test")
     target_link_libraries(${target} PRIVATE htmlhelp)
     if(MSVC)

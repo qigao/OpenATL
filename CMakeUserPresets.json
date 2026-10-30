@@ -5,32 +5,6 @@
   ],
   "configurePresets": [
     {
-      "name": "llvm-i686",
-      "inherits": "llvm",
-      "binaryDir": "${sourceDir}/build-llvm-i686",
-      "environment": {
-        "OPENATL_WINDOWS_SDK_BIN": "$penv{OPENATL_WINDOWS_SDK_BIN}"
-      },
-      "cacheVariables": {
-        "OPENATL_TARGET_ARCH": "i686",
-        "OPENATL_BUILD_OFFICIAL_SUITE": "ON",
-        "CMAKE_RC_COMPILER": "$env{OPENATL_WINDOWS_SDK_BIN}/rc.exe"
-      }
-    },
-    {
-      "name": "msvc-x86",
-      "inherits": "msvc",
-      "architecture": {
-        "value": "x86",
-        "strategy": "external"
-      },
-      "binaryDir": "${sourceDir}/build-msvc-x86",
-      "cacheVariables": {
-        "OPENATL_BUILD_OFFICIAL_SUITE": "ON",
-        "OPENATL_REQUIRE_CET_RUNTIME": "OFF"
-      }
-    },
-    {
       "name": "llvm-x86_64",
       "inherits": "llvm",
       "binaryDir": "${sourceDir}/build-llvm-x86_64",
@@ -61,27 +35,9 @@
       "cacheVariables": {
         "OPENATL_REQUIRE_CET_RUNTIME": "OFF"
       }
-    },
-    {
-      "name": "msvc-salts",
-      "inherits": "msvc",
-      "binaryDir": "${sourceDir}/build-msvc-salts",
-      "cacheVariables": {
-        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDLL",
-        "OPENATL_REQUIRE_CET_RUNTIME": "OFF",
-        "OPENATL_USE_SALTS_UNICODE": "ON"
-      }
     }
   ],
   "buildPresets": [
-    {
-      "name": "llvm-i686",
-      "configurePreset": "llvm-i686"
-    },
-    {
-      "name": "msvc-x86",
-      "configurePreset": "msvc-x86"
-    },
     {
       "name": "llvm-x86_64",
       "configurePreset": "llvm-x86_64"
@@ -97,27 +53,9 @@
     {
       "name": "msvc-arm64",
       "configurePreset": "msvc-arm64"
-    },
-    {
-      "name": "msvc-salts",
-      "configurePreset": "msvc-salts"
     }
   ],
   "testPresets": [
-    {
-      "name": "llvm-i686",
-      "configurePreset": "llvm-i686",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "msvc-x86",
-      "configurePreset": "msvc-x86",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
     {
       "name": "llvm-x86_64",
       "configurePreset": "llvm-x86_64",
@@ -154,18 +92,6 @@
       "configurePreset": "msvc-arm64",
       "output": {
         "outputOnFailure": true
-      }
-    },
-    {
-      "name": "msvc-salts",
-      "configurePreset": "msvc-salts",
-      "output": {
-        "outputOnFailure": true
-      },
-      "filter": {
-        "exclude": {
-          "name": "^openatl[.]cet_"
-        }
       }
     }
   ]

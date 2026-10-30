@@ -5,7 +5,7 @@ Source: `katahiromz/RATL` commit
 The qualification build downloads that exact archive, verifies SHA256
 `070b29862ae2c52bd023ea54b7cdbc61f3dbe8df70346d29ccbc0c51980e913b`,
 and compiles the unchanged source/resources through OpenATL's own CMake targets.
-Only `OpenATL::ATL` and each sample's resource directory supply dependencies.
+Only `OpenWTL::WTL` and each sample's resource directory supply dependencies.
 RATL headers, implementation and upstream CMake configuration are not used.
 
 | Sample | Behavior admitted locally on MinGW/MSVC x64 |

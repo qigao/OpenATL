@@ -1,20 +1,16 @@
-# WTL 10.0.10320#7 — original vcpkg source only (Issue #44)
+# WTL 10.0.10320 — repository source and original API acceptance (Issue #44)
 
-## Single source and runtime ownership
+## One source and internal ATL backend
 
-[WTL #7](https://github.com/qigao/vcpkg-cache/pull/237) is merged into
-`qigao/vcpkg-cache master@8359cdbdf25c1f58cfc7230cc6318dc2fdb804fb`.
-OpenATL's CMake and GitHub Actions pin that **exact commit**. The
-original WTL release archive SHA512 and source revision remain fixed;
-the port applies only narrowly audited Clang compatibility corrections.
-All 20 public headers, 11 official examples, AppWizard and MS-PL are kept.
+The complete WTL 10.0.10320 release is checked in at `wtl/`: all
+20 original public headers, 11 original Samples, AppWizard and MS-PL.
+Seven previously qualified vcpkg compatibility fixes are applied in
+place, with all 296 files inventoried by `wtl/source-manifest.json`.
 
-In this Draft branch, `OpenATL::ATL` obtains WTL headers **directly from
-the installed vcpkg package** in every build. The build-local
-`PrepareWtl.cmake` and copied/modified WTL header tree are retired.
-`OPENATL_WTL_FULL_ORIGINAL=ON` is now the mandatory default, and
-`OFF` fails rather than selecting an alternate provider. No Microsoft ATL,
-SourceForge fallback or Installed OpenATL SDK exists.
+Consumers link `OpenWTL::WTL`; the `openatl_atl` backend remains
+internal and provides ATL/COM. No public `OpenATL::ATL` alias,
+installed WTL source, adapted header copy or fallback remains.
+`OPENATL_WTL_FULL_ORIGINAL=ON` is mandatory; OFF fails closed.
 
 ## Verified original-source qualifications
 
@@ -27,8 +23,9 @@ SourceForge fallback or Installed OpenATL SDK exists.
   8/8 SUCCESS; original and adapted ARM64 artifacts independently verify
   SHA256/PE/resources and real Windows ARM64 UI, COM and native lifecycles
   x5 each for MSVC and llvm-mingw.
-- This Draft's new default-original build must pass the same complete
-  CI matrix again, with no skipped tests or rewritten source APIs.
+- Current PRs must pass the **Windows x64/ARM64** MSVC and llvm-mingw native
+  CI matrix. Historical x86 full-example evidence remains available, but
+  is no longer part of mandatory CI under the narrowed target policy.
 
 The optional `OPENATL_BUILD_WTL_UNMODIFIED=ON` executable adds
 `CComModule` legacy class-object ownership and COM registration/rollback,
@@ -44,7 +41,7 @@ CMake cache or copied WTL headers, validates the ARM64 PE and resources,
 and produces exact SHA256 provenance for the separately built binaries.
 `native_arm64.py` refuses non-native Windows ARM64 runners.
 
-## Remaining real product blockers — PR #45 stays Draft
+## Remaining independent native behavior gates — Issue #44
 
 The original `WTL::CServerAppModule::StartMonitor()` discards its
 worker handle. Its non-atomic `m_bActivity`, concurrent
@@ -61,9 +58,7 @@ PR is not to be merged or released on source-build evidence alone.
 
 ## Reproduce
 
-Install `wtl@10.0.10320#7` from the fixed vcpkg-cache overlay, then
-set `VCPKG_INSTALLED_DIR`/`VCPKG_TARGET_TRIPLET` (or the OpenATL
-source-tree env equivalents) and run:
+Use a pinned Windows MSVC/llvm-mingw toolchain; WTL needs no vcpkg install:
 
 ```powershell
 cmake --preset msvc-x64 -DOPENATL_BUILD_WTL_UNMODIFIED=ON
@@ -75,8 +70,8 @@ ctest --preset msvc-x64 --repeat until-fail:5 --output-on-failure
 
 Each independently compiled `*-original` ARM64 artifact now carries a
 versioned `manifest.json` with an exact `provenance` object and a separate
-`files` SHA256 map. The producer reads the **installed** WTL port identity
-stamp after CMake's source gate and records the checked-out CI commit,
+`files` SHA256 map. The producer verifies the **repository-owned** 296-file WTL source
+manifest after CMake's source gate and records the checked-out CI commit,
 compiler (`llvm` or `msvc`), WTL version, provider, and archive SHA512.
 
 On the **real Windows ARM64** runner, the existing five-pass test suite now
@@ -84,13 +79,13 @@ rejects missing/extra files, incorrect digest syntax, duplicate manifest
 keys, missing/wrong source metadata, a different checkout, or cross-toolchain
 artifact substitution *before executing any binary*. The legacy flat
 manifest format remains valid only for the non-`original` artifact set.
-The source-only job runs six negative-contract tests without claiming
+The source-only job runs negative-contract tests without claiming
 printer UI or detached StartMonitor ownership is qualified.
 
 ## Exact PR HEAD checkout (not the synthetic merge ref)
 
 GitHub Actions `pull_request` events ordinarily set `GITHUB_SHA` to a
-synthetic merge commit. All seven checkout steps in this workflow now pin
+synthetic merge commit. All five checkout steps in the current workflow pin
 `github.event.pull_request.head.sha` (and `github.sha` for push/manual
 events). The producer and actual Windows ARM64 runners both read
 `git rev-parse HEAD`, compare it to
