@@ -1,5 +1,5 @@
 add_executable(openatl_activex tests.cpp lifecycle.cpp)
-target_link_libraries(openatl_activex PRIVATE OpenATL::ATL)
+target_link_libraries(openatl_activex PRIVATE OpenWTL::WTL)
 set_target_properties(openatl_activex PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 if(MINGW)
   target_link_options(openatl_activex PRIVATE -static)

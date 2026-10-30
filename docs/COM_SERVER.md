@@ -331,7 +331,7 @@ No static bypass or handwritten ITypeInfo provider is introduced.
 
 ## Integration and validation
 
-Link the single `OpenATL::ATL` target. It supplies `ole32`, `oleaut32`,
+Link the single `OpenWTL::WTL` target. It supplies `ole32`, `oleaut32`,
 `uuid` and `advapi32`; no separate client/server/registration targets are
 required. Include `openatl/com_server.h` or `openatl/com_registration.h`
 explicitly. Neither linking nor including a header initializes COM or

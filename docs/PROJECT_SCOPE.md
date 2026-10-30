@@ -13,7 +13,7 @@ These are **project goals, not claims of present implementation**. The [compatib
 ## Current evidence and gaps
 
 - Repository-owned ATL headers under include/ are the production implementation, not a silent Microsoft ATL fallback.
-- The current source-tree target is OpenATL::ATL. It already exposes COM Client helpers and real explicit in-process COM Server factories, locks, registry registration and Windows native STA/MTA activation.
+- The public source-tree target is OpenWTL::WTL, which includes the internal openatl_atl backend. That backend supports COM Client helpers and real explicit in-process COM Server factories, locks, registry registration and Windows native STA/MTA activation.
 - Existing native tests exercise both sides; no-COM-init Win32/WTL UI continues to be a distinct supported case.
 - Standard CAtlDllModuleT, automatic/chained COM maps, aggregation, RGS, Automation/type libraries, SAFEARRAY wrappers and portions of ActiveX/control support are **unimplemented compatibility gaps**, not prohibited capabilities.
 - 11 official WTL samples have Win32 builds; 37 non-MFC Microsoft ATL projects remain a separate incomplete compatibility target.

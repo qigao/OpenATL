@@ -1,6 +1,6 @@
 # Unicode and Windows encoding boundaries
 
-All consumers link `OpenATL::ATL`. Win32/WTL strings and COM BSTRs retain
+All consumers link `OpenWTL::WTL`. Win32/WTL strings and COM BSTRs retain
 their UTF-16 representation and code-unit indexing. Narrow constructors and
 `A2W`/`W2A` retain system ACP semantics; UTF-8 is explicit. No implicit
 normalization, case folding, BOM removal, locale change or COM initialization
@@ -50,7 +50,7 @@ and Unicode White_Space trimming through `Salts::Unicode`. `SALTS_ROOT` must
 select a complete installed Salts 2.3 SDK matching the target/compiler/runtime.
 Missing targets, missing SDKs and cached packages outside this root fail
 configuration; there is no automatic download or source fallback.
-`OpenATL::ATL` carries the dependency and feature definition.
+`OpenWTL::WTL` carries the dependency and feature definition.
 
 Include `openatl/unicode.h`. Enabled functions are `NormalizeNfcUtf8`,
 `NormalizeNfcUtf16`, `CaseFoldUtf8`, `CaseFoldUtf16` and `TrimUtf8`. Each takes

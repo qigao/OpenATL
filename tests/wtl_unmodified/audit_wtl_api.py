@@ -1,30 +1,22 @@
 #!/usr/bin/env python3
 """Inspect the exact installed WTL10 public registry surface, not an adapter.
 
-The audited bytes come exclusively from qigao/vcpkg-cache's pinned WTL port.
+The audited bytes come exclusively from our vendored and hashed WTL source.
 This is a source/API inventory gate, not yet a behavior/parity proof.
 """
 from __future__ import annotations
 from pathlib import Path
-import os
 import re
 import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "wtl10"))
+from manifest_contract import verify_repository_wtl_stamp
 
 def main() -> int:
-    root = os.environ.get("OPENATL_WTL_VCPKG_INSTALLED_DIR", "")
-    triplet = os.environ.get("OPENATL_WTL_VCPKG_TRIPLET", "")
-    if not root or not re.fullmatch(r"[A-Za-z0-9_.+-]+", triplet):
-        raise ValueError("require installed vcpkg WTL identity")
-    prefix = Path(root) / triplet
-    stamp = (prefix / "share/wtl/openatl-wtl-source.txt").read_text("utf-8")
-    expected = ("wtl=10.0.10320#7\nsha512="
-                "086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537"
-                "b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309\n"
-                "provider=vcpkg-cache/ports/wtl\n")
-    if stamp.replace("\r\n", "\n") != expected:
-        raise ValueError("source revision mismatch")
-    misc = (prefix / "include/atlmisc.h").read_text("latin-1")
-    ctrlx = (prefix / "include/atlctrlx.h").read_text("latin-1")
+    # Audit the same byte-integrity checked source that production compiles.
+    verify_repository_wtl_stamp()
+    source = Path(__file__).resolve().parents[2] / "wtl" / "Include"
+    misc = (source / "atlmisc.h").read_text("latin-1")
+    ctrlx = (source / "atlctrlx.h").read_text("latin-1")
     begin = "// CRegProperty and CRegPropertyImpl<> - properties stored in registry"
     end = "// Global functions for stock GDI objects"
     x, y = misc.find(begin), misc.find(end)
@@ -46,7 +38,7 @@ def main() -> int:
         r"int\s+|CRegProperty(?:Impl)?\s*\(|const\s+|static\s+)")
     signatures = [(start_line + i, line.strip()) for i, line in enumerate(section)
                   if pattern.match(line)]
-    print(f"WTL_REGISTRY_API_INVENTORY_OK provider=vcpkg original=1 "
+    print(f"WTL_REGISTRY_API_INVENTORY_OK provider=repo original=1 "
           f"registry_section_lines={len(section)} "
           f"signatures={len(signatures)} hyperlink=1 mru=1")
     for line_no, line in signatures[:100]:
@@ -63,7 +55,7 @@ def main() -> int:
     if "return (lRet == ERROR_SUCCESS) || (lRet == ERROR_FILE_NOT_FOUND);" not in misc[x:y]:
         raise ValueError("pinned WTL ReadOne optional-missing contract changed")
     print("WTL_REGISTRY_MISSING_CONTRACT_OK optional_missing=1 typed_error=preserved")
-    # The inventory below is from the installed release, never an external
+    # The inventory below is from the repository-owned release, never an external
     # mirrored header. Missing caps/CRTP/callback contracts fail closed.
     for item in (
         "struct BinaryProp", "struct CharArrayProp",
@@ -88,7 +80,7 @@ def main() -> int:
             raise ValueError("original WTL hyperlink registry source changed: " + token)
     print("WTL_HYPERLINK_REGISTRY_SOURCE_OK anchor=1 visited=1 parser=1")
     # Exact-release API details to qualify next: binary/font/character arrays
-    # and CRTP property-map macros. Bounded source dump from installed package,
+    # and CRTP property-map macros. Bounded source dump from the repository source,
     # never a different WTL tag or an edited/adapted copy.
     for label, start_token, end_token, max_lines in (
         ("BINARY", "struct BinaryProp", "struct CharArrayProp", 24),

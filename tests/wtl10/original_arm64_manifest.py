@@ -14,7 +14,7 @@ import sys
 
 from native_arm64 import TARGETS
 from manifest_contract import (current_checkout_sha, make_original_manifest,
-                               verify_installed_wtl_stamp)
+                               verify_repository_wtl_stamp)
 
 
 def main() -> int:
@@ -28,8 +28,8 @@ def main() -> int:
     if ("OPENATL_WTL_FULL_ORIGINAL:BOOL=ON" not in cache
             or "OPENATL_BUILD_WTL_UNMODIFIED:BOOL=ON" not in cache):
         raise SystemExit("Original WTL qualification CMake options are not both ON")
-    # Bind the provenance to the actual installed WTL port identity.
-    verify_installed_wtl_stamp(cache)
+    # Bind original ARM64 artifacts to the complete repository-owned WTL source.
+    verify_repository_wtl_stamp()
     if (root / "wtl/include/atlapp.h").exists():
         raise SystemExit("Build-local adapted WTL header found in zero-adapter mode")
 

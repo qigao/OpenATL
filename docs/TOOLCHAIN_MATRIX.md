@@ -18,10 +18,10 @@ MSVC developer-shell action is pinned to
 `ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756`.
 MSVC build uses `/MT`; llvm-mingw uses `-static`. Neither selects
 Microsoft ATL or a separate RATL provider. CMake refuses the retired
-`OPENATL_ATL_INCLUDE_DIR` setting; its source root is always `include/`. GUI targets link `OpenATL::ATL`, which supplies both ATL and WTL headers
+`OPENATL_ATL_INCLUDE_DIR` setting; its source root is always `include/`. GUI targets link `OpenWTL::WTL`, which supplies repository-owned ATL and complete patched WTL headers
 and common UI/COM system link dependencies.
 There is no `OpenATL::WTL` target, alias or fallback to Microsoft ATL;
-`OpenATL::ATL` supplies the COM/registry system link dependencies. Applications
+`OpenWTL::WTL` supplies the COM/registry system link dependencies. Applications
 explicitly initialize their COM apartment and invoke server/registration APIs.
 
 [Historical dual-toolchain baseline](https://github.com/qigao/OpenATL/actions/runs/40361221782)

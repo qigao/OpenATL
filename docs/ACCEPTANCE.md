@@ -26,19 +26,18 @@ on the exact branch HEAD.
 | ATL-compatible nonaggregated object creation, COM maps, canonical identity, FinalConstruct/FinalRelease and explicit module pins | 5× native | 5× real native | 5× native | 5× real native | PE build |
 
 **Separation contracts**:
-- WTL must not call `CoInitializeEx`; UI test checks
-  `CoGetContextToken` reports `CO_E_NOTINITIALIZED` before and after
-  window/dialog lifetime. This test links ole32 only for the assertion;
-  WTL comes from CMake FetchContent without introducing a COM apartment or a synthetic
-  `OpenATL::WTL` interface target. The unified `OpenATL::ATL` target supplies
-  COM/registry link dependencies without initializing an apartment.
+- WTL UI must not call `CoInitializeEx`; the native UI test checks
+  `CoGetContextToken` before and after dialog lifetime. `OpenWTL::WTL`
+  provides the native WTL frontend and the private ATL/COM backend
+  transitively, without implicitly initializing a COM apartment.
 - A COM Client must initialize its own apartment, activate the Windows
   `CLSID_StdGlobalInterfaceTable` system component, query `IUnknown`,
   safely manage `CComPtr` ownership and release references before
   `CoUninitialize`. No app-owned COM server is needed.
-- Official WTL headers must come from the checksum-pinned CMake dependency
-  and build-local adapter. UI targets inherit headers and link dependencies
-  from `OpenATL::ATL`; no consumer overlay, WTL install or sample patch.
+- Official WTL headers and original resources must come exclusively
+  from the complete `wtl/` source tree and its 296-file byte manifest.
+  No installed WTL package, copied adapter or alternate implementation.
+  Existing GUI/COM/ARM64 native tests remain mandatory.
 - The checked-in clean-room OpenATL header marker must be verified at
   CMake configuration and compile time. No external OpenATL checkout is used.
   MSVC's own ATL, WTL8 and RATL must never serve as fallbacks.

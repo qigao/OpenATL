@@ -1,11 +1,10 @@
 # Official sample coverage
 
-The full WTL 10.0.10320 release (headers, all 11 unchanged Samples,
-AppWizard, MS-PL license) is now supplied by the pinned
-[qigao/vcpkg-cache WTL overlay](https://github.com/qigao/vcpkg-cache/pull/235),
-not by a second ZIP in OpenATL. The port downloads a SHA512-verified GitHub
-release archive and installs the original sample sources. The build uses
-those samples unchanged and must pass all existing native CI gates.
+The complete patched WTL 10.0.10320 release (headers, all 11 original
+Samples, AppWizard and MS-PL) now resides under `wtl/` in this repository.
+Its 296-file source manifest proves all included bytes; no second ZIP
+or vcpkg WTL installation is used. All original sample sources and
+resources remain unchanged, with the same native CI gates.
 
 Official samples are a separate acceptance boundary from the community SDI
 fixture (`kkhaike/wtltest`) and OpenATL's own conformance tests. Passing that
@@ -41,7 +40,7 @@ UICC generates the missing BML in the build directory; archived `.cpp`, `.h`
 and `.rc` files remain unchanged.
 
 For MinGW, the selected SDK's three Ribbon declaration headers are adapted in
-the build directory and supplied through `OpenATL::ATL`, including GUIDs and
+the build directory and supplied through `OpenWTL::WTL`, including GUIDs and
 the Property System import library. No consumer-specific Ribbon include roots,
 additional OpenATL library or Microsoft ATL/MFC implementation is required.
 These Windows SDK headers remain build inputs under the SDK's license.
@@ -50,9 +49,8 @@ Wizard97Test contains Windows-1252 characters in wide string literals. MSVC
 uses an explicit source charset; Clang's compiler input reader decodes that
 one file to UTF-8 in memory, preserving the original bytes on disk, C++ text,
 line locations and include resolution. This is character decoding, not a
-sample token/API patch. The build-local WTL adapter adds explicit control
-conversions, CRTP `template`/constant qualifications, and copies input-only
-values for MinGW SDK signatures that incorrectly lack const qualifiers.
+sample token/API patch. Existing compatibility changes are applied directly to the checked-in
+WTL headers, not a generated adapter or an original sample.
 
 Local full-suite build results (2026-10-28):
 
@@ -89,9 +87,9 @@ than reasons to silently omit those projects.
 ## WTL 10.0.10320 release
 
 The sources/resources below come directly from the `Samples/` directory in the
-same SHA512-pinned WTL 10.0.10320 archive installed by vcpkg. They are
+repository-owned WTL 10.0.10320 source and manifest. They are
 built unchanged through `tests/official_samples/CMakeLists.txt`, linked only
-to `OpenATL::ATL`, and driven by native behavior tests registered in CTest.
+to `OpenWTL::WTL`, and driven by native behavior tests registered in CTest.
 The build supplies the common-controls v6 manifest as a separate resource;
 upstream source files are never rewritten.
 

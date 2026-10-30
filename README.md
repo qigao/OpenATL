@@ -51,10 +51,10 @@ and COM maps: `CComObjectRootEx`, `CComObject`, `CComCoClass`, `CComCreator`,
 See the [ATL compatibility matrix](docs/ATL_COMPATIBILITY.md) for supported
 semantics and limits. `CAtlDllModuleT` is implemented for explicit class
 tables; static `OBJECT_ENTRY_AUTO` factory discovery is supported.
-WTL 10.0.10320 is installed solely by the pinned
-[qigao/vcpkg-cache WTL overlay](https://github.com/qigao/vcpkg-cache/pull/235).
-This port retains its complete original Samples, AppWizard, headers and MS-PL,
-and does not depend on Microsoft ATL. OpenATL remains source-tree ATL.
+WTL 10.0.10320 now resides in this repository under `wtl/`, with the full
+upstream Samples, AppWizard, headers and MS-PL, plus seven previously qualified
+compiler/bugfix patches. OpenATL remains the private source-tree ATL/COM backend.
+No separate WTL vcpkg package or Microsoft ATL is needed.
 
 Class-directed `UpdateRegistry` and a bounded original `REGISTRY` resource
 path are implemented. `ATL::IDispatchImpl` queries real Windows type
@@ -83,32 +83,30 @@ Downstream applications need only the OpenATL source checkout and one target:
 ```cmake
 add_subdirectory(external/OpenATL)
 add_executable(my_app WIN32 main.cpp)
-target_link_libraries(my_app PRIVATE OpenATL::ATL)
+target_link_libraries(my_app PRIVATE OpenWTL::WTL)
 ```
 
 `FetchContent` can bring in OpenATL instead of `add_subdirectory`; pin the
-OpenATL commit in the consuming project. `OpenATL::ATL` supplies ATL and WTL
+OpenATL commit in the consuming project. `OpenWTL::WTL` supplies ATL and WTL
 include paths, C++17/Unicode definitions, and common Windows UI/COM/registry
 link dependencies. Consumers can include `<atlbase.h>`, `<atlcom.h>`,
 `<atlapp.h>`, `<atlframe.h>`, etc. directly. No Microsoft ATL or second WTL provider is installed.
-The consumer must install `wtl` from the exact qigao/vcpkg-cache
-overlay before CMake configure. Standard vcpkg toolchain users supply
-`VCPKG_INSTALLED_DIR` / `VCPKG_TARGET_TRIPLET`; source-tree
-MSVC/llvm-mingw builds use `OPENATL_WTL_VCPKG_INSTALLED_DIR` and
-`OPENATL_WTL_VCPKG_TRIPLET` instead. CMake verifies the installed
-source stamp and complete sample/license resources. Draft #45 now uses
-the installed original WTL #7 headers in **every** build: no copied or
-rewritten local WTL header tree. Detached `StartMonitor` and real
-`PrintDlgEx` printer UI are still unqualified blockers.
+WTL sources are compiled directly from `wtl/Include` in this repository.
+CMake fails if the complete WTL 10 release and license are missing; source
+and binary assets have a 296-file byte-level manifest at
+`wtl/source-manifest.json`. No external WTL installation, adapter, vendor ZIP
+or second WTL runtime is permitted. WTL owns the UI facade while the
+unexported `openatl_atl` target owns ATL/COM implementation. Detached
+`StartMonitor` and real `PrintDlgEx` printer UI remain independent
+compatibility gates under Issue #44.
 OpenATL is not itself an installed SDK.
 
 For qualification, use pinned CMake presets and the original Windows
-native and Linux/macOS cross-build CTest jobs. A WTL package installation
-alone does not qualify any unmodified WTL or Microsoft ATL consumer.
+native and Linux/macOS cross-build CTest jobs. A local source copy alone does not qualify the original WTL and ATL native behavior.
 
 ## Unicode text
 
-`OpenATL::ATL` provides strict, counted UTF-8/UTF-16/ACP conversions through
+`OpenWTL::WTL` provides strict, counted UTF-8/UTF-16/ACP conversions through
 `openatl/text_encoding.h`, plus checked `AssignUtf8`, `AssignAnsi` and `ToUtf8`
 methods on `CString`/`CComBSTR`. Existing narrow constructors and `A2W`/`W2A`
 keep ACP semantics, with invalid input rejected consistently. Owned conversion
@@ -116,7 +114,7 @@ outputs preserve embedded NULs and retain their old value on failure.
 
 For explicit Unicode 17 NFC, full case folding and whitespace processing,
 enable `OPENATL_USE_SALTS_UNICODE=ON` with a matching installed `SALTS_ROOT`
-and include `openatl/unicode.h`. This remains the same `OpenATL::ATL` target;
+and include `openatl/unicode.h`. This remains the same `OpenWTL::WTL` target;
 the default Windows conversion path has no Salts dependency. See the
 [encoding, error and SDK contracts](docs/UNICODE.md).
 
@@ -151,7 +149,7 @@ is part of this repository (not a second ATL provider).
   and `Save` support BMP and PNG through the Windows GDI+ runtime,
   with full BGRA pixel copying and PNG alpha preservation. Codec state
   is scoped to each call and always shut down before returning. Consumers
-  invoking `CImage::Load/Save` must link Windows `gdiplus` explicitly; `ole32` is supplied by `OpenATL::ATL`;
+  invoking `CImage::Load/Save` must link Windows `gdiplus` explicitly; `ole32` is supplied by `OpenWTL::WTL`;
   basic GDI and WTL UI targets do **not** link `gdiplus` transitively.
   A caller-owned `IStream*` can also be used for BMP/PNG `Load` and
   `Save` using an explicit `ImageFormatBMP` or `ImageFormatPNG` GUID.
@@ -181,8 +179,8 @@ is part of this repository (not a second ATL provider).
   not a limit on GDI+'s internal parsing allocations. Callers must account for the
   source stream's advanced position on failure.
   The image and stream ownership remain unchanged. Image stream codec
-  callers link `gdiplus` explicitly; `ole32` is supplied by `OpenATL::ATL`.
-  GDI+ remains outside the transitive `OpenATL::ATL`/WTL dependencies.
+  callers link `gdiplus` explicitly; `ole32` is supplied by `OpenWTL::WTL`.
+  GDI+ remains outside the transitive `OpenWTL::WTL`/WTL dependencies.
   File and stream paths share validated decoder, pixel copy, encoder
   selection and cleanup.
   GIF/JPEG/TIFF codecs, alpha compositing, GDI+ metadata, and the full
@@ -206,7 +204,7 @@ clean-room ATL subset derived from
 [kkhaike/openatl](https://github.com/kkhaike/openatl):
 **MIT** (original revision `7b587f3e10f3f8d93a01522033de80007368bad5`);
 [official WTL10](https://sourceforge.net/projects/wtl/) version
-`10.0.10320`: **MS-PL**; `cmake/OpenATLWTL.cmake` pins its source archive SHA512
+`10.0.10320`: **MS-PL**; `wtl/SOURCE.md` records the release archive SHA512
 `086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309`.
 There is one ATL implementation: the files owned under `include/`.
 `qigao/tcc` separately owns TinyCC/C11/compiler portability.
@@ -217,7 +215,7 @@ CFG/CET and concurrency qualification is scoped to the native test fixtures;
 downstream products must validate their own lifetime and mitigation contracts.
 The current source-tree build is qualified; installed/exported integration
 may be developed with independent acceptance under issue #4.
-Only the exact installed vcpkg WTL public headers are build dependencies.
+Only the checked-in 10.0.10320 WTL headers under `wtl/Include` are GUI build inputs.
 
 ## CI structure
 
@@ -228,12 +226,11 @@ source-owned OpenATL COM client/server and `CRegKey`. Win32 CRegKey
 is confined to `include/atlreg.h`; native HKCU tests cover ownership,
 malformed strings, values, errors, access masks and cleanup without COM
 initialization. Applications using its registry methods explicitly link
-Windows `advapi32`, supplied by `OpenATL::ATL`.
+Windows `advapi32`, supplied by `OpenWTL::WTL`.
 
-The former 14-file `scripts/` directory has been deleted. GitHub
-Actions installs the SHA512-pinned WTL archive solely via the merged
-`qigao/vcpkg-cache` port, compiles the original WTL examples against
-OpenATL and runs native/PE/ARM64 tests. Real ARM64 SHA256 and
+GitHub Actions compiles the complete checked-in, patched WTL source
+with OpenATL and runs the existing native, PE and ARM64 tests. It no longer
+installs a WTL package or downloads WTL headers. Real ARM64 SHA256 and
 runtime proof use `tests/wtl10/native_arm64.py`; no standalone build
 wrapper or Installed OpenATL SDK is supplied.
 
@@ -243,9 +240,9 @@ wrapper or Installed OpenATL SDK is supplied.
   Windows x64+ARM64 cross compilation and real WTL10 SDI resource link.
 - **MSVC** x64 native and HostX64→ARM64 build plus real Windows ARM64,
   compiling the same pinned *clean-room* OpenATL (never Microsoft's ATL).
-- **WTL dependency provenance**: SHA512-pinned vcpkg source, no local
-  adapter, transitive includes/linkage and unmodified SDI, on native
-  and cross hosts.
+- **WTL dependency provenance**: complete checked-in WTL10 release with
+  seven documented patches and byte-level source manifest; no secondary
+  provider, native/cross transitive includes/linkage and unmodified SDI.
 - Separate native assertions: UI and the repository-owned file/string/sync
   utilities run **without COM initialization**; the standalone Unicode
   `CPath` test exercises actual Windows file creation and path handling.
