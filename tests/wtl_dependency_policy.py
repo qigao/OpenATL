@@ -79,8 +79,6 @@ def main() -> int:
         if forbidden in workflow:
             fail.append("CI still uses external WTL provider: " + forbidden)
     for marker in (
-        "OPENATL_WTL_FULL_ORIGINAL_WIN32_OK",
-        "OPENATL_WTL_FULL_ORIGINAL_LLVM_I686_OK",
         "OPENATL_WTL_FULL_ORIGINAL_MSVC_X64_OK",
         "OPENATL_WTL_FULL_ORIGINAL_LLVM_X64_OK",
         "openatl-msvc-arm64-original",
@@ -95,11 +93,41 @@ def main() -> int:
         if marker not in workflow:
             fail.append("WTL original native gate removed: " + marker)
     exact_ref = "ref: ${{ github.event.pull_request.head.sha || github.sha }}"
-    if workflow.count(exact_ref) != 7:
-        fail.append("every original CI worker must check out the exact PR HEAD")
-    if workflow.count("-DOPENATL_BUILD_WTL_UNMODIFIED=ON") < 7:
-        fail.append("original WTL header/native tests not enabled for all toolchains")
+    if workflow.count(exact_ref) != 5:
+        fail.append("source + both Windows compiler producers and real ARM64 runners must pin exact HEAD")
+    if workflow.count("-DOPENATL_BUILD_WTL_UNMODIFIED=ON") < 5:
+        fail.append("WTL original native tests must remain on both x64/ARM64 compiler paths")
+    # Only target Windows x64/ARM64. Linux is permitted for the small source
+    # integrity job, but must not compile a separate platform matrix.
+    for stale in ("msvc-win32-official:", "linux-macos-cross:",
+                  "llvm-i686", "msvc-x86", "msvc-salts",
+                  "Published Salts Unicode SDK"):
+        if stale in workflow:
+            fail.append("obsolete CI toolchain/target: " + stale)
+    for job in ("source-tree-only", "windows-llvm", "msvc-windows",
+                "windows-arm64-llvm", "windows-arm64-msvc"):
+        if workflow.count("  " + job + ":") != 1:
+            fail.append("required Windows x64/ARM64 job missing or duplicated: " + job)
+    if ("- target: x64" not in workflow or "- target: arm64" not in workflow or
+            "vc_arch: amd64" not in workflow or "vc_arch: amd64_arm64" not in workflow):
+        fail.append("MSVC Windows x64/ARM64 matrix must remain explicit")
     presets = json.loads((ROOT / "CMakeUserPresets.json").read_text("utf-8"))
+    for kind in ("configurePresets", "buildPresets", "testPresets"):
+        actual = {p["name"] for p in presets.get(kind, [])}
+        if actual != {"llvm-x86_64", "llvm-aarch64", "msvc-x64", "msvc-arm64"}:
+            fail.append("only x64/ARM64 MSVC and llvm-mingw profiles allowed: " + kind)
+    cmake_src = (ROOT / "CMakeLists.txt").read_text("utf-8")
+    unicode_header = (ROOT / "include/openatl/unicode.h").read_text("utf-8")
+    for forbidden in ("find_package(Salts", "Salts::Unicode", "SALTS_ROOT",
+                      "option(OPENATL_USE_SALTS_UNICODE"):
+        if forbidden in cmake_src:
+            fail.append("Salts Unicode SDK dependency must be retired: " + forbidden)
+    if "#include <salts_" in unicode_header or "SALTS_UNICODE_" in unicode_header:
+        fail.append("public Unicode facade must use native Windows encoding only")
+    unicode_source = (ROOT / "include/openatl/text_encoding.h").read_text("utf-8")
+    for native in ("MultiByteToWideChar", "WideCharToMultiByte", "GetACP"):
+        if native not in unicode_source:
+            fail.append("required strict Win32 encoding API missing: " + native)
     x64 = next((p for p in presets.get("configurePresets", [])
                 if p.get("name") == "msvc-x64"), {})
     if x64.get("cacheVariables", {}).get("OPENATL_REQUIRE_CET_RUNTIME") != "ON":
@@ -126,7 +154,7 @@ def main() -> int:
         return 1
     print("OPENWTL_SOURCE_POLICY_OK version=10.0.10320 files=296 "
           "provider=repo public=OpenWTL::WTL backend=internal "
-          "official_samples=11 original_native=1")
+          "original_samples_preserved=11 native_matrix=msvc-llvm-x64-arm64")
     return 0
 
 if __name__ == "__main__":

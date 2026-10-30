@@ -20,7 +20,7 @@ These are **project goals, not claims of present implementation**. The [compatib
 
 ## Acceptance
 
-Original unmodified [ATL/WTL examples](OFFICIAL_SAMPLES.md) and downstream consumers are the conformance sources; compile/link is not a substitute for native behavior. Qualify real Windows COM activation, apartment lifetime, identity, module locks/unload and registry rollback with MSVC and llvm-mingw. Distinguish native Windows execution from Linux/macOS cross-compilation and bind all CI claims to the actual HEAD.
+Original unmodified [ATL/WTL examples](OFFICIAL_SAMPLES.md) and downstream consumers are the conformance sources; compile/link is not a substitute for native behavior. Qualify real Windows COM activation, apartment lifetime, identity, module locks/unload and registry rollback with MSVC and llvm-mingw. Build only MSVC/llvm-mingw Windows x64/ARM64 in CI and bind all native CI claims to the exact HEAD.
 
 Source ownership, safe lifetimes, provenance, exact-head CI and truthful unsupported HRESULTs remain essential engineering criteria, not limits excluding COM Server.
 

@@ -23,8 +23,9 @@ installed WTL source, adapted header copy or fallback remains.
   8/8 SUCCESS; original and adapted ARM64 artifacts independently verify
   SHA256/PE/resources and real Windows ARM64 UI, COM and native lifecycles
   x5 each for MSVC and llvm-mingw.
-- This Draft's new default-original build must pass the same complete
-  CI matrix again, with no skipped tests or rewritten source APIs.
+- Current PRs must pass the **Windows x64/ARM64** MSVC and llvm-mingw native
+  CI matrix. Historical x86 full-example evidence remains available, but
+  is no longer part of mandatory CI under the narrowed target policy.
 
 The optional `OPENATL_BUILD_WTL_UNMODIFIED=ON` executable adds
 `CComModule` legacy class-object ownership and COM registration/rollback,
@@ -84,7 +85,7 @@ printer UI or detached StartMonitor ownership is qualified.
 ## Exact PR HEAD checkout (not the synthetic merge ref)
 
 GitHub Actions `pull_request` events ordinarily set `GITHUB_SHA` to a
-synthetic merge commit. All seven checkout steps in this workflow now pin
+synthetic merge commit. All five checkout steps in the current workflow pin
 `github.event.pull_request.head.sha` (and `github.sha` for push/manual
 events). The producer and actual Windows ARM64 runners both read
 `git rev-parse HEAD`, compare it to

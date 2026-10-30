@@ -100,40 +100,6 @@ static bool boundaries() {
     return true;
 }
 
-#if defined(OPENATL_USE_SALTS_UNICODE) && OPENATL_USE_SALTS_UNICODE
-static bool saltsText() {
-    CHECK(std::strcmp(salts_unicode_version(), "17.0.0") == 0);
-    std::string output = "before";
-    CHECK(NormalizeNfcUtf8("e\xCC\x81", output) == S_OK && output == "\xC3\xA9");
-    CHECK(NormalizeNfcUtf8(std::string_view("e\xCC\x81\0x", 5), output) == S_OK &&
-           output == std::string("\xC3\xA9\0x", 4));
-    CHECK(CaseFoldUtf8("Stra\xC3\x9F" "e", output) == S_OK && output == "strasse");
-    CHECK(CaseFoldUtf8("E\xCC\x81", output) == S_OK && output == "e\xCC\x81");
-    CHECK(CaseFoldUtf8("\xC4\xB0\xCE\xA3\xCF\x82", output) == S_OK &&
-           output == "i\xCC\x87\xCF\x83\xCF\x83");
-    CHECK(TrimUtf8("\xC2\xA0" "hello\xE3\x80\x80", output) == S_OK && output == "hello");
-    output = "e\xCC\x81";
-    CHECK(NormalizeNfcUtf8(output, output) == S_OK && output == "\xC3\xA9");
-    output = "Stra\xC3\x9F" "e";
-    CHECK(CaseFoldUtf8(output, output) == S_OK && output == "strasse");
-    output = "unchanged";
-    CHECK(FAILED(NormalizeNfcUtf8("\xC0\xAF", output)) && output == "unchanged");
-    CHECK(FAILED(CaseFoldUtf8("\xC0\xAF", output)) && output == "unchanged");
-    CHECK(FAILED(TrimUtf8("ok\xC0\xAF", output)) && output == "unchanged");
-    CHECK(NormalizeNfcUtf8("ab", output, 1) == HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW) &&
-           output == "unchanged");
-    CHECK(CaseFoldUtf8("ab", output, 1) == HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW));
-    CHECK(TrimUtf8("ab", output, 1) == HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW));
-    CHECK(NormalizeNfcUtf8({}, output) == S_OK && output.empty());
-    CHECK(CaseFoldUtf8({}, output) == S_OK && output.empty());
-    CHECK(TrimUtf8({}, output) == S_OK && output.empty());
-    std::wstring wide = L"before";
-    CHECK(NormalizeNfcUtf16(L"e\u0301", wide) == S_OK && wide == L"\u00E9");
-    CHECK(CaseFoldUtf16(L"Stra\u00DFe", wide) == S_OK && wide == L"strasse");
-    CHECK(FAILED(NormalizeNfcUtf16(std::wstring(1, wchar_t(0xd800)), wide)) && wide == L"strasse");
-    return true;
-}
-#endif
 
 int main(int argc, char** argv) {
     const bool requireUtf8 = argc == 2 && std::strcmp(argv[1], "--utf8-acp") == 0;
@@ -141,12 +107,7 @@ int main(int argc, char** argv) {
     if (requireUtf8 && ::GetACP() != CP_UTF8) return 3;
     ULONG_PTR token = 0;
     if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED || !boundaries()) return 1;
-    int salts = 0;
-#if defined(OPENATL_USE_SALTS_UNICODE) && OPENATL_USE_SALTS_UNICODE
-    if (!saltsText()) return 1;
-    salts = 1;
-#endif
     if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED) return 1;
-    std::printf("OPENATL_UNICODE_OK utf8=1 utf16=1 acp=1 ownership=1 salts=%d\n", salts);
+    std::printf("OPENATL_UNICODE_OK utf8=1 utf16=1 acp=1 ownership=1 win32=1\n");
     return 0;
 }

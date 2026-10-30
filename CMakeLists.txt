@@ -76,23 +76,11 @@ if(_openatl_target_arch MATCHES "^(x64|x86_64|AMD64|amd64)$")
   set(_openatl_x64 TRUE)
 endif()
 
-option(OPENATL_USE_SALTS_UNICODE "Enable explicit Unicode 17 text processing with an installed Salts SDK" OFF)
-if(OPENATL_USE_SALTS_UNICODE)
-  if(NOT DEFINED ENV{SALTS_ROOT} OR "$ENV{SALTS_ROOT}" STREQUAL "" OR
-     NOT IS_DIRECTORY "$ENV{SALTS_ROOT}")
-    message(FATAL_ERROR "OPENATL_USE_SALTS_UNICODE requires SALTS_ROOT pointing to a matching installed SDK")
-  endif()
-  find_package(Salts 2.3 CONFIG REQUIRED PATHS "$ENV{SALTS_ROOT}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-  file(REAL_PATH "$ENV{SALTS_ROOT}" _openatl_salts_root)
-  file(REAL_PATH "${Salts_DIR}" _openatl_salts_config)
-  cmake_path(IS_PREFIX _openatl_salts_root "${_openatl_salts_config}" NORMALIZE _openatl_salts_owned)
-  if(NOT _openatl_salts_owned OR NOT TARGET Salts::Unicode)
-    message(FATAL_ERROR "The configured SALTS_ROOT must supply Salts::Unicode; cached or alternate SDKs are unsupported")
-  endif()
-  target_link_libraries(openatl_atl INTERFACE Salts::Unicode)
-  # Salts platform headers use Winsock2. Exclude the legacy Winsock header
-  # before any consumer includes windows.h, regardless of header order.
-  target_compile_definitions(openatl_atl INTERFACE OPENATL_USE_SALTS_UNICODE=1 WIN32_LEAN_AND_MEAN)
+# One Unicode implementation: native Windows NLS. Old optional Salts Unicode
+# provider is intentionally removed; do not silently accept stale CMake flags.
+if(DEFINED OPENATL_USE_SALTS_UNICODE)
+  message(FATAL_ERROR
+    "OPENATL_USE_SALTS_UNICODE is retired; use Win32 encoding APIs through OpenATL::Unicode")
 endif()
 
 # Qualification defaults to static CRT. An SDK-consuming profile can select
@@ -102,7 +90,9 @@ if(MSVC AND NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
 endif()
 
 option(OPENATL_BUILD_QUALIFICATION "Compile native UI, ATL utility and COM client/server tests" OFF)
-option(OPENATL_BUILD_OFFICIAL_SUITE "Build every unchanged WTL release sample (upstream Win32 ABI)" OFF)
+# Retain historical upstream Win32-only example support on explicit request;
+# regular CI qualifies only Windows x64 and Windows ARM64.
+option(OPENATL_BUILD_OFFICIAL_SUITE "Build all original 32-bit-only WTL release samples manually" OFF)
 # Original WTL is the only include source for all consumers.
 # This optional switch enables additional real native WTL API tests.
 option(OPENATL_BUILD_WTL_UNMODIFIED "Run original WTL API native contract tests" OFF)

@@ -102,7 +102,7 @@ compatibility gates under Issue #44.
 OpenATL is not itself an installed SDK.
 
 For qualification, use pinned CMake presets and the original Windows
-native and Linux/macOS cross-build CTest jobs. A local source copy alone does not qualify the original WTL and ATL native behavior.
+native Windows MSVC/llvm-mingw x64 and ARM64 CTest jobs. A local source copy alone does not qualify the original WTL and ATL native behavior.
 
 ## Unicode text
 
@@ -112,11 +112,12 @@ methods on `CString`/`CComBSTR`. Existing narrow constructors and `A2W`/`W2A`
 keep ACP semantics, with invalid input rejected consistently. Owned conversion
 outputs preserve embedded NULs and retain their old value on failure.
 
-For explicit Unicode 17 NFC, full case folding and whitespace processing,
-enable `OPENATL_USE_SALTS_UNICODE=ON` with a matching installed `SALTS_ROOT`
-and include `openatl/unicode.h`. This remains the same `OpenWTL::WTL` target;
-the default Windows conversion path has no Salts dependency. See the
-[encoding, error and SDK contracts](docs/UNICODE.md).
+The only encoding backend is Windows NLS (`MultiByteToWideChar`,
+`WideCharToMultiByte`, `GetACP`). `openatl/unicode.h` remains a lightweight
+include compatibility header for these strict conversions. The former optional
+`Salts::Unicode` engine is retired. NFC/full case folding/Unicode 17 trimming
+are **not** silently implemented using a weaker Windows lowercase mapping.
+See the [Windows encoding and error contracts](docs/UNICODE.md).
 
 ## Expanded ATL API surface
 
@@ -189,7 +190,7 @@ is part of this repository (not a second ATL provider).
 The public API is a subset of ATL; unsupported functions are not advertised
 as implemented. These utilities are CI-qualified through
 `tests/atl_conformance/atl_extensions.cpp` on Windows x64, genuine
-Windows ARM64 and Linux/macOS Windows PE cross-builds.
+Windows ARM64 with MSVC and llvm-mingw.
 
 API declarations and naming compatibility do not require copying Microsoft
 ATL or RATL implementation code. The existing OpenATL file notices and
@@ -236,8 +237,8 @@ wrapper or Installed OpenATL SDK is supplied.
 
 ## Required CI
 
-- **llvm-mingw** on Windows x64, real Windows ARM64, plus Linux/macOS
-  Windows x64+ARM64 cross compilation and real WTL10 SDI resource link.
+- **llvm-mingw** native Windows x64, Windows x64→ARM64 build, and real
+  Windows ARM64 runtime; 5× WTL10 SDI/COM/GUI CTest and PE checks.
 - **MSVC** x64 native and HostX64→ARM64 build plus real Windows ARM64,
   compiling the same pinned *clean-room* OpenATL (never Microsoft's ATL).
 - **WTL dependency provenance**: complete checked-in WTL10 release with
@@ -261,6 +262,6 @@ Other entries are not overwritten or recursively deleted.
 
 **Source-tree qualification is bounded by the documented APIs and tests.**
 Downstream product acceptance remains explicit. No WTL8
-fallback, no Salts production ABI or compiler switch. An installed SDK is
+fallback, Salts Unicode provider or alternate compiler/target matrix. An installed SDK is
 not currently implemented; packaging is an open engineering decision (#4),
 not prohibited by the ATL compatibility goal.
