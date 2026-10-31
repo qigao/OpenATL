@@ -7,7 +7,7 @@ hook. The CRTP module constructor initializes the static per-image
 type-library registration. The native source test validates GUID identity.
 
 `CAtlExeModuleT<T>` additionally owns a COM initialization on its construction
-thread and optional explicit class-factory registrations.
+thread and native automatic/explicit class-factory registrations.
 `CAtlModuleT<T>` and its EXE/DLL derivatives share one frozen
 `OBJECT_ENTRY_AUTO` map for persistent class registration. RegisterServer and
 UnregisterServer invoke class-defined UpdateRegistry callbacks, with optional
@@ -47,20 +47,39 @@ Default initialization is MTA, or STA with `_ATL_APARTMENT_THREADED` /
 `_ATL_SINGLE_THREADED`. Declaring this module opts into COM initialization;
 including headers and ordinary WTL `CAppModule` construction do not.
 
+Without a successful explicit table selection, RegisterClassObjects discovers
+the same frozen OBJECT_ENTRY_AUTO map used for DLL factories and persistent
+registration. It creates the existing engine's real IClassFactory instances
+for every class before native publication, then registers them through the
+shared CoRegisterClassObject cookie helper. Missing UpdateRegistry callbacks
+do not prevent factory activation. No persistent registry operation is run.
+Temporary references retire after the operation; the OS retains registered
+factories until successful revocation. A duplicate/invalid map fails before
+publication, and factory materialization failure publishes nothing.
+
 `SetClassObjects` is an OpenATL extension accepting CLSID/IUnknown descriptors.
 It copies metadata, queries/retains IClassFactory references, and admits at
 most 1024 entries. Input descriptors are borrowed only during that call.
 Replacing a table is exclusive and prohibited while OS registration cookies
-remain active. `RegisterClassObjects` uses real `CoRegisterClassObject` calls;
+remain active or Run is executing. A successful call selects the explicit table
+exclusively; an empty explicit table intentionally disables automatic activation
+for that module. Failed table updates preserve the previous selection.
+`RegisterClassObjects` uses real `CoRegisterClassObject` calls;
 partial failure revokes successful registrations, retaining failed-revocation
 cookies for retry. `RevokeClassObjects` releases cookies; clearing the table
 releases retained factories. Empty registration/revocation returns `S_FALSE`.
+Rollback-revocation errors take priority and retain active cookies for retry.
 Factory owners remain responsible for their own objects/server-lock lifetime.
+Term and destruction revoke publication on the constructing thread before
+termination callbacks and before balancing COM initialization. Explicit-table
+references are released, and automatic factories, objects and server locks must
+have fully retired; a remaining client reference is a lifetime violation.
 
 `Run` dispatches PreMessageLoop / RunMessageLoop / PostMessageLoop, with owned
 registrations revoked even on callback failure. The default pre-hook registers
-explicit classes and the post-hook revokes them; no classes means `S_FALSE`
-and no loop. UI applications override the hooks for their own lifecycle.
+automatic or explicitly selected classes and the post-hook revokes them;
+no classes means `S_FALSE` and no loop. UI applications override the hooks
+for their own lifecycle.
 The post-hook runs when the pre-hook returns `S_OK`, including after a loop
 exception. A failed pre-hook must unwind its application-owned side effects;
 the module still revokes its own OS class registrations on every Run exit.
@@ -69,10 +88,9 @@ GetMessage errors. Registration commands are limited to 32767 UTF-16 code
 units including the terminator, then tokenized as Windows arguments;
 the default RegServer/UnregServer commands request TypeLib registration, so a
 missing embedded TypeLib fails before any class callback. Per-user command
-switches and AppID registration remain unimplemented. Automatic class-factory
-registration from the EXE object map, idle-shutdown monitoring, service modules
-and complete ATL EXE-server behavior remain compatibility work. No fake success
-is permitted.
+switches and AppID registration remain unimplemented. Idle-shutdown monitoring,
+service modules and complete ATL EXE-server behavior remain compatibility work.
+No fake success is permitted.
 
 The EXE wrapper checks its constructing thread, initialization HRESULT and
 termination state before either persistent-registration operation. Base
@@ -92,8 +110,18 @@ MODULE_RAW and owner values, preservation after external value changes,
 unregistration, wrong-thread/failed-initialization/terminated rejection, and
 balanced COM teardown. The common CAtlModuleT path runs the same resource
 callback without initializing COM. Positive EXE embedded-TypeLib registration,
-AppID behavior and automatic EXE class-factory activation are not qualified by
-these checks.
+AppID behavior and cross-process EXE launch/marshaling are not qualified by
+these resource checks.
+
+The same native module suite additionally publishes the automatic map in both
+STA and MTA, uses CoGetClassObject and CoCreateInstance to create actual objects,
+and checks class identity, object pins and LockServer. It verifies failed table
+updates, duplicate publication, wrong-thread rejection, explicit-empty opt-out,
+absence after revocation, a retained factory's independent lifetime, repeat Run,
+loop exceptions, explicit Term and destructor cleanup. Automatic activation
+must not run class registry callbacks. These are same-process native OLE
+activation checks, not evidence of cross-process launch or custom-interface
+marshaling. There is no new executable, CMake target or workflow.
 
 ## `CAtlDllModuleT<T>` — implemented explicit-class-table milestone
 

@@ -542,7 +542,11 @@ struct AutoObjectEntry {
     AutoObjectEntry(const AutoObjectEntry&) = delete;
     AutoObjectEntry& operator=(const AutoObjectEntry&) = delete;
 };
-// One immutable image object map supplies DLL factories and module registration.
+struct OwnedClassFactory {
+    CLSID clsid{};
+    CComPtr<IClassFactory> factory;
+};
+// One immutable image object map supplies DLL/EXE factories and registration.
 class AutoObjectMap final {
 private:
     struct RegistryEntry {
@@ -658,6 +662,26 @@ public:
 
     OpenATL::COM::Module* Server() const noexcept {
         return autoServer_.load(std::memory_order_acquire);
+    }
+    HRESULT CreateFactories(std::vector<OwnedClassFactory>& output) noexcept {
+        const HRESULT hr = Initialize();
+        if (hr == CLASS_E_CLASSNOTAVAILABLE) return S_FALSE; // Empty image map.
+        if (FAILED(hr)) return hr;
+        try {
+            std::vector<OwnedClassFactory> staged;
+            staged.reserve(autoEntries_.size());
+            for (const auto& entry : autoEntries_) {
+                OwnedClassFactory item;
+                item.clsid = entry.clsid;
+                const HRESULT created = Server()->GetClassObject(entry.clsid, IID_IClassFactory,
+                    reinterpret_cast<void**>(&item.factory.p));
+                if (FAILED(created)) return created;
+                if (!item.factory.p) return E_UNEXPECTED;
+                staged.push_back(std::move(item));
+            }
+            output.swap(staged);
+            return S_OK;
+        } catch (...) { return AtlModuleException(); }
     }
 private:
     // Member order: the server is destroyed before its immutable class table.
@@ -844,10 +868,18 @@ class CAtlExeModuleT : public CAtlModuleT<T> {
 public:
     CAtlExeModuleT() noexcept : owner_(::GetCurrentThreadId()), m_hr(T::InitializeCom()) {}
     ~CAtlExeModuleT() noexcept {
-        if (::GetCurrentThreadId() != owner_ || FAILED(RevokeClassObjects())) std::terminate();
-        classes_.clear();
         this->Term();
         if (SUCCEEDED(m_hr)) T::UninitializeCom();
+    }
+    void Term() noexcept {
+        if (::GetCurrentThreadId() != owner_ || running_ || FAILED(RevokeClassObjects()))
+            std::terminate();
+        classes_.clear();
+        // Native registration owns factory references until successful revoke.
+        // Client factories, objects and server locks must also have retired.
+        const auto* server = this->autoMap_.Server();
+        if (server && server->CanUnloadNow() != S_OK) std::terminate();
+        CAtlModule::Term();
     }
     static HRESULT InitializeCom() noexcept {
 #if defined(_ATL_APARTMENT_THREADED) || defined(_ATL_SINGLE_THREADED)
@@ -889,6 +921,7 @@ public:
                 staged.push_back(std::move(entry));
             }
             classes_.swap(staged);
+            explicitClasses_ = true;
             return S_OK;
         } catch (...) { return detail::AtlModuleException(); }
     }
@@ -896,16 +929,23 @@ public:
         HRESULT hr = CheckThread();
         if (FAILED(hr)) return hr;
         if (!cookies_.empty()) return HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
-        if (classes_.empty()) return S_FALSE;
-        try { cookies_.resize(classes_.size()); }
+        std::vector<BoundClass> automatic;
+        const auto* selected = &classes_;
+        if (!explicitClasses_) {
+            hr = this->autoMap_.CreateFactories(automatic);
+            if (hr != S_OK) return hr;
+            selected = &automatic;
+        }
+        if (selected->empty()) return S_FALSE;
+        try { cookies_.resize(selected->size()); }
         catch (...) { return detail::AtlModuleException(); }
-        for (size_t i = 0; i < classes_.size(); ++i) {
+        for (size_t i = 0; i < selected->size(); ++i) {
             DWORD cookie = 0;
-            hr = detail::RegisterClassCookie(classes_[i].clsid, classes_[i].factory.p,
+            hr = detail::RegisterClassCookie((*selected)[i].clsid, (*selected)[i].factory.p,
                                              context, flags, cookie);
             if (FAILED(hr)) {
-                (void)RevokeClassObjects(); // Retain failed-revocation cookies for retry.
-                return hr;
+                const HRESULT rollback = RevokeClassObjects();
+                return FAILED(rollback) ? rollback : hr;
             }
             cookies_[i] = cookie;
         }
@@ -1011,10 +1051,11 @@ private:
         if (FAILED(m_hr)) return m_hr;
         return this->IsTerminated() ? E_UNEXPECTED : S_OK;
     }
-    struct BoundClass { CLSID clsid{}; CComPtr<IClassFactory> factory; };
+    using BoundClass = detail::OwnedClassFactory;
     DWORD owner_;
     HRESULT m_hr;
     bool running_ = false;
+    bool explicitClasses_ = false;
     HRESULT loopResult_ = S_OK;
     std::vector<BoundClass> classes_;
     std::vector<std::optional<DWORD>> cookies_;

@@ -341,8 +341,16 @@ frozen automatic object map and registration workflow. Existing module tests
 drive a real class callback/resource under a GUID private HKCU root, verify EXE
 quoted/raw paths and raw ownership, reject deletion after a value change, and
 check preflight, wrong-thread, failed COM initialization and terminated state.
-Base-module execution retains its no-COM contract. Automatic EXE class-factory
-activation, AppID and positive EXE embedded-TypeLib acceptance remain separate.
+Base-module execution retains its no-COM contract. EXE RegisterClassObjects now
+creates automatic factories from that same map unless SetClassObjects explicitly
+selects a table (including an intentional empty table). Both paths use the same
+native cookie helpers and rollback. STA/MTA tests cover real same-process
+CoGetClassObject/CoCreateInstance, class identity, object/server locks, retained
+factory lifetime after revocation, wrong-thread/duplicate-map rejection,
+repeated Run, loop exceptions and Term/destructor cleanup before COM teardown.
+Factory activation performs no persistent class registration. AppID,
+cross-process EXE launch/marshaling and positive EXE embedded-TypeLib acceptance
+remain separate.
 
 This is a restricted source-compatible resource-ID API, **not** a general
 RGS interpreter or the complete standalone registrar API. It preserves
