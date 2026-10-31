@@ -109,8 +109,8 @@ HKCU root. They check selected/all-callback preflight, actual quoted MODULE/raw
 MODULE_RAW and owner values, preservation after external value changes,
 unregistration, wrong-thread/failed-initialization/terminated rejection, and
 balanced COM teardown. The common CAtlModuleT path runs the same resource
-callback without initializing COM. Positive EXE embedded-TypeLib registration,
-AppID resource registration has its separate checks described below.
+callback without initializing COM. EXE embedded-TypeLib and AppID registration
+have their separate checks described below.
 
 The same native module suite additionally publishes the automatic map in both
 STA and MTA, uses CoGetClassObject and CoCreateInstance to create actual objects,
@@ -145,7 +145,7 @@ module admission, retaining its output contract and native CI matrix.
 This qualifies native SCM launch and system-interface marshaling under the
 current user's local COM policy. Custom proxy/stub generation, arbitrary
 user-defined interface marshaling, AppID security policy, services,
-idle shutdown and positive EXE embedded-TypeLib registration
+idle shutdown
 remain separate work.
 
 `RegisterAppId()` / `UnregisterAppId()` now invoke the derived module's
@@ -209,9 +209,35 @@ registers and unregisters an actual uniquely named HKCU Software\\Classes RGS
 key through the default scope and verifies quoted/raw module data, failure and
 exception results, persistent setting selection, ordinary-command continuity,
 input/state guards and cleanup. That hook checks the TRUE dispatch flag but is
-not evidence of positive EXE embedded-TypeLib registration. The default EXE's
-missing-TypeLib test still fails honestly after selecting per-user mode. No new
+not by itself evidence of EXE embedded-TypeLib registration. The default EXE's
+incomplete class-map test still fails honestly after selecting per-user mode. No new
 binary, project, CMake target or workflow is introduced.
+
+The existing EXE now embeds resource 1 from the same Windows SDK MIDL output
+already used by the DLL fixture, generated from the unchanged pinned Microsoft
+COMMap.idl. Both images compile the existing embedded/registered IChain dispatch
+fixture; no synthetic TypeLib or alternate registration path is introduced.
+The module admission runs STA and MTA EXE modules with DECLARE_LIBID and the real
+AppID resource, restricting the standard RegisterServer/UnregisterServer call to
+one actual automatic class with a real resource callback. RegServerPerUser and
+UnregServerPerUser therefore execute the complete AppID/class/OLEAUT32 TypeLib
+workflow with TRUE, rather than an ordering-only hook.
+
+Native checks prove embedded loading/dispatch alone does not register anything,
+missing resource indexes fail with cleared outputs, QueryPathOfRegTypeLib points
+to this EXE, LoadRegTypeLib loads its real library, LIBID/version/SYSKIND match,
+and both embedded and registered dispatch perform a real ITypeInfo::Invoke.
+Common hooks deliberately disable the global per-user setting, while the
+captured operation still registers/unregisters in HKCU. Actual DACL denial of
+the newly created test TypeLib key must return the native OLEAUT32 failure and
+roll back class and AppID resources. Each cycle requires exact registry absence,
+balanced COM and zero locks before teardown. Preexisting TypeLib/interface
+metadata in HKCU or HKLM is rejected before mutation.
+
+The former fixture assumption that the EXE had no TypeLib no longer applies.
+Module preflight negatives now use an explicitly invalid image handle and
+require E_INVALIDARG before callbacks; real missing-index loading is checked
+separately. The same existing test targets, MIDL target and CI matrix are used.
 
 ## `CAtlDllModuleT<T>` — implemented explicit-class-table milestone
 

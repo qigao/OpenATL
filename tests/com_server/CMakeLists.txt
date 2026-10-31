@@ -153,12 +153,14 @@ if(CMAKE_HOST_WIN32)
     "${_openatl_commap_generated}")
   target_compile_definitions(openatl_com_server_tests PRIVATE
     OPENATL_ORIGINAL_COMMAP_MIDL=1)
-  # Embed the very same real MIDL output in the existing native DLL fixture.
+  # Embed the same real MIDL output in both existing native test images.
   # Target ordering makes the TypeLib available before Windows RC runs.
   set(_openatl_embedded_rc "${CMAKE_CURRENT_BINARY_DIR}/fixture_typelib.rc")
   file(WRITE "${_openatl_embedded_rc}" "1 TYPELIB \"${_openatl_commap_tlb}\"\n")
   target_sources(openatl_com_server_fixture PRIVATE
     "${_openatl_embedded_rc}" "${_openatl_commap_iid}")
+  target_sources(openatl_com_server_tests PRIVATE
+    "${_openatl_embedded_rc}" embedded_dispatch.cpp)
   set_source_files_properties("${_openatl_embedded_rc}" PROPERTIES
     OBJECT_DEPENDS "${_openatl_commap_tlb}")
   add_dependencies(openatl_com_server_fixture openatl_microsoft_commap_midl)
