@@ -337,8 +337,8 @@ bool dll_module() {
               CLASS_E_CLASSNOTAVAILABLE && !output);
         CHECK(dll.DllGetClassObject(classId, IID_IStream, &output) ==
               E_NOINTERFACE && !output);
-        CHECK(dll.DllRegisterServer(TRUE) == E_NOTIMPL);
-        CHECK(dll.DllUnregisterServer(TRUE) == E_NOTIMPL);
+        CHECK(FAILED(dll.DllRegisterServer(TRUE)));
+        CHECK(FAILED(dll.DllUnregisterServer(TRUE)));
 
         ATL::CComPtr<IClassFactory> factory;
         CHECK(dll.GetClassObject(classId, IID_IClassFactory,
@@ -402,10 +402,12 @@ bool auto_object_map() {
         // TRUE used to be ignored, executing the class callback and claiming
         // a complete install. Rejection must precede every class side effect.
         CHECK(registrationCalls == 0);
-        CHECK(dll.RegisterServer(TRUE, &registrationClassId) == E_NOTIMPL);
-        CHECK(dll.UnregisterServer(TRUE, &registrationClassId) == E_NOTIMPL);
-        CHECK(dll.DllRegisterServer() == E_NOTIMPL);
-        CHECK(dll.DllUnregisterServer() == E_NOTIMPL);
+        // This EXE has no embedded TypeLib: native loading must fail before
+        // callbacks, rather than ignore TRUE or invent a registration.
+        CHECK(FAILED(dll.RegisterServer(TRUE, &registrationClassId)));
+        CHECK(FAILED(dll.UnregisterServer(TRUE, &registrationClassId)));
+        CHECK(FAILED(dll.DllRegisterServer()));
+        CHECK(FAILED(dll.DllUnregisterServer()));
         CHECK(registrationCalls == 0 && dll.GetLockCount() == 0);
         CHECK(dll.RegisterServer(FALSE, &registrationClassId) == S_OK);
         CHECK(dll.UnregisterServer(FALSE, &registrationClassId) == S_OK);

@@ -511,6 +511,7 @@ HRESULT AtlGetCommCtrlVersion(LPDWORD pdwMajor, LPDWORD pdwMinor);
 
 } // namespace ATL
 
+#include "openatl/atl_typelib.h"
 #include "openatl/atl_module.h"
 
 #ifndef _ATL_NO_AUTOMATIC_NAMESPACE

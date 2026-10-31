@@ -153,11 +153,18 @@ OLEAUT32. They also check TypeLib identity, pointer width, missing IID and
 LIBID failures, object/module lifetime, and unchanged registered-library
 lookup results. CAtlBaseModule identifies its own PE image, including in a DLL.
 
-This qualifies original **IDL generation, embedded TypeLib loading and one
+The same fixture additionally registers/unregisters its actual TypeLib under
+HKCU through standard module/global APIs and verifies registry-mode dispatch.
+Native DACL denial rejects TypeLib writes and proves class-registration
+rollback; tests refuse preexisting sample LIBID/interface keys. This is
+per-user acceptance, not machine-wide permission or transactional-registry
+qualification.
+
+This qualifies original **IDL generation, embedded/registered TypeLib loading and one
 real Automation property**, not original COMMap project compilation/link or
 original COMMap class activation.
 The unchanged COMMap still needs aggregation, cached tear-offs, automatic
-aggregation, TypeLib registration, broader `IDispatchImpl` and
+aggregation, full registration/API compatibility, broader `IDispatchImpl` and
 generated `aggreg/aggreg.idl`. All 37 original pure-ATL project
 entries remain **not-qualified**.
 

@@ -436,15 +436,28 @@ public:
     // opt out with DECLARE_NO_REGISTRY. This path never derives ProgIDs or
     // installer privileges from the CLSID and never implements RGS silently.
     HRESULT RegisterServer(BOOL registerTypeLib = FALSE, const CLSID* selected = nullptr) noexcept {
-        // TypeLib registration is not implemented. Reject it before any
-        // class callback, rather than report success after a partial install.
-        // A derived module may implement the complete registration contract.
-        if (registerTypeLib) return E_NOTIMPL;
-        return ApplyAutoRegistry(TRUE, selected);
+        if (!registerTypeLib) return ApplyAutoRegistry(TRUE, selected);
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        detail::TypeLibRegistration registration(detail::perUserRegistration.load());
+        HRESULT hr = registration.Prepare(_AtlBaseModule.GetModuleInstance());
+        if (FAILED(hr)) return hr; // No class callback before TypeLib preflight.
+        hr = ApplyAutoRegistry(TRUE, selected);
+        if (FAILED(hr)) return hr;
+        hr = registration.Register();
+        if (FAILED(hr)) {
+            const HRESULT rollback = ApplyAutoRegistry(FALSE, selected);
+            return FAILED(rollback) ? rollback : hr;
+        }
+        return S_OK;
     }
     HRESULT UnregisterServer(BOOL unregisterTypeLib = FALSE, const CLSID* selected = nullptr) noexcept {
-        if (unregisterTypeLib) return E_NOTIMPL;
-        return ApplyAutoRegistry(FALSE, selected);
+        if (!unregisterTypeLib) return ApplyAutoRegistry(FALSE, selected);
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        detail::TypeLibRegistration registration(detail::perUserRegistration.load());
+        HRESULT hr = registration.Prepare(_AtlBaseModule.GetModuleInstance());
+        if (FAILED(hr)) return hr;
+        hr = ApplyAutoRegistry(FALSE, selected);
+        return FAILED(hr) ? hr : registration.Unregister();
     }
 
     // Pin active registration exports against a cooperative DLL unload.

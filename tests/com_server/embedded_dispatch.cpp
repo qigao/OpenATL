@@ -5,9 +5,10 @@
 #include "COMMap.h"
 
 namespace {
+template<WORD Major, WORD Minor>
 class EmbeddedChain : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>,
                       public ATL::IDispatchImpl<IChain, &IID_IChain,
-                          &LIBID_COMMAPLib, 0xffff, 0xffff> {
+                          &LIBID_COMMAPLib, Major, Minor> {
 public:
     BEGIN_COM_MAP(EmbeddedChain)
         COM_INTERFACE_ENTRY_IID(IID_IChain, IChain)
@@ -22,12 +23,14 @@ public:
 }
 #endif
 
-extern "C" HRESULT WINAPI OpenATLCreateEmbeddedDispatch(IDispatch** output) {
+template<WORD Major, WORD Minor>
+HRESULT CreateDispatch(IDispatch** output) {
     if (!output) return E_POINTER;
     *output = nullptr;
 #if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
-    ATL::CComObject<EmbeddedChain>* raw = nullptr;
-    HRESULT hr = ATL::CComObject<EmbeddedChain>::CreateInstance(&raw);
+    using Object = ATL::CComObject<EmbeddedChain<Major, Minor>>;
+    Object* raw = nullptr;
+    HRESULT hr = Object::CreateInstance(&raw);
     if (FAILED(hr)) return hr;
     raw->AddRef();
     hr = raw->QueryInterface(IID_IDispatch, reinterpret_cast<void**>(output));
@@ -36,6 +39,13 @@ extern "C" HRESULT WINAPI OpenATLCreateEmbeddedDispatch(IDispatch** output) {
 #else
     return E_NOTIMPL;
 #endif
+}
+
+extern "C" HRESULT WINAPI OpenATLCreateEmbeddedDispatch(IDispatch** output) {
+    return CreateDispatch<0xffff, 0xffff>(output);
+}
+extern "C" HRESULT WINAPI OpenATLCreateRegisteredDispatch(IDispatch** output) {
+    return CreateDispatch<1, 0>(output);
 }
 
 extern "C" HRESULT WINAPI OpenATLGetEmbeddedTypeInfo(

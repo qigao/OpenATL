@@ -107,12 +107,28 @@ these methods; the inherited default now uses only the class-defined
 `UpdateRegistry(BOOL)` methods attached to `OBJECT_ENTRY_AUTO` entries.
 A missing class callback is **`E_NOTIMPL`**, not fake success.
 `DECLARE_NO_REGISTRY()` deliberately opts a class out and explicitly
-returns `S_OK` without installing keys. Type library registration remains unimplemented. The default
-`RegisterServer(TRUE, ...)` / `UnregisterServer(TRUE, ...)` reject with
-`E_NOTIMPL` before invoking any class callback. Consequently the default
-`DllRegisterServer()` / `DllUnregisterServer()` also reject: their default
-TypeLib argument is TRUE. A class-only application explicitly passes FALSE;
-a derived registrar may implement the complete TypeLib contract. Class-directed
+returns `S_OK` without installing keys. TypeLib registration uses the image-local Windows OLEAUT32 implementation.
+For TRUE, the module preloads and validates the actual binary TypeLib before
+any class callback, installs classes, then registers the library. Native
+TypeLib registration failure reverses the successfully installed classes;
+a class rollback failure takes priority over the original HRESULT. FALSE
+continues to select class-only work. Unregistration preloads the TypeLib,
+removes classes, then unregisters the exact LIBID/version/LCID/SYSKIND.
+The Windows registry APIs are not an atomic transaction: general partial
+TypeLib-write recovery and transactional unregistration are not claimed.
+
+The global `AtlLoadTypeLib`, `AtlRegisterTypeLib` and `AtlUnRegisterTypeLib`
+helpers support optional numeric \N resource indexes and counted owned outputs.
+`AtlSetPerUserRegistration(true)` selects RegisterTypeLibForUser and
+UnRegisterTypeLibForUser; the default selects their system-registration
+counterparts. Set the image-local mode before registration and serialize
+configuration/registration. Each operation snapshots its mode before class
+callbacks. This does not redirect arbitrary Win32 calls or another DLL, and
+RGS still uses its explicit application root/context. Native qualification
+uses per-user registration and real DACL denial, without elevation or HKLM
+writes. Machine-wide permission behavior remains separately unqualified.
+
+Class-directed
 `DECLARE_REGISTRY_RESOURCEID` now loads an actual `REGISTRY` resource
 under the application's explicit `ScopedRgsRegistrationContext`, reusing
 the existing RGS parser and owner-verified executor; it does not silently
@@ -163,7 +179,7 @@ remains usable, but its default class registration is `E_NOTIMPL`; the
 owning application can provide a derived registrar.
 
 **Not yet complete:** `CAtlComModule`, extended object-map variants,
-full arbitrary RGS registration grammar, TypeLib registration,
+full arbitrary RGS registration grammar, complete legacy TypeLib APIs,
 aggregated classes and complete EXE/service COM Server behavior remain
 separate compatibility milestones. Bounded real `REGISTRY` resource-ID
 handling is now available only under an explicit scoped registration policy. Complete Microsoft ATL source compatibility is not yet claimed.
