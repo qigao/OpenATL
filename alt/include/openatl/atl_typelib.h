@@ -72,15 +72,28 @@ public:
         return S_OK;
     }
     HRESULT Register() const noexcept {
-        return perUser_ ? ::RegisterTypeLibForUser(library_.p, path_.m_str, nullptr)
-                        : ::RegisterTypeLib(library_.p, path_.m_str, nullptr);
+        if (!perUser_) return ::RegisterTypeLib(library_.p, path_.m_str, nullptr);
+        // Some mingw-w64 headers/import libraries omit these Windows exports.
+        // Bind the documented OLEAUT32 ABI directly on both toolchains.
+        using Function = HRESULT (WINAPI*)(ITypeLib*, OLECHAR*, OLECHAR*);
+        HMODULE module = ::GetModuleHandleW(L"oleaut32.dll");
+        if (!module) return HRESULT_FROM_WIN32(ERROR_MOD_NOT_FOUND);
+        const auto function = reinterpret_cast<Function>(
+            ::GetProcAddress(module, "RegisterTypeLibForUser"));
+        return function ? function(library_.p, path_.m_str, nullptr)
+                        : HRESULT_FROM_WIN32(ERROR_PROC_NOT_FOUND);
     }
     HRESULT Unregister() const noexcept {
         const auto& a = attributes_;
-        return perUser_ ? ::UnRegisterTypeLibForUser(a.guid, a.wMajorVerNum,
-                              a.wMinorVerNum, a.lcid, a.syskind)
-                        : ::UnRegisterTypeLib(a.guid, a.wMajorVerNum,
-                              a.wMinorVerNum, a.lcid, a.syskind);
+        if (!perUser_) return ::UnRegisterTypeLib(a.guid, a.wMajorVerNum,
+                                a.wMinorVerNum, a.lcid, a.syskind);
+        using Function = HRESULT (WINAPI*)(REFGUID, WORD, WORD, LCID, SYSKIND);
+        HMODULE module = ::GetModuleHandleW(L"oleaut32.dll");
+        if (!module) return HRESULT_FROM_WIN32(ERROR_MOD_NOT_FOUND);
+        const auto function = reinterpret_cast<Function>(
+            ::GetProcAddress(module, "UnRegisterTypeLibForUser"));
+        return function ? function(a.guid, a.wMajorVerNum, a.wMinorVerNum, a.lcid, a.syskind)
+                        : HRESULT_FROM_WIN32(ERROR_PROC_NOT_FOUND);
     }
 private:
     const bool perUser_;
