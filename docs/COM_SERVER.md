@@ -3,17 +3,18 @@
 COM Server and COM Client are both mandatory OpenATL capabilities. The
 existing source-owned server core under `OpenATL::COM` complements
 `atlcom.h` and provides
-nonaggregated COM objects, explicit interface/class tables, class factories,
+ordinary and aggregated COM objects, explicit interface/class tables, class factories,
 module lifetime accounting, and explicit registry registration. Standard ATL
 DLL module exports and `OBJECT_ENTRY_AUTO` class discovery exist. A class
 can now supply its own real `UpdateRegistry(BOOL)` callback to participate
 in deterministic automatic DLL registration; the callback is not inferred
-from the CLSID. RGS resources, type-library registration, aggregation and
-the full ATL COM Server API remain compatibility gaps.
+from the CLSID. Bounded RGS resources, per-user type-library registration,
+basic aggregation and tear-offs have implemented subsets. Automatic aggregates,
+full RGS/registration semantics and the complete ATL COM Server API remain gaps.
 
 For conventional ATL object declarations, `atlcom.h` supplies the
-[nonaggregated object and COM-map compatibility subset](ATL_COMPATIBILITY.md).
-Its module-aware creator plugs into the same explicit class table. Local
+[object, aggregation, tear-off and COM-map compatibility subsets](ATL_COMPATIBILITY.md).
+Their module-aware creators plug into the same class table. Local
 ATL-style creation retains zero-ref semantics and pins an active application
 CAtlModule if present; DLL classes still use the explicit COM::Module-aware
 creator. The [modern EXE module](ATL_MODULE.md) separately owns its COM startup
@@ -40,7 +41,8 @@ and explicit process-local class registration.
   callback, worker, or an external DLL call. The host must obey COM unload
   rules and retire its own external callers.
 - `GetClassObject` and `CreateInstance` clear valid output pointers before
-  failure. Unknown CLSIDs/IIDs fail explicitly; aggregation is rejected.
+  failure. Unknown CLSIDs/IIDs fail explicitly; aggregation follows the class
+  creator policy, and requires IID_IUnknown when a controlling outer is supplied.
   Derived constructors may throw; creation translates allocation failure to
   `E_OUTOFMEMORY` and other C++ exceptions to `E_UNEXPECTED`.
 - The server never initializes COM, including in `DllMain`. The client owns

@@ -188,12 +188,12 @@ OpenATL build/runtime tests:
 
 | Sample | Observed dependencies still missing in OpenATL |
 | --- | --- |
-| COMMap | Aggregation, cached tear-offs, automatic aggregation, complete registrar APIs and generated `aggreg/aggreg.idl`; existing module/dispatch/map subsets do not qualify the whole project |
+| COMMap | Automatic aggregation, exact tear-off member/layout contracts, complete registrar APIs and generated `aggreg/aggreg.idl`; implemented aggregation/tear-off/module/dispatch/map subsets do not qualify the whole project |
 | ATLCollections | `ICollectionOnSTLImpl`, `CComEnumOnSTL`, complete registrar APIs and generated/imported type-library integration |
 | ATLSafeArray | `atlsafe.h` / `CComSafeArray`, complete control/server support and whole-project generated TypeLib integration |
 
 Adding `atlcom.h` alone does not implement these contracts. The implemented
-nonaggregated object/map subset remains covered by OpenATL's native tests;
+object/map, basic aggregation and tear-off subsets remain covered by OpenATL's native tests;
 see [ATL compatibility](ATL_COMPATIBILITY.md). `CComModule` has a legacy
 object-map/lifetime subset. Numeric/named module resource helpers and bounded
 replacement maps use the static registrar; dynamic registrar APIs and full
