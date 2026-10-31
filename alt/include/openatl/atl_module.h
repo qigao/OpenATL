@@ -25,6 +25,7 @@ class CAtlModule;
 inline CAtlModule* _pAtlModule = nullptr;
 using _ATL_TERMFUNC = void (WINAPI*)(DWORD_PTR);
 struct _ATL_REGMAP_ENTRY { LPCOLESTR szKey; LPCOLESTR szData; };
+HRESULT WINAPI AtlCreateRegistrar(IRegistrar** output) noexcept;
 namespace detail { inline HRESULT AtlModuleException() noexcept; }
 
 class CAtlModule {
@@ -109,6 +110,7 @@ public:
 protected:
     bool IsTerminated() const noexcept { return terminated_.load(); }
 private:
+    friend HRESULT WINAPI AtlCreateRegistrar(IRegistrar**) noexcept;
     struct Termination { _ATL_TERMFUNC callback; DWORD_PTR argument; };
     std::atomic<bool> terminated_{false};
     std::mutex mutex_;
@@ -116,14 +118,80 @@ private:
 };
 
 namespace detail {
-// A real owned COM capability for one synchronous replacement callback.
-// Retained interfaces stay valid and pin their image, but become immutable
-// when the callback finishes. No registry handles or borrowed strings escape.
+// One bounded owned map implementation serves callback capabilities and
+// persistent registrars. Each operation receives an independent snapshot.
+class RgsReplacementMap final {
+public:
+    explicit RgsReplacementMap(std::vector<OpenATL::RGS::Replacement>&& map = {}) noexcept
+        : map_(std::move(map)) {}
+    HRESULT Add(LPCOLESTR name, LPCOLESTR value) noexcept {
+        try {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!accepting_) return E_UNEXPECTED;
+            if (!OpenATL::COM::registration_detail::bounded(
+                    name, OpenATL::RGS::MaxReplacementNameUnits) ||
+                !OpenATL::COM::registration_detail::bounded(
+                    value, OpenATL::RGS::MaxValueUnits)) return E_INVALIDARG;
+            if (map_.size() == OpenATL::RGS::MaxReplacements)
+                return HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW);
+            auto staged = map_;
+            staged.push_back({name, value});
+            const HRESULT hr = OpenATL::COM::rgs_registration_detail::MapError(
+                OpenATL::RGS::ValidateReplacements(staged));
+            if (FAILED(hr)) return hr;
+            map_.swap(staged);
+            return S_OK;
+        } catch (...) { return AtlModuleException(); }
+    }
+    HRESULT Clear() noexcept {
+        try {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!accepting_) return E_UNEXPECTED;
+            map_.clear();
+            return S_OK;
+        } catch (...) { return AtlModuleException(); }
+    }
+    HRESULT Snapshot(std::vector<OpenATL::RGS::Replacement>& output) noexcept {
+        try {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!accepting_) return E_UNEXPECTED;
+            output = map_;
+            return S_OK;
+        } catch (...) { return AtlModuleException(); }
+    }
+    void Seal() noexcept {
+        std::lock_guard<std::mutex> lock(mutex_);
+        accepting_ = false;
+        map_.clear();
+    }
+    void Freeze(std::vector<OpenATL::RGS::Replacement>& output) noexcept {
+        std::lock_guard<std::mutex> lock(mutex_);
+        accepting_ = false;
+        output = std::move(map_);
+    }
+private:
+    std::mutex mutex_;
+    std::vector<OpenATL::RGS::Replacement> map_;
+    bool accepting_ = true;
+};
+class RegistrarModulePin final {
+public:
+    RegistrarModulePin(const RegistrarModulePin&) = delete;
+    RegistrarModulePin& operator=(const RegistrarModulePin&) = delete;
+    explicit RegistrarModulePin(CAtlModule* owner) noexcept : owner_(owner) {
+        if (owner_) owner_->Lock();
+    }
+    ~RegistrarModulePin() { if (owner_) owner_->Unlock(); }
+private:
+    CAtlModule* owner_;
+};
+
+// Real COM ownership for one synchronous common-replacement callback.
 class CommonRgsRegistrar final : public IRegistrarBase {
 public:
     CommonRgsRegistrar(CAtlModule& owner,
                       std::vector<OpenATL::RGS::Replacement>&& map) noexcept
-        : pin_(owner), map_(std::move(map)) {}
+        : pin_(&owner), map_(std::move(map)) {}
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** output) noexcept override {
         if (!output) return E_POINTER;
         *output = nullptr;
@@ -143,53 +211,16 @@ public:
         return count;
     }
     HRESULT STDMETHODCALLTYPE AddReplacement(LPCOLESTR name, LPCOLESTR value) noexcept override {
-        try {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (!accepting_) return E_UNEXPECTED;
-            if (!OpenATL::COM::registration_detail::bounded(
-                    name, OpenATL::RGS::MaxReplacementNameUnits) ||
-                !OpenATL::COM::registration_detail::bounded(
-                    value, OpenATL::RGS::MaxValueUnits)) return E_INVALIDARG;
-            if (map_.size() == OpenATL::RGS::MaxReplacements)
-                return HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW);
-            auto staged = map_;
-            staged.push_back({name, value});
-            const HRESULT hr = OpenATL::COM::rgs_registration_detail::MapError(
-                OpenATL::RGS::ValidateReplacements(staged));
-            if (FAILED(hr)) return hr;
-            map_.swap(staged);
-            return S_OK;
-        } catch (...) { return AtlModuleException(); }
+        return map_.Add(name, value);
     }
-    HRESULT STDMETHODCALLTYPE ClearReplacements() noexcept override {
-        try {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (!accepting_) return E_UNEXPECTED;
-            map_.clear();
-            return S_OK;
-        } catch (...) { return AtlModuleException(); }
-    }
-    void Seal() noexcept {
-        std::lock_guard<std::mutex> lock(mutex_);
-        accepting_ = false;
-        map_.clear();
-    }
-    void Freeze(std::vector<OpenATL::RGS::Replacement>& output) noexcept {
-        std::lock_guard<std::mutex> lock(mutex_);
-        accepting_ = false;
-        output = std::move(map_);
-    }
+    HRESULT STDMETHODCALLTYPE ClearReplacements() noexcept override { return map_.Clear(); }
+    void Seal() noexcept { map_.Seal(); }
+    void Freeze(std::vector<OpenATL::RGS::Replacement>& output) noexcept { map_.Freeze(output); }
 private:
     ~CommonRgsRegistrar() = default;
-    struct ModulePin {
-        CAtlModule& owner;
-        explicit ModulePin(CAtlModule& module) noexcept : owner(module) { owner.Lock(); }
-        ~ModulePin() { owner.Unlock(); }
-    } pin_; // Declared first: retained through every other member's destruction.
+    RegistrarModulePin pin_; // Declared first: retained through map destruction.
     std::atomic<ULONG> references_{1};
-    std::mutex mutex_;
-    std::vector<OpenATL::RGS::Replacement> map_;
-    bool accepting_ = true;
+    RgsReplacementMap map_;
 };
 } // namespace detail
 
@@ -937,4 +968,5 @@ private:
     std::vector<std::optional<DWORD>> cookies_;
 };
 } // namespace ATL
+#include "atl_registrar.h"
 #endif

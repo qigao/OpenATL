@@ -189,11 +189,45 @@ and coordinate module destruction/unload. The helper captures the per-user
 setting before invoking application code, and preserves an enclosing module
 operation's existing context/mode.
 
-OpenWTL always uses its built-in static registrar. Dynamic
-`UpdateRegistryFromResourceD`, `IRegistrar`/`CRegObject`,
-EXE-specific quoted `%MODULE%` and `%MODULE_RAW%`
-semantics remain unimplemented; these APIs are not redirected to another
-registrar implementation.
+OpenWTL always uses its built-in static registrar. `AtlCreateRegistrar`
+returns an owned `IRegistrar` with the published extended IID/vtable, real QI
+identity and reference counting. String, file and numeric/named resource
+registration/unregistration methods all feed the existing parser and
+`ApplyRgsDocument` owner-verified execution path. The active ATL module is
+pinned until final Release; without one, the caller owns image lifetime.
+No COM apartment is initialized and no external ATL registrar is activated.
+
+`#include <statreg.h>` supplies a noncopyable `CRegObject` static facade with
+the same AddReplacement/ClearReplacements and eight script method signatures.
+It owns the heap registrar; its QueryInterface returns an independent owned
+interface that remains valid after the facade is destroyed. The facade itself
+is not an IUnknown-derived object: direct `IRegistrar* p = &object` and
+`CComObject<CRegObject>` patterns are not supported. Use QueryInterface or
+AtlCreateRegistrar for retained COM interfaces.
+
+Persistent registrar maps remain mutable between operations. Each script call
+captures an owned map snapshot, resolves/parses its source and only then
+acquires a default registration root. Explicit/operation contexts take priority;
+otherwise the own image and captured per-user setting supply the default.
+The replacement-only common-hook capability still rejects QI for IRegistrar;
+it does not grant script execution. Callers serialize registry writes and keep
+borrowed explicit HKEY/HMODULE contexts alive for synchronous calls.
+
+String scripts are bounded to 65536 UTF-16 units. File methods accept absolute
+paths within the existing 2048-unit canonical path policy (including its ban
+on `%`); only disk files are accepted. They open read-only with FILE_SHARE_READ,
+reject conflicting writers/delete access, bound input to 262148 bytes, read
+through one owned handle, require EOF, and reuse the strict UTF-8/BOM UTF-16
+LE/BE decoder. The decoded source retains the 65536-unit limit. Read/decode/parse
+errors precede registry writes, and no source file is modified.
+
+Resource methods accept only REGISTRY resources from the active registration
+image. The supplied absolute canonical module path must match that image;
+foreign/unloaded resource images are rejected instead of loaded or executed.
+Numeric IDs and named-resource limits are unchanged. General resource-file
+loading, CLSID_Registrar activation, dynamic UpdateRegistryFromResourceD,
+full CRegObject inheritance/legacy ABI, EXE-specific quoted MODULE/MODULE_RAW
+and full RGS grammar remain unimplemented. No second registrar is selected.
 
 Public signature references: [CAtlModule registry helpers](https://learn.microsoft.com/en-us/cpp/atl/reference/catlmodule-class),
 [registry macros](https://learn.microsoft.com/en-us/cpp/atl/reference/registry-macros),
