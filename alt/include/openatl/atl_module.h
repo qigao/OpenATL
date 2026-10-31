@@ -3,6 +3,7 @@
 #define OPENATL_ATL_MODULE_H
 #include "../atlbase.h"
 #include "com_server.h"
+#include "rgs_resource.h"
 #include <atomic>
 #include <algorithm>
 #include <mutex>
@@ -357,9 +358,8 @@ struct AutoObjectEntry {
 
 // DLL module lifetime and standard ATL export forwarding.
 //
-// BindServer() is the current explicit-class-table bridge, not a claim that
-// automatic ATL object maps, RGS or type-library registration exists. The
-// bound OpenATL::COM::Module and its static class table must outlive the DLL
+// BindServer() is the explicit-class-table bridge. The bound
+// OpenATL::COM::Module and its static class table must outlive the DLL
 // module and every factory/object/server lock. Binding is one-time; callers
 // must coordinate DLL unload and configuration externally.
 template<class T>
@@ -434,11 +434,15 @@ public:
     // ATL-compatible class-directed registration: each OBJECT_ENTRY_AUTO
     // class must expose a real static UpdateRegistry(BOOL), or explicitly
     // opt out with DECLARE_NO_REGISTRY. This path never derives ProgIDs or
-    // installer privileges from the CLSID and never implements RGS silently.
+    // installer privileges from the CLSID; resource scripts retain the
+    // bounded parser and owner-verified registration policy.
     HRESULT RegisterServer(BOOL registerTypeLib = FALSE, const CLSID* selected = nullptr) noexcept {
+        const bool perUser = detail::perUserRegistration.load();
+        OpenATL::COM::ScopedModuleRgsRegistration context(
+            _AtlBaseModule.GetModuleInstance(), perUser);
         if (!registerTypeLib) return ApplyAutoRegistry(TRUE, selected);
         if (this->IsTerminated()) return E_UNEXPECTED;
-        detail::TypeLibRegistration registration(detail::perUserRegistration.load());
+        detail::TypeLibRegistration registration(perUser);
         HRESULT hr = registration.Prepare(_AtlBaseModule.GetModuleInstance());
         if (FAILED(hr)) return hr; // No class callback before TypeLib preflight.
         hr = ApplyAutoRegistry(TRUE, selected);
@@ -451,9 +455,12 @@ public:
         return S_OK;
     }
     HRESULT UnregisterServer(BOOL unregisterTypeLib = FALSE, const CLSID* selected = nullptr) noexcept {
+        const bool perUser = detail::perUserRegistration.load();
+        OpenATL::COM::ScopedModuleRgsRegistration context(
+            _AtlBaseModule.GetModuleInstance(), perUser);
         if (!unregisterTypeLib) return ApplyAutoRegistry(FALSE, selected);
         if (this->IsTerminated()) return E_UNEXPECTED;
-        detail::TypeLibRegistration registration(detail::perUserRegistration.load());
+        detail::TypeLibRegistration registration(perUser);
         HRESULT hr = registration.Prepare(_AtlBaseModule.GetModuleInstance());
         if (FAILED(hr)) return hr;
         hr = ApplyAutoRegistry(FALSE, selected);

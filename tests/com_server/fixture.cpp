@@ -6,11 +6,9 @@
 namespace {
 using namespace OpenATL::COM;
 
-HMODULE image = nullptr;
-// Explicit application installer policy for this conformance DLL. The
-// context is scoped to this DLL's synchronous export and is not created by
-// COM activation, static registration, or DllMain.
-HRESULT withRegistryContext(BOOL installing) noexcept;
+// This fixture selects per-user installation. The standard module supplies
+// its own image, opened Classes root and synchronous registration context.
+HRESULT registerFixture(BOOL installing) noexcept;
 
 // The DLL contains two classes declared with genuine ATL OBJECT_ENTRY_AUTO.
 // CAtlDllModuleT invokes each class's real UpdateRegistry callback and
@@ -63,19 +61,9 @@ OBJECT_ENTRY_AUTO(CLSID_OpenATLAuxValue, AuxValue)
 class FixtureAtlModule : public ATL::CAtlDllModuleT<FixtureAtlModule> {};
 FixtureAtlModule dllModule;
 
-HRESULT withRegistryContext(BOOL installing) noexcept {
-    ATL::CRegKey root;
-    const LSTATUS state = ::RegOpenKeyExW(
-        HKEY_CURRENT_USER, L"Software\\Classes", 0,
-        KEY_READ | KEY_WRITE, &root.m_hKey);
-    if (state != ERROR_SUCCESS) return HRESULT_FROM_WIN32(state);
-    // Under HKCU only, explicitly selected by this application's installer.
-    // The same context is visible to the two class callbacks in this image;
-    // client/test EXE TLS and other DLLs cannot accidentally inherit it.
-    ScopedRgsRegistrationContext scope(root.m_hKey, image,
-                                        L"OpenATLNativeFixture");
-    if (FAILED(scope.Status())) return scope.Status();
-#if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
+HRESULT registerFixture(BOOL installing) noexcept {
+    if (rgs_resource_detail::Current() || rgs_resource_detail::CurrentModule())
+        return E_UNEXPECTED;
     bool previous = false;
     HRESULT hr = ATL::AtlGetPerUserRegistration(&previous);
     if (FAILED(hr)) return hr;
@@ -84,18 +72,22 @@ HRESULT withRegistryContext(BOOL installing) noexcept {
         ~RestoreMode() { ATL::AtlSetPerUserRegistration(previous); }
     } restore{previous};
     ATL::AtlSetPerUserRegistration(true);
-    return installing ? dllModule.DllRegisterServer()
-                      : dllModule.DllUnregisterServer();
+#if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
+    hr = installing ? dllModule.DllRegisterServer()
+                    : dllModule.DllUnregisterServer();
 #else
     // Cross-host fixtures without native MIDL still select class-only work.
-    return installing ? dllModule.DllRegisterServer(FALSE)
-                      : dllModule.DllUnregisterServer(FALSE);
+    hr = installing ? dllModule.DllRegisterServer(FALSE)
+                    : dllModule.DllUnregisterServer(FALSE);
 #endif
+    // Check cleanup on both success and every injected native failure.
+    if (rgs_resource_detail::Current() || rgs_resource_detail::CurrentModule())
+        return E_UNEXPECTED;
+    return hr;
 }
 } // namespace
 
-extern "C" BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, void* reserved) {
-    if (reason == DLL_PROCESS_ATTACH) image = instance;
+extern "C" BOOL WINAPI DllMain(HINSTANCE, DWORD reason, void* reserved) {
     return dllModule.DllMain(reason, reserved);
 }
 extern "C" HRESULT WINAPI DllGetClassObject(
@@ -106,8 +98,8 @@ extern "C" HRESULT WINAPI DllCanUnloadNow() {
     return dllModule.DllCanUnloadNow();
 }
 extern "C" HRESULT WINAPI DllRegisterServer() {
-    return withRegistryContext(TRUE);
+    return registerFixture(TRUE);
 }
 extern "C" HRESULT WINAPI DllUnregisterServer() {
-    return withRegistryContext(FALSE);
+    return registerFixture(FALSE);
 }

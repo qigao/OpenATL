@@ -123,19 +123,31 @@ helpers support optional numeric \N resource indexes and counted owned outputs.
 UnRegisterTypeLibForUser; the default selects their system-registration
 counterparts. Set the image-local mode before registration and serialize
 configuration/registration. Each operation snapshots its mode before class
-callbacks. This does not redirect arbitrary Win32 calls or another DLL, and
-RGS still uses its explicit application root/context. Native qualification
+callbacks and uses that same snapshot for RGS and TypeLib work. This does
+not redirect arbitrary Win32 calls or another DLL. Native qualification
 uses per-user registration and real DACL denial, without elevation or HKLM
 writes. Machine-wide permission behavior remains separately unqualified.
 
-Class-directed
-`DECLARE_REGISTRY_RESOURCEID` now loads an actual `REGISTRY` resource
-under the application's explicit `ScopedRgsRegistrationContext`, reusing
-the existing RGS parser and owner-verified executor; it does not silently
-install anything without that scope.
+Class-directed `DECLARE_REGISTRY_RESOURCEID` loads an actual `REGISTRY`
+resource from the module's own image. `CAtlDllModuleT::RegisterServer` and
+`UnregisterServer` supply a lazy synchronous RGS context: per-user mode opens
+the current user's `Software\Classes`; default mode opens the current
+token's HKCR merged Classes view with `RegOpenUserClassesRoot`. Root-access
+errors propagate as HRESULTs. Custom and `DECLARE_NO_REGISTRY` callbacks do
+not open this root. Once needed, the root and ownership context remain alive
+through all class callbacks, TypeLib work and class rollback.
+
+An explicit `ScopedRgsRegistrationContext` still takes priority, for example
+when an installer needs an isolated root or custom owner tag. Automatic
+contexts use `OpenATL.Module` plus the canonical DLL path as their ownership
+identity and retain the existing parser and owner-verified executor. A direct
+class `UpdateRegistry` call outside module registration still requires an
+explicit context. Nested explicit contexts remain rejected. Installer writes
+must be serialized; no work runs under `DllMain`.
 
 The existing `tests/com_server/fixture.cpp` now routes its actual COM DLL
-exports through `CAtlDllModuleT` and preserves real HKCU class registration,
+exports through `CAtlDllModuleT`, without manually opening a root or supplying
+an RGS context, and preserves real HKCU class registration,
 STA/MTA activation, object identity, server locks and unload behavior. The
 `atl_module.cpp` native test exercises failed/unbound/duplicate binding,
 IID rejection, factory and object lifetimes, registration forwarding and

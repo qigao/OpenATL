@@ -642,20 +642,30 @@ bool scopedResourceRegistry(HMODULE image) {
         REQUIRE(invalidOwner.Status() == E_INVALIDARG);
     }
     {
-        ScopedRgsRegistrationContext context(root.key, image,
-                                              L"RgsNativeTest");
-        REQUIRE(context.Status() == S_OK);
-        ScopedRgsRegistrationContext nested(root.key, image, L"Nested");
-        REQUIRE(nested.Status() == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS));
+        // An invalid lazy module default must neither open a root nor prevent
+        // an explicit isolated installer from selecting its own policy.
+        OpenATL::COM::ScopedModuleRgsRegistration module(nullptr, false);
+        REQUIRE(!OpenATL::COM::rgs_resource_detail::Current());
+        {
+            ScopedRgsRegistrationContext context(root.key, image,
+                                                  L"RgsNativeTest");
+            REQUIRE(context.Status() == S_OK);
+            ScopedRgsRegistrationContext nested(root.key, image, L"Nested");
+            REQUIRE(nested.Status() == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS));
+            REQUIRE(OpenATL::COM::UpdateRegistryResource(
+                IDR_MICROSOFT_CHAIN, TRUE) == S_OK);
+            REQUIRE(exists(root.key, L"COMMap.Chain.1"));
+            REQUIRE(OpenATL::COM::UpdateRegistryResource(
+                IDR_MICROSOFT_CHAIN, FALSE) == S_OK);
+            REQUIRE(!exists(root.key, L"COMMap.Chain.1"));
+            REQUIRE(exists(root.key, L"CLSID")); // NoRemove container remains.
+            REQUIRE(OpenATL::COM::UpdateRegistryResource(
+                IDR_MICROSOFT_CHAIN, FALSE) == S_OK);
+        }
         REQUIRE(OpenATL::COM::UpdateRegistryResource(
-            IDR_MICROSOFT_CHAIN, TRUE) == S_OK);
-        REQUIRE(exists(root.key, L"COMMap.Chain.1"));
+            IDR_MICROSOFT_CHAIN, TRUE) == E_INVALIDARG);
         REQUIRE(OpenATL::COM::UpdateRegistryResource(
-            IDR_MICROSOFT_CHAIN, FALSE) == S_OK);
-        REQUIRE(!exists(root.key, L"COMMap.Chain.1"));
-        REQUIRE(exists(root.key, L"CLSID")); // NoRemove container remains.
-        REQUIRE(OpenATL::COM::UpdateRegistryResource(
-            IDR_MICROSOFT_CHAIN, FALSE) == S_OK);
+            IDR_MICROSOFT_CHAIN, TRUE) == E_INVALIDARG);
     }
     REQUIRE(OpenATL::COM::UpdateRegistryResource(
         IDR_MICROSOFT_CHAIN, TRUE) == E_UNEXPECTED);

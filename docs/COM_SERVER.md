@@ -221,10 +221,11 @@ not used in production registration.
 This is **not an atomic Windows registry transaction**, and callers must
 exclude concurrent installer writers. No COM initialization or registry
 operation occurs during RGS parsing, `DllMain`, or object-map discovery.
-The bounded executor can now be invoked from `DECLARE_REGISTRY_RESOURCEID`
-using the separate mandatory `ScopedRgsRegistrationContext` installed
-inside a synchronous DLL registration export. This does not register a
-TypeLib object or implement the complete Microsoft ATL registrar grammar.
+The bounded executor is invoked from `DECLARE_REGISTRY_RESOURCEID` using the
+DLL module's automatic synchronous context or an explicit
+`ScopedRgsRegistrationContext`. The RGS executor itself does not register a
+TypeLib; the module coordinates that separate OLEAUT32 operation. The complete
+Microsoft ATL registrar grammar remains unsupported.
 
 ## Genuine `REGISTRY` resource-ID installation
 
@@ -240,12 +241,19 @@ is **no** fallback to another resource type, file path or RGS engine.
 `DECLARE_REGISTRY_RESOURCEID(IDR_X)` in `atlcom.h` provides the ATL
 class's `static UpdateRegistry(BOOL)` hook, reusing the same immutable
 `OBJECT_ENTRY_AUTO` class list and `CAtlDllModuleT` registration ordering
-from #29. It requires an active `ScopedRgsRegistrationContext` created by
-the **application's own registration export** with an opened HKEY,
-the actual HMODULE containing the `REGISTRY` resource and an explicit
-owner tag. The scope retrieves and validates the module's absolute DLL path;
-its borrowed HKEY/HMODULE and owned strings exist only for that synchronous
-invocation on the same module and thread. Missing/invalid/nested scopes,
+from #29. `CAtlDllModuleT` supplies its own image and a lazy registration
+context. The operation captures `AtlSetPerUserRegistration` once, shared with
+its TypeLib operation: true selects the current user's `Software\Classes`;
+false selects the current token's merged Classes view through
+`RegOpenUserClassesRoot`. Registry access occurs only on the first actual RGS
+callback, and the opened root remains alive through rollback. Automatic owner
+markers contain `OpenATL.Module` and the canonical DLL path.
+
+An explicit `ScopedRgsRegistrationContext` takes priority and still accepts
+an opened HKEY, the actual resource HMODULE and a custom owner tag. It validates
+the module's absolute path and borrows its HKEY/HMODULE for that synchronous
+invocation on the same module and thread. Direct standalone callbacks need
+this explicit scope. Invalid/nested explicit scopes, root-access failures,
 wrong resource type, unknown ID and invalid resource contents fail with an
 HRESULT. Class-factory lookup and UI windows need no such scope or COM init.
 
@@ -253,16 +261,19 @@ The native `openatl_com_server_fixture.dll` now embeds two actual
 `REGISTRY` resources with class-matching CLSIDs, plus two byte-identical
 Microsoft `Chain.rgs`/`Outer.rgs` resources in a Windows .rc file. Its
 two ATL classes use `DECLARE_REGISTRY_RESOURCEID`, not custom
-`UpdateRegistry` code or synthetic strings. The DLL exports explicitly
-open `HKCU\\Software\\Classes`, construct the scoped context inside the
-same DLL, and call the existing ATL module registrar. The STA/MTA client
+`UpdateRegistry` code or synthetic strings. The DLL exports select per-user
+mode and call the standard ATL module registrar, without manually opening a
+registry root or constructing an RGS context. The STA/MTA client
 tests verify both registered classes, ProgID lookup, a deliberately foreign
 auxiliary ProgID conflict and cleanup; separate tests load the original
 Microsoft REGISTRY resources from this real DLL and exercise a GUID-isolated
-HKCU root.
+HKCU root. Native TypeLib write-denial tests also verify class rollback through
+this automatic context; export checks detect context leaks after success and
+failure. An isolated-root test proves explicit policy overrides the lazy
+module default. Machine-wide permissions remain separately unqualified.
 
 This is a restricted source-compatible resource-ID API, **not** a general
-RGS interpreter or automatic Registry/TypeLib installer. It preserves
+RGS interpreter or the complete standalone registrar API. It preserves
 the existing owner markers and nonrecursive deletion semantics and does not
 authorize blind `ForceRemove` replacement. The caller must serialize
 installer writes; no actions run under DllMain. Original Microsoft ATL
