@@ -20,7 +20,9 @@ inline constexpr CLSID classId = {0xd19b8862, 0xa881, 0x47f6, {0x9c, 0x71, 0x91,
 inline constexpr CLSID autoClassId = {0xd19b8863, 0xa881, 0x47f6, {0x9c, 0x71, 0x91, 0xb2, 0xaf, 0x43, 0xe1, 0x03}};
 inline constexpr CLSID noRegistryClassId = {0xd19b8864, 0xa881, 0x47f6, {0x9c, 0x71, 0x91, 0xb2, 0xaf, 0x43, 0xe1, 0x03}};
 inline constexpr CLSID registrationClassId = {0xd19b8865, 0xa881, 0x47f6, {0x9c, 0x71, 0x91, 0xb2, 0xaf, 0x43, 0xe1, 0x03}};
+inline constexpr CLSID exeRegistryClassId = {0xd19b8866, 0xa881, 0x47f6, {0x9c, 0x71, 0x91, 0xb2, 0xaf, 0x43, 0xe1, 0x03}};
 int registrationCalls = 0;
+int exeRegistryCalls = 0;
 std::atomic<int> autoLive{0}, autoFinalRelease{0};
 
 class Value : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>, public IPersist {
@@ -86,6 +88,26 @@ public:
     }
 };
 OBJECT_ENTRY_AUTO(registrationClassId, RegistrationValue)
+
+class ExeRegistryValue : public NoRegistryValue {
+public:
+    static HRESULT WINAPI UpdateRegistry(BOOL install) noexcept {
+        if (!ATL::_pAtlModule || !OpenATL::COM::rgs_resource_detail::CurrentModule())
+            return E_UNEXPECTED;
+        ++exeRegistryCalls;
+        ATL::_ATL_REGMAP_ENTRY entries[] = {
+            {L"KEY", L"OpenATL.Exe.AutoRegistry"}, {L"FIELD", L"Description"},
+            {L"VALUE", L"EXE object map"}, {nullptr, nullptr}
+        };
+        return ATL::_pAtlModule->UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", install, entries);
+    }
+    HRESULT STDMETHODCALLTYPE GetClassID(CLSID* output) override {
+        if (!output) return E_POINTER;
+        *output = exeRegistryClassId;
+        return S_OK;
+    }
+};
+OBJECT_ENTRY_AUTO(exeRegistryClassId, ExeRegistryValue)
 
 class Factory : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>, public IClassFactory {
 public:
@@ -242,7 +264,7 @@ bool executable() {
     {
         Plain module;
         HRESULT result = S_OK;
-        CHECK(!module.ParseCommandLine(L"app.exe /RegServer", &result) && result == E_NOTIMPL);
+        CHECK(!module.ParseCommandLine(L"app.exe /RegServer", &result) && FAILED(result));
         CHECK(!module.ParseCommandLine(L"app.exe /RegServerPerUser", &result) && result == E_NOTIMPL);
         CHECK(module.WinMain(SW_HIDE) == static_cast<int>(S_FALSE));
     }
@@ -263,6 +285,8 @@ bool executable() {
     {
         Plain module;
         CHECK(module.GetInitHRESULT() == RPC_E_CHANGED_MODE && module.Run() == RPC_E_CHANGED_MODE);
+        CHECK(module.RegisterServer(FALSE, &exeRegistryClassId) == RPC_E_CHANGED_MODE &&
+              module.UnregisterServer(FALSE, &exeRegistryClassId) == RPC_E_CHANGED_MODE);
     }
     APTTYPE type; APTTYPEQUALIFIER qualifier;
     CHECK(::CoGetApartmentType(&type, &qualifier) == S_OK &&
@@ -275,6 +299,92 @@ bool executable() {
               (type == APTTYPE_STA || type == APTTYPE_MAINSTA));
     }
     CHECK(initializations == 1 && uninitializations == 1 && noCom());
+    return true;
+}
+
+class RegistrationModule : public ATL::CAtlModuleT<RegistrationModule> {};
+bool executable_registration() {
+    CHECK(noCom() && !ATL::_pAtlModule && exeRegistryCalls == 0);
+    struct PrivateRoot {
+        ATL::CRegKey key;
+        std::wstring path;
+        bool owned = false;
+        bool Open() {
+            GUID guid{};
+            wchar_t text[40]{};
+            if (FAILED(::CoCreateGuid(&guid)) || !::StringFromGUID2(guid, text, 40)) return false;
+            path = std::wstring(L"Software\\OpenATL.ExeRegistryTest.") + text;
+            DWORD disposition = 0;
+            const LSTATUS result = key.Create(HKEY_CURRENT_USER, path.c_str(), nullptr,
+                REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, nullptr, &disposition);
+            owned = result == ERROR_SUCCESS && disposition == REG_CREATED_NEW_KEY;
+            return owned;
+        }
+        ~PrivateRoot() {
+            key.Close();
+            if (owned) ::RegDeleteTreeW(HKEY_CURRENT_USER, path.c_str());
+        }
+    } root;
+    CHECK(root.Open());
+    const wchar_t* name = L"OpenATL.Exe.AutoRegistry";
+    const auto exists = [&]() {
+        ATL::CRegKey key;
+        return key.Open(root.key, name, KEY_READ) == ERROR_SUCCESS;
+    };
+    {
+        Plain module;
+        CHECK(module.GetInitHRESULT() == S_OK);
+        OpenATL::COM::ScopedRgsRegistrationContext context(
+            root.key, ::GetModuleHandleW(nullptr), L"ExeAutoRegistry");
+        CHECK(context.Status() == S_OK);
+        CHECK(module.RegisterServer(FALSE) == E_NOTIMPL && exeRegistryCalls == 0 && !exists());
+        CHECK(module.RegisterServer(FALSE, &CLSID_NULL) == CLASS_E_CLASSNOTAVAILABLE && !exists());
+        CHECK(FAILED(module.RegisterServer(TRUE, &exeRegistryClassId)) && exeRegistryCalls == 0 && !exists());
+        CHECK(FAILED(module.UnregisterServer(TRUE, &exeRegistryClassId)) && exeRegistryCalls == 0);
+        HRESULT other = S_OK, removed = S_OK;
+        std::thread wrong([&] {
+            other = module.RegisterServer(FALSE, &exeRegistryClassId);
+            removed = module.UnregisterServer(FALSE, &exeRegistryClassId);
+        });
+        wrong.join();
+        CHECK(other == RPC_E_WRONG_THREAD && removed == RPC_E_WRONG_THREAD && exeRegistryCalls == 0);
+        CHECK(module.RegisterServer(FALSE, &exeRegistryClassId) == S_OK && exists());
+        ATL::CRegKey key;
+        CHECK(key.Open(root.key, name, KEY_READ | KEY_WRITE) == ERROR_SUCCESS);
+        const std::wstring path = OpenATL::COM::rgs_resource_detail::Current()->modulePath;
+        const auto valueIs = [&](LPCWSTR field, const std::wstring& expected) {
+            wchar_t actual[OpenATL::RGS::MaxPathUnits + 32]{};
+            ULONG count = static_cast<ULONG>(sizeof(actual) / sizeof(actual[0]));
+            return key.QueryStringValue(field, actual, &count) == ERROR_SUCCESS && expected == actual;
+        };
+        CHECK(valueIs(L"Module", L"\"" + path + L"\"") && valueIs(L"RawModule", path) &&
+              valueIs(L"OpenATL.COMOwner", L"RGS1:ExeAutoRegistry:" + path));
+        CHECK(key.SetStringValue(L"Description", L"external modification") == ERROR_SUCCESS);
+        key.Close();
+        CHECK(FAILED(module.UnregisterServer(FALSE, &exeRegistryClassId)) && exists());
+        CHECK(key.Open(root.key, name, KEY_WRITE) == ERROR_SUCCESS &&
+              key.SetStringValue(L"Description", L"prefix EXE object map suffix") == ERROR_SUCCESS);
+        key.Close();
+        CHECK(module.UnregisterServer(FALSE, &exeRegistryClassId) == S_OK && !exists());
+        CHECK(exeRegistryCalls == 3 && module.GetLockCount() == 0);
+        module.Term();
+        CHECK(module.RegisterServer(FALSE, &exeRegistryClassId) == E_UNEXPECTED &&
+              module.UnregisterServer(FALSE, &exeRegistryClassId) == E_UNEXPECTED);
+    }
+    CHECK(noCom() && !ATL::_pAtlModule &&
+          !OpenATL::COM::rgs_resource_detail::Current() &&
+          !OpenATL::COM::rgs_resource_detail::CurrentModule());
+    {
+        // The common module itself performs the same registration without
+        // opting into the EXE wrapper's apartment initialization.
+        RegistrationModule module;
+        OpenATL::COM::ScopedRgsRegistrationContext context(
+            root.key, ::GetModuleHandleW(nullptr), L"BaseAutoRegistry");
+        CHECK(context.Status() == S_OK && noCom());
+        CHECK(module.RegisterServer(FALSE, &exeRegistryClassId) == S_OK && exists() && noCom());
+        CHECK(module.UnregisterServer(FALSE, &exeRegistryClassId) == S_OK && !exists() && noCom());
+    }
+    CHECK(exeRegistryCalls == 5 && noCom() && !ATL::_pAtlModule);
     return true;
 }
 
@@ -416,7 +526,7 @@ bool auto_object_map() {
         CHECK(dll.RegisterServer(FALSE, &registrationClassId) == S_OK);
         CHECK(dll.UnregisterServer(FALSE, &registrationClassId) == S_OK);
         CHECK(registrationCalls == 2);
-        // This EXE has no REGISTRY resource. Direct static-helper failures
+        // This EXE has no resource named Missing.RGS. Static-helper failures
         // must finish before acquiring a default root and release their scope.
         CHECK(FAILED(dll.UpdateRegistryFromResourceS(L"Missing.RGS", TRUE)));
         CHECK(!OpenATL::COM::rgs_resource_detail::Current() &&
@@ -478,6 +588,6 @@ bool duplicate_auto_map() {
 }
 
 bool RunAtlModuleTests() {
-    return module_locks() && executable() && dll_module() &&
+    return module_locks() && executable() && executable_registration() && dll_module() &&
            auto_object_map() && duplicate_auto_map();
 }

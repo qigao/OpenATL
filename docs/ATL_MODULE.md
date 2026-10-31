@@ -8,12 +8,17 @@ type-library registration. The native source test validates GUID identity.
 
 `CAtlExeModuleT<T>` additionally owns a COM initialization on its construction
 thread and optional explicit class-factory registrations.
+`CAtlModuleT<T>` and its EXE/DLL derivatives share one frozen
+`OBJECT_ENTRY_AUTO` map for persistent class registration. RegisterServer and
+UnregisterServer invoke class-defined UpdateRegistry callbacks, with optional
+CLSID selection and the existing resource/TypeLib ownership rules.
 `CAtlDllModuleT<T>` now supports the real DLL class-factory/unload exports
 through the same `OpenATL::COM::Module` engine. Standard static
 `OBJECT_ENTRY_AUTO` class discovery is implemented; automatic registry
 registration from class-defined `UpdateRegistry(BOOL)` callbacks is now
-supported. Bounded resource-driven RGS requires an explicit registration
-context; full RGS and expanded ATL maps remain compatibility work. Legacy
+supported. Bounded resource-driven RGS uses a lazy module registration context
+or a caller-supplied explicit context; full RGS and expanded ATL maps remain
+compatibility work. Legacy
 `CComModule` supports bounded object maps, class-factory registration cookies,
 object-main hooks and same-thread retirement; its full API remains incomplete.
 
@@ -62,10 +67,33 @@ the module still revokes its own OS class registrations on every Run exit.
 The default loop uses GetMessage/TranslateMessage/DispatchMessage and reports
 GetMessage errors. Registration commands are limited to 32767 UTF-16 code
 units including the terminator, then tokenized as Windows arguments;
-default persistent server/AppID/type-library registration is unimplemented
-and returns `E_NOTIMPL`. RGS, automatic object maps, idle-shutdown monitoring,
-service modules and complete ATL EXE-server behavior are required compatibility
-candidates, not permanent exclusions. No fake success is permitted.
+the default RegServer/UnregServer commands request TypeLib registration, so a
+missing embedded TypeLib fails before any class callback. Per-user command
+switches and AppID registration remain unimplemented. Automatic class-factory
+registration from the EXE object map, idle-shutdown monitoring, service modules
+and complete ATL EXE-server behavior remain compatibility work. No fake success
+is permitted.
+
+The EXE wrapper checks its constructing thread, initialization HRESULT and
+termination state before either persistent-registration operation. Base
+CAtlModuleT registration does not initialize COM. The shared map validates
+entries and duplicate CLSIDs once, sorts callbacks by CLSID, preflights every
+selected callback, and rolls successful class registrations back in reverse
+order after a later failure. Missing callbacks return E_NOTIMPL; a missing
+selected CLSID returns CLASS_E_CLASSNOTAVAILABLE. The captured per-user policy,
+explicit-root priority and TypeLib preflight/rollback are shared with DLLs.
+Explicit DLL BindServer tables retain their separate registry limitation;
+they do not acquire callbacks from the automatic map.
+
+Existing native module tests register the real parameterized REGISTRY resource
+through an EXE class's OBJECT_ENTRY_AUTO callback under a fresh GUID private
+HKCU root. They check selected/all-callback preflight, actual quoted MODULE/raw
+MODULE_RAW and owner values, preservation after external value changes,
+unregistration, wrong-thread/failed-initialization/terminated rejection, and
+balanced COM teardown. The common CAtlModuleT path runs the same resource
+callback without initializing COM. Positive EXE embedded-TypeLib registration,
+AppID behavior and automatic EXE class-factory activation are not qualified by
+these checks.
 
 ## `CAtlDllModuleT<T>` — implemented explicit-class-table milestone
 
@@ -140,7 +168,7 @@ through all class callbacks, TypeLib work and class rollback.
 
 An explicit `ScopedRgsRegistrationContext` still takes priority, for example
 when an installer needs an isolated root or custom owner tag. Automatic
-contexts use `OpenATL.Module` plus the canonical DLL path as their ownership
+contexts use `OpenATL.Module` plus the canonical module path as their ownership
 identity and retain the existing parser and owner-verified executor. Direct
 class callbacks use the active ATL module's static registrar; without an ATL
 module they require an explicit context. Nested explicit contexts remain rejected. Installer writes
