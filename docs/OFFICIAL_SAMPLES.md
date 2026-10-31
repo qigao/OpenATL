@@ -163,8 +163,7 @@ qualification.
 This qualifies original **IDL generation, embedded/registered TypeLib loading and one
 real Automation property**, not original COMMap project compilation/link or
 original COMMap class activation.
-The unchanged COMMap still needs cached tear-offs, automatic
-aggregation, full registration/API compatibility, broader `IDispatchImpl` and
+The unchanged COMMap still needs automatic aggregation, full registration/API compatibility, broader `IDispatchImpl` and
 generated `aggreg/aggreg.idl`. All 37 original pure-ATL project
 entries remain **not-qualified**.
 
@@ -207,3 +206,9 @@ Sources:
 - [Official WTL release](https://sourceforge.net/projects/wtl/files/WTL%2010/WTL%2010.0.10320%20Release/)
 - [Microsoft sample catalog](https://learn.microsoft.com/en-us/cpp/overview/visual-cpp-samples)
 - [Pinned Microsoft ATL sample sources](https://github.com/microsoft/VCSamples/tree/9e1d4475555b76a17a3568369867f1d7b6cc6126/VC2010Samples/ATL/General)
+
+The original MIDL ITearOff1/ITearOff2 metadata additionally drives ordinary and
+cached tear-off fixtures with real property Invoke, owner identity and DLL
+retirement tests. This qualifies the mapped API subset, not compilation of the
+unchanged Outer.cpp/Chain.cpp or the whole COMMap DLL. Exact Microsoft tear-off
+member pointer/layout compatibility and automatic aggregates remain separate.

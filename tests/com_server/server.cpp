@@ -434,6 +434,48 @@ bool aggregateDll(Dll& dll, bool nativeCom) {
 }
 
 #if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
+bool tearOffProperty(IDispatch* object, REFIID expected, const wchar_t* text) {
+    ATL::CComPtr<ITypeInfo> info;
+    REQUIRE(object->GetTypeInfo(0, LOCALE_SYSTEM_DEFAULT, &info.p) == S_OK && info.p);
+    TYPEATTR* attr = nullptr;
+    REQUIRE(info->GetTypeAttr(&attr) == S_OK && attr);
+    const bool identity = IsEqualIID(attr->guid, expected);
+    info->ReleaseTypeAttr(attr);
+    REQUIRE(identity);
+    LPOLESTR names[] = {const_cast<LPOLESTR>(L"Name")};
+    DISPID member = DISPID_UNKNOWN;
+    REQUIRE(object->GetIDsOfNames(IID_NULL, names, 1, LOCALE_SYSTEM_DEFAULT, &member) == S_OK && member == 0);
+    DISPPARAMS arguments{};
+    ATL::CComVariant value;
+    REQUIRE(object->Invoke(member, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET,
+        &arguments, &value, nullptr, nullptr) == S_OK);
+    REQUIRE(value.vt == VT_BSTR && value.bstrVal && std::wcscmp(value.bstrVal, text) == 0);
+    return true;
+}
+bool verifyTearOffDispatch(IDispatch* owner, IDispatch** retained) {
+    REQUIRE(retained);
+    *retained = nullptr;
+    ATL::CComPtr<ITearOff1> first, another, same;
+    ATL::CComPtr<ITearOff2> cached, repeated, cross;
+    REQUIRE(owner->QueryInterface(IID_ITearOff1, reinterpret_cast<void**>(&first.p)) == S_OK);
+    REQUIRE(owner->QueryInterface(IID_ITearOff1, reinterpret_cast<void**>(&another.p)) == S_OK && first.p != another.p);
+    REQUIRE(first->QueryInterface(IID_ITearOff1, reinterpret_cast<void**>(&same.p)) == S_OK && first.p == same.p);
+    REQUIRE(owner->QueryInterface(IID_ITearOff2, reinterpret_cast<void**>(&cached.p)) == S_OK);
+    REQUIRE(owner->QueryInterface(IID_ITearOff2, reinterpret_cast<void**>(&repeated.p)) == S_OK && cached.p == repeated.p);
+    REQUIRE(first->QueryInterface(IID_ITearOff2, reinterpret_cast<void**>(&cross.p)) == S_OK && cross.p == cached.p);
+    ATL::CComPtr<IUnknown> canonical;
+    REQUIRE(owner->QueryInterface(IID_IUnknown, reinterpret_cast<void**>(&canonical.p)) == S_OK);
+    for (IUnknown* item : {static_cast<IUnknown*>(first.p), static_cast<IUnknown*>(another.p),
+                           static_cast<IUnknown*>(cached.p), static_cast<IUnknown*>(repeated.p)}) {
+        ATL::CComPtr<IUnknown> identity;
+        REQUIRE(item->QueryInterface(IID_IUnknown, reinterpret_cast<void**>(&identity.p)) == S_OK && identity.p == canonical.p);
+    }
+    REQUIRE(tearOffProperty(first.p, IID_ITearOff1, L"OpenWTL tear one"));
+    REQUIRE(tearOffProperty(cached.p, IID_ITearOff2, L"OpenWTL tear two"));
+    cached->AddRef();
+    *retained = static_cast<IDispatch*>(cached.p);
+    return true;
+}
 bool embeddedDispatch(Dll& dll, const char* creator = "OpenATLCreateEmbeddedDispatch") {
     using Create = HRESULT (WINAPI*)(IDispatch**);
     using TypeInfo = HRESULT (WINAPI*)(REFIID, REFGUID, ITypeInfo**);
@@ -481,9 +523,14 @@ bool embeddedDispatch(Dll& dll, const char* creator = "OpenATLCreateEmbeddedDisp
     ATL::CComPtr<ITypeLib> registeredAfter;
     REQUIRE(::LoadRegTypeLib(LIBID_COMMAPLib, 1, 0, LOCALE_SYSTEM_DEFAULT,
         &registeredAfter.p) == registryBefore);
+    ATL::CComPtr<IDispatch> retainedTear;
+    REQUIRE(verifyTearOffDispatch(dispatch.p, &retainedTear.p));
     dispatch.Release();
     info.Release();
     library.Release();
+    REQUIRE(dll.unload() == S_FALSE);
+    REQUIRE(tearOffProperty(retainedTear.p, IID_ITearOff2, L"OpenWTL tear two"));
+    retainedTear.Release();
     REQUIRE(dll.unload() == S_OK);
     std::puts("OPENATL_EMBEDDED_TYPELIB_OK image=dll dispatch=1 invoke=1 register=0");
     return true;
@@ -627,6 +674,9 @@ bool exeDispatch(bool registered) {
                             &parameters, &result, nullptr, nullptr) == S_OK);
     REQUIRE(result.vt == VT_BSTR && result.bstrVal &&
             std::wstring_view(result.bstrVal, ::SysStringLen(result.bstrVal)) == L"OpenWTL embedded chain");
+    ATL::CComPtr<IDispatch> retainedTear;
+    REQUIRE(verifyTearOffDispatch(dispatch.p, &retainedTear.p));
+    REQUIRE(tearOffProperty(retainedTear.p, IID_ITearOff2, L"OpenWTL tear two"));
     return true;
 }
 

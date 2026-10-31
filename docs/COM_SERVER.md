@@ -552,7 +552,37 @@ exercise direct factory creation without COM initialization and native
 CoCreateInstance aggregation after installation, then verify real methods,
 canonical identity, reference retirement, DllCanUnloadNow and unload.
 
-This milestone does not implement automatic aggregates, CComPolyObject,
-cached/uncached tear-offs, arbitrary custom factory policies or the whole
+This basic aggregation milestone does not implement automatic aggregates,
+CComPolyObject, arbitrary custom factory policies or the whole
 original COMMap application. It introduces no second factory provider or test
 entry point, and no printer/hardware-HSP CI requirement.
+
+## Ordinary and cached tear-offs
+
+CComTearOffObject implements a separately counted interface object. It retains
+one controlling-owner reference while alive, queries its own map first, uses
+the owner's IUnknown for identity and forwards missing interfaces to the owner.
+Another owner QI creates a new ordinary instance. The owner reference survives
+FinalRelease and the tear-off Base destructor.
+
+CComCachedTearOffObject has a private, separately counted IUnknown. The owner
+keeps one private reference in the declared raw slot (including CComPtr.p),
+while every public contained interface retains the controlling owner. Repeated
+queries reuse the same cached instance; there is no permanent owner/cache
+reference cycle. The owner releases the private IUnknown in FinalRelease.
+
+The existing core suite tests independent instance/cache identities, fallback
+QI, owner retention after the original pointer is released, exact destruction
+ordering, HRESULT/exception/allocation failure and retry, recursive construction
+rejection, eight-thread first-publication and aggregated owner data. The same
+MIDL-generated original ITearOff1/2 interfaces now run through actual EXE/DLL
+embedded/registered type information and property Invoke in existing native
+cases, including a retained cached interface after the DLL owner pointer is
+released. No original Microsoft application is thereby marked qualified.
+
+m_pOwner deliberately stores the actual Owner*; the exact Microsoft
+CComObject<Owner>* member type and layout remain unqualified. See
+ATL_COMPATIBILITY.md for the typed-owner and construction-lock contracts.
+Automatic aggregates, CComPolyObject, full original COMMap admission and
+arbitrary custom factories remain separate work. Hardware HSP and printer
+CI remain retired.
