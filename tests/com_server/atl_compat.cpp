@@ -437,9 +437,9 @@ bool RunAtlCompatibilityTests() {
         ATL::CComAggObject<Single>* aggregate = nullptr;
         CHECK(ATL::CComAggObject<Single>::CreateInstance(&outer, &aggregate) == S_OK);
         CHECK(aggregate->AddRef() == 1);
-        ATL::CComPtr<IPersist> interface;
-        CHECK(aggregate->QueryInterface(IID_IPersist, reinterpret_cast<void**>(&interface.p)) == S_OK && outer.refs == 2);
-        interface.Release();
+        ATL::CComPtr<IPersist> singleInterface;
+        CHECK(aggregate->QueryInterface(IID_IPersist, reinterpret_cast<void**>(&singleInterface.p)) == S_OK && outer.refs == 2);
+        singleInterface.Release();
         CHECK(outer.refs == 1 && aggregate->Release() == 0);
     }
 
