@@ -203,7 +203,7 @@ stale information if metadata preparation fails. Metadata is best effort and
 does not replace the documented returned HRESULT. ANSI strings use Windows
 CP_ACP. Resource IDs use the selected/default _AtlBaseModule resource image;
 LoadStringW's pointer/length form is copied into an owned BSTR. Invalid/missing
-resources assert in debug builds and report Unknown Error. in release builds.
+resources assert in debug builds and report `Unknown Error.` in release builds.
 
 ISupportErrorInfoImpl advertises one supported IID; clients retrieve native
 GetErrorInfo immediately after a failed call. GetErrorInfo transfers ownership

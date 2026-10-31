@@ -630,7 +630,7 @@ forms using native OLE ICreateErrorInfo/IErrorInfo. ISupportErrorInfoImpl provid
 the single-IID support declaration. Metadata is copied into the native error
 object, with IID, help context/file and an optional registered ProgID source.
 Explicit HRESULTs are preserved; text defaults to DISP_E_EXCEPTION and resource
-IDs use FACILITY_ITF. Missing resources report Unknown Error. in release builds
+IDs use FACILITY_ITF. Missing resources report `Unknown Error.` in release builds
 and assert in debug builds. Metadata preparation failures clear stale state and
 preserve the specified/default HRESULT. No second error runtime is present.
 

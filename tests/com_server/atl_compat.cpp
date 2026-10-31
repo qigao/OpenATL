@@ -684,8 +684,14 @@ bool ErrorFields(const wchar_t* text, REFIID expected, DWORD help = 0,
     CHECK(error->GetGUID(&iid) == S_OK && IsEqualGUID(iid, expected));
     ATL::CComBSTR description, helpFile, source;
     DWORD context = 0;
-    CHECK(error->GetDescription(&description.m_str) == S_OK &&
-        std::wstring_view(description.m_str ? description.m_str : L"", description.Length()) == text);
+    CHECK(error->GetDescription(&description.m_str) == S_OK);
+    if (std::wstring_view(description.m_str ? description.m_str : L"", description.Length()) != text) {
+        std::fprintf(stderr, "ATL_ERROR_DESCRIPTION expected=%zu actual=%u utf16=", std::wcslen(text), description.Length());
+        for (UINT i = 0; i < description.Length() && i < 64; ++i)
+            std::fprintf(stderr, "%04x ", static_cast<unsigned>(description.m_str[i]));
+        std::fputc('\n', stderr);
+        CHECK(false);
+    }
     CHECK(error->GetHelpFile(&helpFile.m_str) == S_OK &&
         std::wstring_view(helpFile.m_str ? helpFile.m_str : L"", helpFile.Length()) == file);
     CHECK(error->GetHelpContext(&context) == S_OK && context == help);
