@@ -195,8 +195,10 @@ bounded depth/keys/values, ordered parents, canonical safe names and paths,
 no duplicates, unsupported substitutions, owner-marker collision or foreign
 preexisting keys. `ForceRemove` never overwrites an existing key and never
 calls `RegDeleteTree`. Only the literal value-free
-`NoRemove CLSID` may be shared; the shared CLSID container is not owned
-and is never removed, even if created by this registration.
+`NoRemove CLSID` and `NoRemove AppID` may be shared; these top-level containers
+are not owned and are never removed, even if created by this registration.
+Scripted values on either shared container and nested NoRemove groupings remain
+rejected; foreign container values and unowned siblings are preserved.
 
 Every newly owned key receives `OpenATL.COMOwner` as its first REG_SZ value
 (`RGS1:<ownerTag>:<canonical module path>`); all original default/named
@@ -356,9 +358,20 @@ checks the remote PID/image/CLSID through real proxy calls, both creation APIs,
 LockServer, retained proxies after revocation, native process exit and exact
 registry cleanup. Quoted MODULE/unquoted MODULE_RAW supply the launch command
 and ServerExecutable. There is no direct CreateProcess launch or alternate
-transport, new binary, project or workflow. AppID/security policy, arbitrary
+transport, new binary, project or workflow. AppID security policy, arbitrary
 custom-interface marshaling, idle shutdown and positive EXE embedded-TypeLib
 acceptance remain separate.
+
+AppID resource registration is now available through RegisterAppId/UnregisterAppId
+and DECLARE_REGISTRY_APPID_RESOURCEID. DLL exports and EXE registration commands
+install AppID before classes and remove it after successful class unregistration,
+with owner-verified rollback after registration failure. Nested helpers reuse the
+whole operation's captured mode/root. Native tests use the existing embedded
+resource set and a GUID private HKCU root to check GUID/EXE-alias metadata,
+ownership and foreign/shared preservation, command/export order, mode changes,
+exception propagation and rollback error priority. An undeclared AppID returns
+S_FALSE without writes. This does not qualify arbitrary AppID security settings,
+DCOM permissions, RunAs or service management.
 
 This is a restricted source-compatible resource-ID API, **not** a general
 RGS interpreter or the complete standalone registrar API. It preserves

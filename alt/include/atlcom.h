@@ -278,6 +278,13 @@ public: \
         return ::OpenATL::COM::UpdateRegistryResource((name), install); \
     }
 
+#define DECLARE_REGISTRY_APPID_RESOURCEID(id, appid) \
+public: \
+    static LPCTSTR GetAppId() noexcept { return _T(appid); } \
+    static HRESULT WINAPI UpdateRegistryAppId(BOOL install) noexcept { \
+        return ::ATL::detail::UpdateAppIdResource(static_cast<UINT>(id), GetAppId(), install); \
+    }
+
 // Original ATL module LIBID declaration. CAtlModuleT<T> calls the derived
 // class's static InitLibId on construction; the source-compatible module
 // identity is then available to defaulted ATL IDispatchImpl<T> templates.

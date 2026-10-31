@@ -296,6 +296,31 @@ inline HRESULT WINAPI CAtlModule::UpdateRegistryFromResourceS(
     } catch (...) { return detail::AtlModuleException(); }
 }
 
+namespace detail {
+inline HRESULT UpdateAppIdResource(UINT id, LPCWSTR appId, BOOL install) noexcept {
+    if (!OpenATL::COM::registration_detail::bounded(appId, 38) ||
+        !OpenATL::RGS::detail::Guid(appId)) return E_INVALIDARG;
+    GUID guid{};
+    if (FAILED(::CLSIDFromString(appId, &guid)) || ::IsEqualGUID(guid, GUID_NULL))
+        return E_INVALIDARG;
+    return _pAtlModule ? _pAtlModule->UpdateRegistryFromResourceS(id, install) : E_UNEXPECTED;
+}
+// An enclosing application operation owns its policy/root until rollback ends.
+// Nested AppID and class helpers must not recapture callback-mutated globals.
+class ModuleRegistrationScope final {
+public:
+    ModuleRegistrationScope() noexcept {
+        const auto* existing = OpenATL::COM::rgs_resource_detail::CurrentModule();
+        perUser_ = existing ? existing->PerUserRegistration() : perUserRegistration.load();
+        if (!existing) owned_.emplace(_AtlBaseModule.GetModuleInstance(), perUser_);
+    }
+    bool PerUserRegistration() const noexcept { return perUser_; }
+private:
+    bool perUser_ = false;
+    std::optional<OpenATL::COM::ScopedModuleRgsRegistration> owned_;
+};
+}
+
 // Original ATL object-map ABI. The source table remains owned by the caller;
 // this module owns only the COM factory references and registration cookies.
 // Null pclsid terminates the table; counts are bounded before any callback.
@@ -699,13 +724,16 @@ template<class T>
 class CAtlModuleT : public CAtlModule {
 public:
     CAtlModuleT() noexcept { InitLibIdIfPresent<T>(0); }
+    static LPCTSTR GetAppId() noexcept { return nullptr; }
+    static HRESULT WINAPI UpdateRegistryAppId(BOOL) noexcept { return S_FALSE; }
+    HRESULT RegisterAppId() noexcept { return ApplyAppId(TRUE); }
+    HRESULT UnregisterAppId() noexcept { return ApplyAppId(FALSE); }
     // Common persistent registration for EXE and DLL modules. One snapshot
     // supplies callbacks, resource ownership and the TypeLib mode policy.
     HRESULT RegisterServer(BOOL registerTypeLib = FALSE, const CLSID* selected = nullptr) noexcept {
         if (this->IsTerminated()) return E_UNEXPECTED;
-        const bool perUser = detail::perUserRegistration.load();
-        OpenATL::COM::ScopedModuleRgsRegistration context(
-            _AtlBaseModule.GetModuleInstance(), perUser);
+        detail::ModuleRegistrationScope context;
+        const bool perUser = context.PerUserRegistration();
         if (!registerTypeLib) return autoMap_.ApplyAutoRegistry(TRUE, selected);
         detail::TypeLibRegistration registration(perUser);
         HRESULT hr = registration.Prepare(_AtlBaseModule.GetModuleInstance());
@@ -721,9 +749,8 @@ public:
     }
     HRESULT UnregisterServer(BOOL unregisterTypeLib = FALSE, const CLSID* selected = nullptr) noexcept {
         if (this->IsTerminated()) return E_UNEXPECTED;
-        const bool perUser = detail::perUserRegistration.load();
-        OpenATL::COM::ScopedModuleRgsRegistration context(
-            _AtlBaseModule.GetModuleInstance(), perUser);
+        detail::ModuleRegistrationScope context;
+        const bool perUser = context.PerUserRegistration();
         if (!unregisterTypeLib) return autoMap_.ApplyAutoRegistry(FALSE, selected);
         detail::TypeLibRegistration registration(perUser);
         HRESULT hr = registration.Prepare(_AtlBaseModule.GetModuleInstance());
@@ -733,8 +760,46 @@ public:
     }
 
 protected:
+    template<class Registration>
+    HRESULT RegisterApplication(Registration registration) noexcept {
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        detail::ModuleRegistrationScope context;
+        HRESULT app = E_UNEXPECTED;
+        try { app = static_cast<T*>(this)->RegisterAppId(); }
+        catch (...) { return detail::AtlModuleException(); }
+        if (FAILED(app)) return app;
+        HRESULT hr = E_UNEXPECTED;
+        try { hr = registration(); }
+        catch (...) { hr = detail::AtlModuleException(); }
+        if (FAILED(hr) && app == S_OK) {
+            HRESULT rollback = E_UNEXPECTED;
+            try { rollback = static_cast<T*>(this)->UnregisterAppId(); }
+            catch (...) { rollback = detail::AtlModuleException(); }
+            return FAILED(rollback) ? rollback : hr;
+        }
+        return SUCCEEDED(hr) && app == S_OK ? S_OK : hr;
+    }
+    template<class Unregistration>
+    HRESULT UnregisterApplication(Unregistration unregistration) noexcept {
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        detail::ModuleRegistrationScope context;
+        HRESULT hr = E_UNEXPECTED;
+        try { hr = unregistration(); }
+        catch (...) { return detail::AtlModuleException(); }
+        if (FAILED(hr)) return hr;
+        HRESULT app = E_UNEXPECTED;
+        try { app = static_cast<T*>(this)->UnregisterAppId(); }
+        catch (...) { return detail::AtlModuleException(); }
+        return FAILED(app) || app == S_OK ? app : hr;
+    }
     detail::AutoObjectMap autoMap_;
 private:
+    HRESULT ApplyAppId(BOOL install) noexcept {
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        detail::ModuleRegistrationScope context;
+        try { return static_cast<T*>(this)->UpdateRegistryAppId(install); }
+        catch (...) { return detail::AtlModuleException(); }
+    }
     template<class U>
     static auto InitLibIdIfPresent(int) noexcept
         -> decltype(U::InitLibId(), void()) { U::InitLibId(); }
@@ -839,7 +904,9 @@ public:
         this->Lock();
         HRESULT result = E_UNEXPECTED;
         try {
-            result = static_cast<T*>(this)->RegisterServer(registerTypeLib, nullptr);
+            result = this->RegisterApplication([&] {
+                return static_cast<T*>(this)->RegisterServer(registerTypeLib, nullptr);
+            });
         } catch (...) {
             result = detail::AtlModuleException();
         }
@@ -851,7 +918,9 @@ public:
         this->Lock();
         HRESULT result = E_UNEXPECTED;
         try {
-            result = static_cast<T*>(this)->UnregisterServer(unregisterTypeLib, nullptr);
+            result = this->UnregisterApplication([&] {
+                return static_cast<T*>(this)->UnregisterServer(unregisterTypeLib, nullptr);
+            });
         } catch (...) {
             result = detail::AtlModuleException();
         }
@@ -891,6 +960,14 @@ public:
     static void UninitializeCom() noexcept { ::CoUninitialize(); }
     HRESULT GetInitHRESULT() const noexcept { return m_hr; }
 
+    HRESULT RegisterAppId() noexcept {
+        const HRESULT hr = CheckThread();
+        return FAILED(hr) ? hr : CAtlModuleT<T>::RegisterAppId();
+    }
+    HRESULT UnregisterAppId() noexcept {
+        const HRESULT hr = CheckThread();
+        return FAILED(hr) ? hr : CAtlModuleT<T>::UnregisterAppId();
+    }
     HRESULT RegisterServer(BOOL library = FALSE, const CLSID* selected = nullptr) noexcept {
         const HRESULT hr = CheckThread();
         return FAILED(hr) ? hr : CAtlModuleT<T>::RegisterServer(library, selected);
@@ -1021,10 +1098,16 @@ public:
                 if (*option != L'/' && *option != L'-') continue;
                 ++option;
                 if (::_wcsicmp(option, L"RegServer") == 0) {
-                    *result = static_cast<T*>(this)->RegisterServer(TRUE); run = false; break;
+                    *result = this->RegisterApplication([&] {
+                        return static_cast<T*>(this)->RegisterServer(TRUE);
+                    });
+                    run = false; break;
                 }
                 if (::_wcsicmp(option, L"UnregServer") == 0) {
-                    *result = static_cast<T*>(this)->UnregisterServer(TRUE); run = false; break;
+                    *result = this->UnregisterApplication([&] {
+                        return static_cast<T*>(this)->UnregisterServer(TRUE);
+                    });
+                    run = false; break;
                 }
                 if (::_wcsicmp(option, L"RegServerPerUser") == 0 ||
                     ::_wcsicmp(option, L"UnregServerPerUser") == 0) {

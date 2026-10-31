@@ -88,7 +88,7 @@ GetMessage errors. Registration commands are limited to 32767 UTF-16 code
 units including the terminator, then tokenized as Windows arguments;
 the default RegServer/UnregServer commands request TypeLib registration, so a
 missing embedded TypeLib fails before any class callback. Per-user command
-switches and AppID registration remain unimplemented. Idle-shutdown monitoring,
+switches remain unimplemented. Idle-shutdown monitoring,
 service modules and complete ATL EXE-server behavior remain compatibility work.
 No fake success is permitted.
 
@@ -110,7 +110,7 @@ MODULE_RAW and owner values, preservation after external value changes,
 unregistration, wrong-thread/failed-initialization/terminated rejection, and
 balanced COM teardown. The common CAtlModuleT path runs the same resource
 callback without initializing COM. Positive EXE embedded-TypeLib registration,
-AppID behavior is not qualified by these resource checks.
+AppID resource registration has its separate checks described below.
 
 The same native module suite additionally publishes the automatic map in both
 STA and MTA, uses CoGetClassObject and CoCreateInstance to create actual objects,
@@ -144,9 +144,47 @@ module admission, retaining its output contract and native CI matrix.
 
 This qualifies native SCM launch and system-interface marshaling under the
 current user's local COM policy. Custom proxy/stub generation, arbitrary
-user-defined interface marshaling, AppID/security policy, services, per-user
+user-defined interface marshaling, AppID security policy, services, per-user
 command switches, idle shutdown and positive EXE embedded-TypeLib registration
 remain separate work.
+
+`RegisterAppId()` / `UnregisterAppId()` now invoke the derived module's
+`UpdateRegistryAppId(BOOL)` hook. `DECLARE_REGISTRY_APPID_RESOURCEID(id,
+"{GUID}")` supplies that static hook and `GetAppId()` using the standard narrow
+GUID-literal spelling. It validates a non-null GUID, then executes the actual
+numeric REGISTRY resource through the existing static helper/common replacement
+hook. Invalid GUIDs, missing resources and callback/exception failures propagate;
+no alternate registrar or generated AppID metadata is selected. Without a
+declaration/override, GetAppId returns null and the default hook/operations
+return S_FALSE (explicitly no work), without opening a registry root.
+
+DLL registration exports and EXE RegServer commands install AppID before class
+registration. A subsequent class/TypeLib error removes the AppID only when that
+hook reported S_OK; a rollback error takes priority. Unregistration removes
+classes first and only then AppID, preserving AppID after a class error. Direct
+RegisterServer/UnregisterServer still select class/TypeLib work separately.
+An enclosing scope captures per-user mode once, keeps the lazy root alive, and
+is reused by nested AppID, class and TypeLib helpers through rollback. Changing
+the global mode from a hook cannot split that operation's policy. EXE AppID
+operations also enforce the constructor-thread/init-HRESULT/termination checks.
+
+The owner-verified executor now admits value-free top-level NoRemove AppID as a
+shared container alongside CLSID. It never owns/removes either container or
+their foreign values; all resource children retain exact owner/content checks.
+Nested NoRemove AppID and scripted container values remain rejected.
+Existing native tests use an embedded AppID resource with GUID and EXE alias
+keys under a fresh GUID private HKCU test root. Base/EXE/DLL tests check actual
+metadata/module/owner values, external-edit preservation, a foreign shared value,
+exceptions and invalid/missing input, wrong-thread/failed-init/terminated access,
+DLL/command ordering, rollback/error priority and callback-mutated global mode.
+The class-registration hooks in these ordering tests are explicit probes;
+positive native DLL TypeLib registration remains covered by the existing suites.
+This is AppID resource/API support, not qualification of DCOM permissions,
+RunAs, services or arbitrary AppID security configuration. No binary, project,
+CMake target or workflow is added.
+
+Public contracts: [module AppID helpers](https://learn.microsoft.com/en-us/cpp/atl/reference/catlmodulet-class),
+[AppID resource macro](https://learn.microsoft.com/en-us/cpp/atl/reference/registry-macros#declare_registry_appid_resourceid).
 
 ## `CAtlDllModuleT<T>` — implemented explicit-class-table milestone
 

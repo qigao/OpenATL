@@ -1,0 +1,14 @@
+HKCR
+{
+    NoRemove AppID
+    {
+        ForceRemove '{DF014EC0-2477-450C-B47C-C493B26D9B90}' = s '%APP_VALUE%'
+        {
+            val Module = s '%MODULE_RAW%'
+        }
+        ForceRemove OpenWTL.AppId.Test.exe
+        {
+            val AppID = s '{DF014EC0-2477-450C-B47C-C493B26D9B90}'
+        }
+    }
+}
