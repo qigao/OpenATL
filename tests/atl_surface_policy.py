@@ -51,7 +51,7 @@ REQUIRED = {
 def main() -> int:
     failures = []
     for name, markers in REQUIRED.items():
-        path = ROOT / "include" / name
+        path = ROOT / "alt" / "include" / name
         if not path.is_file():
             failures.append(f"Missing implemented ATL Client/Server header: {name}")
             continue

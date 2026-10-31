@@ -1,267 +1,140 @@
-# OpenATL
+# OpenWTL
 
-**OpenATL is a source-compatible implementation of the Windows Active
-Template Library (ATL), including COM Client, COM Server, and Win32/WTL 10.**
-The present implementation is a growing, tested subset of the complete ATL
-API—not an intentionally client-only library. The earlier exclusions of COM
-Server functionality are void. See [project charter](docs/PROJECT_SCOPE.md)
-and [ATL compatibility matrix](docs/ATL_COMPATIBILITY.md).
+OpenWTL brings WTL 10.0.10320 and a repository-owned ATL implementation
+into one source tree for building native Windows applications with
+**MSVC or llvm-mingw, on x64 and ARM64**.
 
-The implemented foundation includes:
+WTL supplies the UI layer: windows, dialogs, frames, message loops, common
+controls and application helpers. The OpenATL backend supplies ATL utility
+classes, Win32 windowing, COM Client and COM Server support. Both layers
+are available through the public CMake target **`OpenWTL::WTL`**.
 
-- Win32 GUI: `CWindowImpl`, `CDialogImpl`, message maps, common controls,
-  resources and WTL10 frames, without `CoInitializeEx()`.
-- In-tree ATL utilities: `CString`, `CAtlFile`, `CPath`, Win32
-  synchronization, plus `atlmem.h` (`IAtlMemMgr`, `CWin32Heap`),
-  `atltime.h` (`CFileTime`, `CFileTimeSpan`),
-  `atlcoll.h` (`CAtlArray`), `atlfile.h` (`CAtlFileMappingBase`,
-  `CAtlFileMapping<T>`) and `atlimage.h` (Win32 `CImage` subset);
-  no COM apartment needed.
-- COM **client**: `CComPtr`, `CComBSTR`, `CComVariant`, and
-  `CoCreateInstance` of existing Windows components after the *application*
-  explicitly initializes a COM apartment. BSTR self-assignment and
-  self-append, embedded-NUL comparisons, length overflow rejection,
-  VARIANT copy/Detach ownership and COM identity-query failure handling
-  have native Windows tests. COM Client and COM Server are both required,
-  while individual applications choose which API family they use.
+The project targets ATL/WTL source compatibility. The implemented ATL API
+is a tested subset; see the [compatibility matrix](docs/ATL_COMPATIBILITY.md)
+for supported behavior and remaining work.
 
-The `OpenATL::COM` server API supplies explicit class/interface tables,
-`IClassFactory`, reference and module-lock accounting, and real CLSID/ProgID
-registration. Standard `ATL::CAtlDllModuleT<T>` now forwards actual DLL
-exports to this one factory/lock engine through an explicit bound class
-table; applications still export their own DLL entry points. This is an
-implemented server milestone. Standard `OBJECT_ENTRY_AUTO(clsid, class)`
-now discovers static COM class entries automatically, composes the **same**
-class-factory engine and supports native STA/MTA DLL activation without
-manually calling `BindServer`. A class-defined
-`static HRESULT WINAPI UpdateRegistry(BOOL)` now drives real DLL registration
-in CLSID order, with inverse callback rollback on failure. Missing class
-registration hooks fail `E_NOTIMPL`; `DECLARE_NO_REGISTRY()` is an explicit
-opt-out. `DECLARE_REGISTRY_RESOURCEID(id)` now loads a **real Win32
-REGISTRY resource** from an explicit image inside a scoped, caller-owned
-registration context, then uses the existing bounded RGS parser and
-owner-verified executor. The framework neither chooses HKCR nor infers
-installer metadata, and full ATL TypeLib/COM map compatibility remains open.
-See [server contracts](docs/COM_SERVER.md) and
-[DLL module lifetime](docs/ATL_MODULE.md).
+## Use in an application
 
-The optional `atlcom.h` implements familiar nonaggregated ATL object templates
-and COM maps: `CComObjectRootEx`, `CComObject`, `CComCoClass`, `CComCreator`,
-`BEGIN_COM_MAP`, `COM_INTERFACE_ENTRY` and explicit-IID/branch variants.
-See the [ATL compatibility matrix](docs/ATL_COMPATIBILITY.md) for supported
-semantics and limits. `CAtlDllModuleT` is implemented for explicit class
-tables; static `OBJECT_ENTRY_AUTO` factory discovery is supported.
-WTL 10.0.10320 now resides in this repository under `wtl/`, with the full
-upstream Samples, AppWizard, headers and MS-PL, plus seven previously qualified
-compiler/bugfix patches. OpenATL remains the private source-tree ATL/COM backend.
-No separate WTL vcpkg package or Microsoft ATL is needed.
+Check out [qigao/OpenWTL](https://github.com/qigao/OpenWTL) into your project
+and pin the commit used by your application:
 
-Class-directed `UpdateRegistry` and a bounded original `REGISTRY` resource
-path are implemented. `ATL::IDispatchImpl` queries real Windows type
-information and invokes `ITypeInfo`. A new file-backed
-`CComTypeInfoHolder::GetTIFromFile` loads an actual OLEAUT32-generated
-binary TypeLib via `LoadTypeLibEx(REGKIND_NONE)` without any registry
-writes, validating GUID/version/IID, and `DECLARE_LIBID` initializes real
-ATL module LIBID metadata. Image-embedded TypeLib, installed TypeLib
-acceptance, full Automation semantics, aggregation and original Microsoft
-COMMap DLL builds remain separate gates. Native Windows qualification also
-generates and reads a genuine TypeLib from the **unchanged original Microsoft
-COMMap.idl** through SDK MIDL. This is original-IDL input admission,
-not full project source compatibility. `CComModule` now has bounded
-legacy object-map registration, class-factory cookie and lifetime tests;
-complete monitored WTL server shutdown remains an independent gate.
-Windowed ActiveX
-containment and typed Automation event sinks are described in
-[the hosting contract](docs/ACTIVEX_HOST.md); resource-based ActiveX dialogs
-and windowless hosting remain pending. MFC is not a dependency.
-There is one clean-room ATL implementation, with no Microsoft ATL fallback.
-
-## CMake integration
-
-Downstream applications need only the OpenATL source checkout and one target:
+```sh
+git clone https://github.com/qigao/OpenWTL.git external/OpenWTL
+```
 
 ```cmake
-add_subdirectory(external/OpenATL)
+cmake_minimum_required(VERSION 3.24)
+project(MyApp LANGUAGES CXX)
+
+add_subdirectory(external/OpenWTL)
 add_executable(my_app WIN32 main.cpp)
 target_link_libraries(my_app PRIVATE OpenWTL::WTL)
 ```
 
-`FetchContent` can bring in OpenATL instead of `add_subdirectory`; pin the
-OpenATL commit in the consuming project. `OpenWTL::WTL` supplies ATL and WTL
-include paths, C++17/Unicode definitions, and common Windows UI/COM/registry
-link dependencies. Consumers can include `<atlbase.h>`, `<atlcom.h>`,
-`<atlapp.h>`, `<atlframe.h>`, etc. directly. No Microsoft ATL or second WTL provider is installed.
-WTL sources are compiled directly from `wtl/Include` in this repository.
-CMake fails if the complete WTL 10 release and license are missing; source
-and binary assets have a 296-file byte-level manifest at
-`wtl/source-manifest.json`. No external WTL installation, adapter, vendor ZIP
-or second WTL runtime is permitted. WTL owns the UI facade while the
-unexported `openatl_atl` target owns ATL/COM implementation. Detached
-`StartMonitor` and real `PrintDlgEx` printer UI remain independent
-compatibility gates under Issue #44.
-OpenATL is not itself an installed SDK.
+`OpenWTL::WTL` provides:
 
-For qualification, use pinned CMake presets and the original Windows
-native Windows MSVC/llvm-mingw x64 and ARM64 CTest jobs. A local source copy alone does not qualify the original WTL and ATL native behavior.
+- WTL headers from `wtl/Include` and ATL headers from `alt/include`.
+- C++17, Unicode definitions and the common Windows UI/COM/registry link
+  dependencies.
+- The private `openatl_atl` backend through the same target.
 
-## Unicode text
+Applications continue to include `<atlbase.h>`, `<atlcom.h>`, `<atlapp.h>`,
+`<atlframe.h>` and other ATL/WTL headers directly. `OpenATL::COM` and the
+`openatl/*.h` extension headers keep their existing names.
 
-`OpenWTL::WTL` provides strict, counted UTF-8/UTF-16/ACP conversions through
-`openatl/text_encoding.h`, plus checked `AssignUtf8`, `AssignAnsi` and `ToUtf8`
-methods on `CString`/`CComBSTR`. Existing narrow constructors and `A2W`/`W2A`
-keep ACP semantics, with invalid input rejected consistently. Owned conversion
-outputs preserve embedded NULs and retain their old value on failure.
+Build integration uses the source tree. There is no installed SDK or
+installer/consumer project. Microsoft ATL and a separate WTL package are
+not dependencies.
 
-The only encoding backend is Windows NLS (`MultiByteToWideChar`,
-`WideCharToMultiByte`, `GetACP`). `openatl/unicode.h` remains a lightweight
-include compatibility header for these strict conversions. The former optional
-`Salts::Unicode` engine is retired. NFC/full case folding/Unicode 17 trimming
-are **not** silently implemented using a weaker Windows lowercase mapping.
-See the [Windows encoding and error contracts](docs/UNICODE.md).
+## Repository layout
 
-## Expanded ATL API surface
+| Path | Contents |
+| --- | --- |
+| `alt/include/` | OpenATL backend: ATL-compatible headers and `openatl/` extensions |
+| `wtl/Include/` | WTL 10.0.10320 UI headers with the documented compatibility patches |
+| `wtl/Samples/` | All 11 original WTL sample trees |
+| `wtl/AppWizard/` | Original WTL application wizard |
+| `cmake/` | Source integration, Windows resources and llvm-mingw toolchain |
+| `tests/` | Native ATL/WTL, COM, GUI, resource and lifetime tests |
+| `docs/` | Architecture, API contracts, compatibility and acceptance details |
+| `third_party_licenses/` | Third-party license notices |
 
-The new headers implement **ATL-compatible interfaces directly in OpenATL**.
-Their method names and public conventions are informed by ATL and
-[katahiromz/RATL](https://github.com/katahiromz/RATL), but each implementation
-is part of this repository (not a second ATL provider).
+The former root `include/` directory is now `alt/include/`. The WTL release
+layout remains under `wtl/`. Source users who set include paths manually
+must update the ATL path; CMake users receive it from `OpenWTL::WTL`.
 
-- `atlmem.h`: Win32 heap allocation, reallocation, free and size lookup,
-  with explicit non-owning heap lifetime.
-- `atltime.h`: 100-nanosecond `FILETIME` values, signed spans, comparisons,
-  arithmetic and optional overflow-checked addition.
-- `atlcoll.h`: `CAtlArray` and `CAtlList`, with safe nontrivial
-  object lifetime and stable node-specific opaque `POSITION` handles.
-  The list supports bidirectional traversal, head/tail insertion and
-  removal, search, and adjacent/nonadjacent node exchanges; foreign
-  or removed positions are validated before dereference. Unlike the
-  incomplete RATL list allocator, every node has one clear owner,
-  and throwing element copies leave the list unchanged.
-  The optional ATL block-pool constructor is deliberately not offered:
-  node allocation uses owned C++ `new`/`delete`, not fake pool behavior.
-- `atlfile.h`: file-backed and named shared-memory mapping, including
-  unaligned Win32 view offsets, explicit close/unmap, move ownership,
-  independent handle/view duplication with `CopyFrom` and bounded mapping
-  sizes. `MapFile` deliberately rejects extending the mapped file: callers
-  explicitly size the underlying file through `CAtlFile` first.
-- `atlimage.h`: a bounded Win32 GDI `CImage` subset with owned
-  `HBITMAP`, Create/Attach/Detach/Destroy, top-down and bottom-up DIB
-  pixel access, GetDC/ReleaseDC and BitBlt/StretchBlt-based Draw. `Load`
-  and `Save` support BMP and PNG through the Windows GDI+ runtime,
-  with full BGRA pixel copying and PNG alpha preservation. Codec state
-  is scoped to each call and always shut down before returning. Consumers
-  invoking `CImage::Load/Save` must link Windows `gdiplus` explicitly; `ole32` is supplied by `OpenWTL::WTL`;
-  basic GDI and WTL UI targets do **not** link `gdiplus` transitively.
-  A caller-owned `IStream*` can also be used for BMP/PNG `Load` and
-  `Save` using an explicit `ImageFormatBMP` or `ImageFormatPNG` GUID.
-  OpenATL borrows (never closes or retains) the stream; callers position and
-  release their streams themselves. Stream saving encodes into an OS-owned
-  temporary memory stream before writing in 8 KiB chunks to the caller's
-  `IStream`. A short successful write returns `STG_E_WRITEFAULT`, and a
-  failed write returns the destination's original HRESULT. A failed write
-  may leave a partial output in the **caller** stream; arbitrary IStreams
-  do not provide atomic rollback. Stream `Load` reads a bounded (64 MiB)
-  snapshot into an OS-owned memory stream before decoding. A short `S_OK`
-  read requires an exact EOF proof through `IStream::Stat` and a nonmoving
-  `Seek(STREAM_SEEK_CUR, 0)`; otherwise it returns `STG_E_READFAULT`.
-  Failed source read HRESULTs propagate unchanged. This accommodates
-  Windows HGLOBAL streams without accepting arbitrary silent truncation.
-  File `Load` opens the source once, checks the 64 MiB encoded-file size,
-  and creates a bounded immutable HGLOBAL snapshot **before** GDI+ decoding.
-  This avoids a separate metadata-check / decoder-reopen TOCTOU gap and
-  guarantees the source file handle is closed before returning. If `Stat` and a nonmoving `Seek(CUR, 0)` are supported, a known
-  remaining IStream range above 64 MiB is rejected before the first read;
-  otherwise the running byte counter enforces the same cap.
-  All retained `CImage` bitmaps are subject to the 128 MiB
-  aligned row-byte budget: `Create`, decoded DIBs, and external
-  `HBITMAP` handles supplied to `Attach` (which remain caller-owned
-  if the attachment is rejected). Decoder dimensions are checked before
-  allocating the destination bitmap or locking GDI+ pixels. This is
-  not a limit on GDI+'s internal parsing allocations. Callers must account for the
-  source stream's advanced position on failure.
-  The image and stream ownership remain unchanged. Image stream codec
-  callers link `gdiplus` explicitly; `ole32` is supplied by `OpenWTL::WTL`.
-  GDI+ remains outside the transitive `OpenWTL::WTL`/WTL dependencies.
-  File and stream paths share validated decoder, pixel copy, encoder
-  selection and cleanup.
-  GIF/JPEG/TIFF codecs, alpha compositing, GDI+ metadata, and the full
-  Microsoft ATL CImage API are **not implemented or qualified**.
+## Build and test
 
-The public API is a subset of ATL; unsupported functions are not advertised
-as implemented. These utilities are CI-qualified through
-`tests/atl_conformance/atl_extensions.cpp` on Windows x64, genuine
-Windows ARM64 with MSVC and llvm-mingw.
+The existing qualification presets use the `OPENATL_*` option names for
+the ATL backend and native suites. Set up the corresponding compiler
+before running them.
 
-API declarations and naming compatibility do not require copying Microsoft
-ATL or RATL implementation code. The existing OpenATL file notices and
-third-party source provenance remain unchanged. These ATL utilities do not
-depend on the COM Server/registration API. No Installed SDK or `scripts/`
-directory is currently included.
+For llvm-mingw, set `OPENATL_LLVM_MINGW_BIN` to its `bin` directory:
 
-## Dependencies and licensing
+```sh
+cmake --preset llvm-x86_64
+cmake --build --preset llvm-x86_64
+ctest --preset llvm-x86_64 --output-on-failure
+```
 
-New OpenATL utilities, tests and CI glue: **Apache-2.0**; the checked-in
-clean-room ATL subset derived from
-[kkhaike/openatl](https://github.com/kkhaike/openatl):
-**MIT** (original revision `7b587f3e10f3f8d93a01522033de80007368bad5`);
-[official WTL10](https://sourceforge.net/projects/wtl/) version
-`10.0.10320`: **MS-PL**; `wtl/SOURCE.md` records the release archive SHA512
-`086a6cf6a49a4318a8c519136ba6019ded7aa7f2c1d85f78c30b21183654537b3428a400a64fcdacba3a7a10a9ef05137b6f2119f59594da300d55f9ebfb1309`.
-There is one ATL implementation: the files owned under `include/`.
-`qigao/tcc` separately owns TinyCC/C11/compiler portability.
+Use `llvm-aarch64` to cross-build Windows ARM64. Execute ARM64 binaries on
+a real Windows ARM64 host. Linux/macOS hosts can cross-compile with the
+same toolchain; native runtime acceptance runs on Windows.
 
-The in-tree `atlwin.h` includes W^X thunk hardening and test-only
-fault injection. No external OpenATL checkout or runtime patch is used.
-CFG/CET and concurrency qualification is scoped to the native test fixtures;
-downstream products must validate their own lifetime and mitigation contracts.
-The current source-tree build is qualified; installed/exported integration
-may be developed with independent acceptance under issue #4.
-Only the checked-in 10.0.10320 WTL headers under `wtl/Include` are GUI build inputs.
+For MSVC, use an x64 developer environment:
 
-## CI structure
+```sh
+cmake --preset msvc-x64 -DOPENATL_REQUIRE_CET_RUNTIME=OFF
+cmake --build --preset msvc-x64
+ctest --preset msvc-x64 --output-on-failure
+```
 
-Original WTL now retains MRU menus, CFindFile, HKCU registry settings,
-`CRegPropertyImpl<T>`, HyperLink color reads, `CPrintDialogEx`
-callbacks and `CServerAppModule` interfaces. Their native tests use
-source-owned OpenATL COM client/server and `CRegKey`. Win32 CRegKey
-is confined to `include/atlreg.h`; native HKCU tests cover ownership,
-malformed strings, values, errors, access masks and cleanup without COM
-initialization. Applications using its registry methods explicitly link
-Windows `advapi32`, supplied by `OpenWTL::WTL`.
+The x64 MSVC preset defaults to mandatory hardware shadow-stack acceptance
+for the dedicated runner. The override above selects the ordinary native
+suite on a host without guaranteed HSP. Hardware CET/HSP acceptance remains
+an independent [documented gate](docs/CET_HARDWARE_ACCEPTANCE.md).
+Use `msvc-arm64` in a HostX64-to-ARM64 developer environment for ARM64.
 
-GitHub Actions compiles the complete checked-in, patched WTL source
-with OpenATL and runs the existing native, PE and ARM64 tests. It no longer
-installs a WTL package or downloads WTL headers. Real ARM64 SHA256 and
-runtime proof use `tests/wtl10/native_arm64.py`; no standalone build
-wrapper or Installed OpenATL SDK is supplied.
+The regular CI matrix builds with MSVC and llvm-mingw for Windows x64 and
+ARM64, then runs the existing Windows native suites, including real ARM64
+execution. See the [toolchain matrix](docs/TOOLCHAIN_MATRIX.md) and
+[acceptance criteria](docs/ACCEPTANCE.md).
 
-## Required CI
+## Capabilities and contracts
 
-- **llvm-mingw** native Windows x64, Windows x64→ARM64 build, and real
-  Windows ARM64 runtime; 5× WTL10 SDI/COM/GUI CTest and PE checks.
-- **MSVC** x64 native and HostX64→ARM64 build plus real Windows ARM64,
-  compiling the same pinned *clean-room* OpenATL (never Microsoft's ATL).
-- **WTL dependency provenance**: complete checked-in WTL10 release with
-  seven documented patches and byte-level source manifest; no secondary
-  provider, native/cross transitive includes/linkage and unmodified SDI.
-- Separate native assertions: UI and the repository-owned file/string/sync
-  utilities run **without COM initialization**; the standalone Unicode
-  `CPath` test exercises actual Windows file creation and path handling.
-  The optional COM Client starts its own apartment and activates a built-in
-  Windows component. All native suites run five repetitions on Windows
-  x64/ARM64, with SHA256/PE checks for ARM64 handoff.
+| Area | Implementation and details |
+| --- | --- |
+| WTL UI | Frames, dialogs, message maps, controls, resources, MRU and settings; [original WTL compatibility](docs/WTL_UNMODIFIED.md) |
+| ATL utilities | `CString`, `CAtlFile`, `CPath`, collections, heap, time, synchronization, mapping and the bounded `CImage` subset; [API matrix](docs/ATL_COMPATIBILITY.md) |
+| Text encoding | Counted UTF-8/UTF-16/ACP conversions through native Windows NLS; [encoding contracts](docs/UNICODE.md) |
+| COM Client | Smart pointers, BSTR/VARIANT ownership and Windows component activation; [API matrix](docs/ATL_COMPATIBILITY.md) |
+| COM Server | Class factories, COM maps, registration, RGS and DLL module lifetime; [server contracts](docs/COM_SERVER.md) and [module contracts](docs/ATL_MODULE.md) |
+| ActiveX | Windowed hosting and typed event sinks; [hosting contracts and gaps](docs/ACTIVEX_HOST.md) |
 
-See [architecture](docs/ARCHITECTURE.md),
-[acceptance](docs/ACCEPTANCE.md), and
-[toolchain matrix](docs/TOOLCHAIN_MATRIX.md).
+Win32 UI and utility classes do not initialize COM. Applications that use
+COM explicitly own their apartment initialization and lifetime. Registry
+operations are explicit. Optional `CImage` BMP/PNG codec callers link
+Windows `gdiplus` themselves; it is not a transitive UI dependency.
 
-The optional COM server has separate core/registry and STA/MTA DLL activation
-tests. Each DLL test registers its fixture under the current user's Classes
-root, verifies real COM activation, unregisters it and checks DLL retirement.
-Other entries are not overwritten or recursively deleted.
+Full ATL compatibility, complete Automation/type-library support,
+aggregation, windowless ActiveX and some original WTL native behaviors
+remain open. API-level limits belong to the linked contracts; downstream
+applications still need acceptance for their own behavior and lifetimes.
 
-**Source-tree qualification is bounded by the documented APIs and tests.**
-Downstream product acceptance remains explicit. No WTL8
-fallback, Salts Unicode provider or alternate compiler/target matrix. An installed SDK is
-not currently implemented; packaging is an open engineering decision (#4),
-not prohibited by the ATL compatibility goal.
+## Source provenance and licensing
+
+| Component | License and source |
+| --- | --- |
+| Project-owned additions, tests and build glue | [Apache-2.0](LICENSE) |
+| Clean-room ATL foundation in `alt/include/` | [MIT](third_party_licenses/OPENATL-MIT.txt), derived from `kkhaike/openatl` revision `7b587f3e10f3f8d93a01522033de80007368bad5` |
+| WTL 10.0.10320 in `wtl/` | [MS-PL](wtl/MS-PL.txt); [source provenance](wtl/SOURCE.md) |
+
+The complete WTL release retains its headers, samples, AppWizard, binary
+resources and original notices. Seven pre-existing compatibility patches
+are recorded alongside the 296-file byte-level
+[source manifest](wtl/source-manifest.json). The ATL directory move keeps
+all header contents and notices unchanged.
+
+See the [architecture](docs/ARCHITECTURE.md),
+[project scope](docs/PROJECT_SCOPE.md) and
+[original sample inventory](docs/OFFICIAL_SAMPLES.md) for further details.

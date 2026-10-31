@@ -1,6 +1,6 @@
-# OpenATL project charter — ATL compatibility
+# OpenWTL project charter — WTL frontend and ATL backend
 
-**Canonical scope (2026-10-29): OpenATL implements ATL-compatible public headers and semantics for both COM Client and COM Server, Win32 windowing, ATL utility classes and Windows Template Library (WTL) consumers.** Previous UI-only or COM-client-only restrictions are superseded.
+**Canonical scope: OpenWTL includes WTL 10.0.10320 and its OpenATL backend implements ATL-compatible public headers and semantics for both COM Client and COM Server, Win32 windowing, ATL utility classes and Windows Template Library (WTL) consumers.** Previous UI-only or COM-client-only restrictions are superseded.
 
 ## Required capabilities
 
@@ -12,7 +12,7 @@ These are **project goals, not claims of present implementation**. The [compatib
 
 ## Current evidence and gaps
 
-- Repository-owned ATL headers under include/ are the production implementation, not a silent Microsoft ATL fallback.
+- Repository-owned ATL headers under alt/include/ are the production implementation, not a silent Microsoft ATL fallback.
 - The public source-tree target is OpenWTL::WTL, which includes the internal openatl_atl backend. That backend supports COM Client helpers and real explicit in-process COM Server factories, locks, registry registration and Windows native STA/MTA activation.
 - Existing native tests exercise both sides; no-COM-init Win32/WTL UI continues to be a distinct supported case.
 - Standard CAtlDllModuleT, automatic/chained COM maps, aggregation, RGS, Automation/type libraries, SAFEARRAY wrappers and portions of ActiveX/control support are **unimplemented compatibility gaps**, not prohibited capabilities.
@@ -24,6 +24,6 @@ Original unmodified [ATL/WTL examples](OFFICIAL_SAMPLES.md) and downstream consu
 
 Source ownership, safe lifetimes, provenance, exact-head CI and truthful unsupported HRESULTs remain essential engineering criteria, not limits excluding COM Server.
 
-Current build integration uses source CMake; an installed/exported SDK is not implemented and its desirability is an open decision in issue #4, not a permanent ban. UI code without COM activity is not required to initialize a COM apartment.
+Build integration uses source CMake through `OpenWTL::WTL`; no installed SDK or installer/consumer project is supplied. UI code without COM activity is not required to initialize a COM apartment.
 
-Tracking: [full ATL roadmap #20](https://github.com/qigao/OpenATL/issues/20), [COM Server #3](https://github.com/qigao/OpenATL/issues/3), [Weasel consumer #18](https://github.com/qigao/OpenATL/issues/18).
+Tracking: [full ATL roadmap #20](https://github.com/qigao/OpenWTL/issues/20), [COM Server #3](https://github.com/qigao/OpenWTL/issues/3), [Weasel consumer #18](https://github.com/qigao/OpenWTL/issues/18).

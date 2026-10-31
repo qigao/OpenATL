@@ -1,7 +1,7 @@
 # Controlled x64 CET hardware acceptance runner
 
 Status: **required infrastructure, not yet provisioned or qualified**.
-See [OpenATL Issue #15](https://github.com/qigao/OpenATL/issues/15)
+See [OpenATL Issue #15](https://github.com/qigao/OpenWTL/issues/15)
 for hosted Windows x64 variability: both `windows-2022` and
 `windows-2025` have run on workers where
 IsUserCetAvailableInEnvironment(USER_CET_ENVIRONMENT_WIN32_PROCESS) returned

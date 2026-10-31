@@ -117,14 +117,14 @@ def main() -> int:
         if actual != {"llvm-x86_64", "llvm-aarch64", "msvc-x64", "msvc-arm64"}:
             fail.append("only x64/ARM64 MSVC and llvm-mingw profiles allowed: " + kind)
     cmake_src = (ROOT / "CMakeLists.txt").read_text("utf-8")
-    unicode_header = (ROOT / "include/openatl/unicode.h").read_text("utf-8")
+    unicode_header = (ROOT / "alt/include/openatl/unicode.h").read_text("utf-8")
     for forbidden in ("find_package(Salts", "Salts::Unicode", "SALTS_ROOT",
                       "option(OPENATL_USE_SALTS_UNICODE"):
         if forbidden in cmake_src:
             fail.append("Salts Unicode SDK dependency must be retired: " + forbidden)
     if "#include <salts_" in unicode_header or "SALTS_UNICODE_" in unicode_header:
         fail.append("public Unicode facade must use native Windows encoding only")
-    unicode_source = (ROOT / "include/openatl/text_encoding.h").read_text("utf-8")
+    unicode_source = (ROOT / "alt/include/openatl/text_encoding.h").read_text("utf-8")
     for native in ("MultiByteToWideChar", "WideCharToMultiByte", "GetACP"):
         if native not in unicode_source:
             fail.append("required strict Win32 encoding API missing: " + native)
