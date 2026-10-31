@@ -29,12 +29,11 @@ and standard Windows UI/COM/registry import libraries.
 
 All source code, native CTest, COM client/server activation, HKCU,
 real ARM64, W^X, PE identity, and process-unload tests remain admitted.
-Hosted x64 PE CETCOMPAT is **not** real hardware HSP qualification;
-the independent manual
-[`openatl-hsp-dedicated.yml`](../.github/workflows/openatl-hsp-dedicated.yml)
-still needs a genuinely HSP-capable x64 Windows runner.
-Unqualified printer-modal UI and detached WTL monitor-worker join
-remain tracked separately.
+CI retains CFG/CET PE metadata, native CFG/W^X behavior and unload tests.
+Real printer calls and hardware HSP enforcement are excluded from CI, including
+manual GitHub Actions workflows. They are not merge or feature-completion gates;
+optional local diagnostics do not establish blanket hardware support.
+The detached WTL monitor-worker join remains a separate implementation task.
 
 There is no installed OpenATL/WTL SDK and no installer/consumer test
 project. Downstream Studio integration uses its own native Windows CI.

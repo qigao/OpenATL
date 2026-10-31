@@ -1,36 +1,18 @@
-# Combined native WTL security and ATL source ownership acceptance
+# Combined native WTL security and ATL ownership acceptance
 
-This exact tree retains the four original validation branches of OpenATL:
-SDI interactive WTL10 (PR #7), native CFG/hardware x64 CET (PR #8),
-bounded native DLL unload (PR #11), and post-review ATL public-header
-ownership fixes (PR #13). The source-owned headers from PR #13 replace
-their unchanged master versions in the already qualified PR #12 tree.
-No fallback, legacy SDK, COM Server, install packaging or provider has
-been added.
+The existing Windows x64/ARM64 MSVC and llvm-mingw suites qualify source-owned
+ATL/WTL behavior on the exact checkout. Required behavior includes native UI/COM,
+CFG/W^X thunks, dynamic-code denial, DLL admission/leases/unload, string and object
+ownership, and failure cleanup. Each native suite repeats five times; real
+Windows ARM64 artifacts retain exact SHA256/PE/resource provenance.
 
-Exact-head CI must run all tests together on one binary set:
-- Real Windows x64 MSVC and llvm-mingw full CTest repeated five times,
-  with CFG/CET image checks on both. Hosted LLVM-MinGW excludes HSP runtime
-  cases; MSVC and dedicated hardware qualification retain the actual
-  WndProc thunk and FAST_FAIL subcode 0x39 proof.
-- Real Windows ARM64 MSVC and llvm-mingw, SHA256+PE verified before
-  executing the native fixtures and genuine SDI dialogs.
-- DLL owner and caller-lease shutdown/reload regression with live blocked
-  callbacks, and real Unicode SDI edit forwarding and menu/dialog actions.
-- Source-owned ATL object lifetime tests, deep copies/throws, bounded
-  temporary buffers, and safe window/dialog early-failure cleanup.
-- Linux/macOS Windows x64/ARM64 PE cross CMake and source-only policy.
+Hardware HSP enforcement and real printer/PrintDlgEx device probes are outside
+CI, including manual GitHub Actions workflows, by owner decision (2026-10-31).
+They are not merge or feature-completion gates. CFG/CET image checks and
+printing COM callback/site tests remain required and do not depend on physical
+hardware. The explicit local diagnostic modes remain available.
 
-No claim of support for arbitrary uncooperative DLL hot-unload, non-x64
-CET, COM servers, or a production Installed SDK. Keep this PR Draft until
-its own full GitHub Actions matrix passes on this exact head. Parent PRs
-remain open and unmerged until a final merge decision.
-
-Strict Windows ACP conversion now rejects unmappable/default-substituted
-Unicode and malformed byte sequences; CTempBuffer uses matched C++17
-aligned new/delete for over-aligned heap types and tests zero/negative
-fixed-buffer capacity. The Windows CET gate explicitly requests hardware
-HSP at child creation; its actual process policy and FAST_FAIL=0x39
-remain mandatory when running hardware qualification, independent of the
-parent runner's default HSP state. Hosted LLVM-MinGW CI does not run HSP.
-See Issue #15 for hosted-runner variability.
+Passing the native subset does not claim arbitrary uncooperative DLL unload,
+complete ATL compatibility, printer readiness or hardware HSP enforcement.
+See [ACCEPTANCE.md](ACCEPTANCE.md) and [ATL_COMPATIBILITY.md](ATL_COMPATIBILITY.md)
+for the current supported surface and implementation backlog.

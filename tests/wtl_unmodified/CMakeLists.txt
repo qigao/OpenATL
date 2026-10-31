@@ -23,7 +23,7 @@ add_executable(openatl_wtl_unmodified_headers
 # an absolute repository WTL path, and all nested include searches stay here.
 target_include_directories(openatl_wtl_unmodified_headers BEFORE PRIVATE
   "${_openatl_wtl_original_include}")
-# winspool is the real Win32 default-printer query, used only by the test.
+# winspool is used only by the explicitly invoked manual --print-defaults mode.
 target_link_libraries(openatl_wtl_unmodified_headers PRIVATE OpenWTL::WTL winspool)
 set_target_properties(openatl_wtl_unmodified_headers PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
@@ -49,9 +49,5 @@ add_test(NAME openatl.wtl_original_start_monitor_process
 set_tests_properties(openatl.wtl_original_start_monitor_process PROPERTIES
   TIMEOUT 12)
 
-# PD_RETURNDEFAULT is a real PrintDlgEx API call without a modal window.
-# If no default printer is installed, report UNQUALIFIED rather than a
-# manufactured device. The genuine modal printer UI remains a separate gate.
-add_test(NAME openatl.wtl_original_print_defaults_probe
-  COMMAND openatl_wtl_unmodified_headers --print-defaults)
-set_tests_properties(openatl.wtl_original_print_defaults_probe PROPERTIES TIMEOUT 25)
+# Real printer/PrintDlgEx probes are manual only. CTest retains the
+# device-independent COM callback/site coverage in the default mode.

@@ -23,18 +23,12 @@
     {
       "name": "msvc-x64",
       "inherits": "msvc",
-      "binaryDir": "${sourceDir}/build-msvc-x64",
-      "cacheVariables": {
-        "OPENATL_REQUIRE_CET_RUNTIME": "ON"
-      }
+      "binaryDir": "${sourceDir}/build-msvc-x64"
     },
     {
       "name": "msvc-arm64",
       "inherits": "msvc",
-      "binaryDir": "${sourceDir}/build-msvc-arm64",
-      "cacheVariables": {
-        "OPENATL_REQUIRE_CET_RUNTIME": "OFF"
-      }
+      "binaryDir": "${sourceDir}/build-msvc-arm64"
     }
   ],
   "buildPresets": [
@@ -61,11 +55,6 @@
       "configurePreset": "llvm-x86_64",
       "output": {
         "outputOnFailure": true
-      },
-      "filter": {
-        "exclude": {
-          "name": "^openatl[.]cet_"
-        }
       }
     },
     {
@@ -73,11 +62,6 @@
       "configurePreset": "llvm-aarch64",
       "output": {
         "outputOnFailure": true
-      },
-      "filter": {
-        "exclude": {
-          "name": "^openatl[.]cet_"
-        }
       }
     },
     {

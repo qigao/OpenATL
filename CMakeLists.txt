@@ -194,12 +194,11 @@ if(OPENATL_BUILD_QUALIFICATION)
     endif()
   endif()
 
-  # x64 CETCOMPAT metadata and native user shadow-stack enforcement are
-  # distinct. By default inventory is nonblocking and reports UNQUALIFIED
-  # where the hosted Windows machine does not enforce HSP.
-  option(OPENATL_REQUIRE_CET_RUNTIME "Require actual x64 user shadow-stack violation" OFF)
+  # Hardware HSP diagnostics are manual only: no default build or CTest.
+  # CI verifies CFG/CET PE metadata on openatl_mitigation_runtime instead.
   if(_openatl_x64)
-    add_executable(openatl_cet_shadow_stack tests/wtl10/cet_shadow_stack.cpp)
+    add_executable(openatl_cet_shadow_stack EXCLUDE_FROM_ALL
+      tests/wtl10/cet_shadow_stack.cpp)
     target_link_libraries(openatl_cet_shadow_stack PRIVATE OpenWTL::WTL)
     if(MSVC)
       target_compile_options(openatl_cet_shadow_stack PRIVATE /guard:cf /W3 /EHsc)
@@ -211,14 +210,6 @@ if(OPENATL_BUILD_QUALIFICATION)
       target_link_options(openatl_cet_shadow_stack PRIVATE
         -Wl,-Xlink,-guard:cf -Wl,-Xlink,-cetcompat -static)
     endif()
-    add_test(NAME openatl.cet_inventory COMMAND openatl_cet_shadow_stack --inventory)
-    if(OPENATL_REQUIRE_CET_RUNTIME)
-      add_test(NAME openatl.cet_hardware_required
-        COMMAND openatl_cet_shadow_stack --require-hardware)
-      set_tests_properties(openatl.cet_hardware_required PROPERTIES TIMEOUT 20)
-    endif()
-  elseif(OPENATL_REQUIRE_CET_RUNTIME)
-    message(FATAL_ERROR "Real x64 CET user shadow-stack tests cannot run on ARM64")
   endif()
 
   # Real test DLL, not a substitute for production plugin lifetime rules.

@@ -128,14 +128,6 @@ def main() -> int:
     for native in ("MultiByteToWideChar", "WideCharToMultiByte", "GetACP"):
         if native not in unicode_source:
             fail.append("required strict Win32 encoding API missing: " + native)
-    x64 = next((p for p in presets.get("configurePresets", [])
-                if p.get("name") == "msvc-x64"), {})
-    if x64.get("cacheVariables", {}).get("OPENATL_REQUIRE_CET_RUNTIME") != "ON":
-        fail.append("dedicated Windows x64 HSP requirement removed")
-    dedicated = (ROOT / ".github/workflows/openatl-hsp-dedicated.yml").read_text("utf-8")
-    if ("runs-on: [self-hosted, windows, x64, openatl-cet-hsp]" not in dedicated
-            or dedicated.count("('--require-hardware')") != 2):
-        fail.append("independent hardware HSP admission removed")
     native_arm64 = (ROOT / "tests/wtl10/native_arm64.py").read_text("utf-8")
     for marker in ("openatl_wtl_unmodified_headers",
                    "OPENATL_WTL_ORIGINAL_MAP_OK",
