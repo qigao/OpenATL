@@ -1,5 +1,5 @@
-// Actual DLL-image Automation over unchanged Microsoft COMMap MIDL output.
-// These are test-fixture exports, not new OpenWTL public APIs.
+// Actual EXE/DLL-image Automation over unchanged Microsoft COMMap MIDL output.
+// These are shared test-fixture entry points, not new OpenWTL public APIs.
 #include <atlcom.h>
 #if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
 #include "COMMap.h"

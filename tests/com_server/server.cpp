@@ -8,6 +8,8 @@
 #include "openatl_rgs_fixtures.generated.h"
 #if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
 #include "COMMap.h"
+extern "C" HRESULT WINAPI OpenATLCreateEmbeddedDispatch(IDispatch** output);
+extern "C" HRESULT WINAPI OpenATLCreateRegisteredDispatch(IDispatch** output);
 #endif
 #include <atomic>
 #include <cstdio>
@@ -484,6 +486,167 @@ struct DeniedTypeLib {
     }
     ~DeniedTypeLib() { Close(); }
 };
+
+constexpr CLSID exeTypeLibClassId = {0xd19b8867, 0xa881, 0x47f6,
+    {0x9c, 0x71, 0x91, 0xb2, 0xaf, 0x43, 0xe1, 0x03}};
+constexpr LPCWSTR exeTypeLibClassKey = L"OpenWTL.Exe.TypeLib";
+constexpr LPCWSTR exeTypeLibAppId = L"AppID\\{DF014EC0-2477-450C-B47C-C493B26D9B90}";
+class ExeTypeLibValue : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>, public IPersist {
+public:
+    BEGIN_COM_MAP(ExeTypeLibValue)
+        COM_INTERFACE_ENTRY(IPersist)
+    END_COM_MAP()
+    static HRESULT WINAPI UpdateRegistry(BOOL install) noexcept {
+        if (!ATL::_pAtlModule) return E_UNEXPECTED;
+        ATL::_ATL_REGMAP_ENTRY entries[] = {
+            {L"KEY", exeTypeLibClassKey}, {L"FIELD", L"Description"},
+            {L"VALUE", L"EXE TypeLib"}, {nullptr, nullptr}
+        };
+        return ATL::_pAtlModule->UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", install, entries);
+    }
+    HRESULT STDMETHODCALLTYPE GetClassID(CLSID* output) override {
+        if (!output) return E_POINTER;
+        *output = exeTypeLibClassId;
+        return S_OK;
+    }
+};
+OBJECT_ENTRY_AUTO(exeTypeLibClassId, ExeTypeLibValue)
+
+template<bool Apartment>
+class ExeTypeLibModule : public ATL::CAtlExeModuleT<ExeTypeLibModule<Apartment>> {
+public:
+    DECLARE_LIBID(LIBID_COMMAPLib)
+    DECLARE_REGISTRY_APPID_RESOURCEID(IDR_OPENATL_APPID, "{DF014EC0-2477-450C-B47C-C493B26D9B90}")
+    static HRESULT InitializeCom() noexcept {
+        return ::CoInitializeEx(nullptr, Apartment ? COINIT_APARTMENTTHREADED : COINIT_MULTITHREADED);
+    }
+    HRESULT AddCommonRGSReplacements(IRegistrarBase* registrar) override {
+        const auto* scope = rgs_resource_detail::CurrentModule();
+        if (!scope || !scope->PerUserRegistration()) return E_UNEXPECTED;
+        ATL::AtlSetPerUserRegistration(false); // The enclosing command must keep its original mode.
+        return registrar->AddReplacement(L"APP_VALUE", L"EXE TypeLib");
+    }
+    HRESULT RegisterServer(BOOL library, const CLSID* = nullptr) noexcept {
+        return ATL::CAtlExeModuleT<ExeTypeLibModule<Apartment>>::RegisterServer(library, &exeTypeLibClassId);
+    }
+    HRESULT UnregisterServer(BOOL library, const CLSID* = nullptr) noexcept {
+        return ATL::CAtlExeModuleT<ExeTypeLibModule<Apartment>>::UnregisterServer(library, &exeTypeLibClassId);
+    }
+};
+
+bool exeDispatch(bool registered) {
+    ATL::CComPtr<IDispatch> dispatch;
+    const HRESULT hr = registered ? OpenATLCreateRegisteredDispatch(&dispatch.p)
+                                  : OpenATLCreateEmbeddedDispatch(&dispatch.p);
+    REQUIRE(hr == S_OK && dispatch.p);
+    ATL::CComPtr<ITypeInfo> info;
+    REQUIRE(dispatch->GetTypeInfo(0, LOCALE_SYSTEM_DEFAULT, &info.p) == S_OK && info.p);
+    ATL::CComPtr<ITypeLib> library;
+    UINT index = 0;
+    REQUIRE(info->GetContainingTypeLib(&library.p, &index) == S_OK && library.p);
+    TLIBATTR* attributes = nullptr;
+    REQUIRE(library->GetLibAttr(&attributes) == S_OK && attributes);
+    const bool identity = ::IsEqualGUID(attributes->guid, LIBID_COMMAPLib) &&
+        attributes->wMajorVerNum == 1 && attributes->wMinorVerNum == 0 &&
+        attributes->syskind == (sizeof(void*) == 8 ? SYS_WIN64 : SYS_WIN32);
+    library->ReleaseTLibAttr(attributes);
+    REQUIRE(identity);
+    LPOLESTR name = const_cast<LPOLESTR>(L"Name2");
+    DISPID member = DISPID_UNKNOWN;
+    REQUIRE(dispatch->GetIDsOfNames(IID_NULL, &name, 1, LOCALE_SYSTEM_DEFAULT, &member) == S_OK && member == 0);
+    DISPPARAMS parameters{};
+    ATL::CComVariant result;
+    REQUIRE(dispatch->Invoke(member, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET,
+                            &parameters, &result, nullptr, nullptr) == S_OK);
+    REQUIRE(result.vt == VT_BSTR && result.bstrVal &&
+            std::wstring_view(result.bstrVal, ::SysStringLen(result.bstrVal)) == L"OpenWTL embedded chain");
+    return true;
+}
+
+template<bool Apartment>
+bool exeTypeLibRegistration() {
+    ULONG_PTR token = 0;
+    REQUIRE(::CoGetContextToken(&token) == CO_E_NOTINITIALIZED && !ATL::_pAtlModule);
+    REQUIRE(absentTypeLibRegistration()); // No preexisting library or interface metadata may be replaced.
+    bool previous = false;
+    REQUIRE(ATL::AtlGetPerUserRegistration(&previous) == S_OK);
+    struct Restore { bool value; ~Restore() { ATL::AtlSetPerUserRegistration(value); } } restore{previous};
+    RegistryRoot root;
+    REQUIRE(root.Open());
+    {
+        ExeTypeLibModule<Apartment> module;
+        REQUIRE(module.GetInitHRESULT() == S_OK);
+        ScopedRgsRegistrationContext context(root.key, ::GetModuleHandleW(nullptr), L"ExeTypeLibNative");
+        REQUIRE(context.Status() == S_OK);
+        struct Cleanup {
+            ExeTypeLibModule<Apartment>& module;
+            bool armed = false;
+            ~Cleanup() {
+                if (!armed) return;
+                HRESULT hr = E_FAIL;
+                module.ParseCommandLine(L"test.exe /UnregServerPerUser", &hr);
+                if (FAILED(hr)) std::fprintf(stderr, "EXE_TYPELIB_CLEANUP_FAIL hr=0x%08lx\n",
+                                             static_cast<unsigned long>(hr));
+            }
+        } cleanup{module};
+        {
+            ATL::CComBSTR path;
+            ATL::CComPtr<ITypeLib> library;
+            REQUIRE(ATL::AtlLoadTypeLib(::GetModuleHandleW(nullptr), L"\\1", &path.m_str, &library.p) == S_OK);
+        }
+        BSTR missingPath = reinterpret_cast<BSTR>(1);
+        ITypeLib* missing = reinterpret_cast<ITypeLib*>(1);
+        REQUIRE(FAILED(ATL::AtlLoadTypeLib(::GetModuleHandleW(nullptr), L"\\999", &missingPath, &missing)) &&
+                !missingPath && !missing);
+        REQUIRE(exeDispatch(false) && absentTypeLibRegistration()); // Embedded loading alone writes nothing.
+        REQUIRE(ATL::AtlSetPerUserRegistration(false) == S_OK);
+        HRESULT result = E_FAIL;
+        cleanup.armed = true;
+        REQUIRE(!module.ParseCommandLine(L"test.exe /RegServerPerUser", &result) && result == S_OK);
+        REQUIRE(exists(root.key, exeTypeLibClassKey) && exists(root.key, exeTypeLibAppId) &&
+                exists(root.key, L"AppID\\OpenWTL.AppId.Test.exe") && exists(HKEY_CURRENT_USER, typeLibKey));
+        bool enabled = true;
+        REQUIRE(ATL::AtlGetPerUserRegistration(&enabled) == S_OK && !enabled);
+        {
+            wchar_t image[OpenATL::RGS::MaxPathUnits + 2]{};
+            REQUIRE(::GetModuleFileNameW(nullptr, image, static_cast<DWORD>(sizeof(image) / sizeof(image[0]))));
+            ATL::CComBSTR registeredPath;
+            REQUIRE(::QueryPathOfRegTypeLib(LIBID_COMMAPLib, 1, 0, LOCALE_SYSTEM_DEFAULT,
+                                            &registeredPath.m_str) == S_OK && registeredPath.m_str);
+            REQUIRE(!::lstrcmpiW(image, registeredPath.m_str));
+            ATL::CComPtr<ITypeLib> library;
+            REQUIRE(::LoadRegTypeLib(LIBID_COMMAPLib, 1, 0, LOCALE_SYSTEM_DEFAULT, &library.p) == S_OK && library.p);
+            REQUIRE(exeDispatch(true) && exeDispatch(false));
+        }
+        REQUIRE(module.GetLockCount() == 0);
+        REQUIRE(!module.ParseCommandLine(L"test.exe /UnregServerPerUser", &result) && result == S_OK);
+        cleanup.armed = false;
+        REQUIRE(!exists(root.key, exeTypeLibClassKey) && !exists(root.key, exeTypeLibAppId) &&
+                !exists(root.key, L"AppID\\OpenWTL.AppId.Test.exe") && absentTypeLibRegistration());
+        {
+            ATL::CComPtr<ITypeLib> library;
+            REQUIRE(FAILED(::LoadRegTypeLib(LIBID_COMMAPLib, 1, 0, LOCALE_SYSTEM_DEFAULT, &library.p)) && !library.p);
+        }
+        {
+            DeniedTypeLib denied;
+            REQUIRE(denied.Open());
+            REQUIRE(ATL::AtlSetPerUserRegistration(true) == S_OK);
+            const HRESULT nativeFailure = ATL::AtlRegisterTypeLib(::GetModuleHandleW(nullptr), nullptr);
+            REQUIRE(FAILED(nativeFailure) && nativeFailure != E_NOTIMPL);
+            cleanup.armed = true;
+            REQUIRE(!module.ParseCommandLine(L"test.exe /RegServerPerUser", &result) && result == nativeFailure);
+            REQUIRE(!exists(root.key, exeTypeLibClassKey) && !exists(root.key, exeTypeLibAppId) &&
+                    !exists(root.key, L"AppID\\OpenWTL.AppId.Test.exe"));
+            cleanup.armed = false;
+            REQUIRE(denied.Close() && absentTypeLibRegistration());
+        }
+        REQUIRE(module.GetLockCount() == 0);
+    }
+    REQUIRE(root.Close());
+    REQUIRE(::CoGetContextToken(&token) == CO_E_NOTINITIALIZED && !ATL::_pAtlModule &&
+            !rgs_resource_detail::Current() && !rgs_resource_detail::CurrentModule());
+    return true;
+}
 
 bool typeLibHelpers(Dll& dll) {
     bool perUser = true;
@@ -1348,6 +1511,10 @@ bool native(DWORD apartment) {
     return true;
 }
 } // namespace
+
+#if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
+bool RunExeTypeLibTests() { return exeTypeLibRegistration<false>() && exeTypeLibRegistration<true>(); }
+#endif
 
 int main(int argc, char** argv) {
     if (argc == 4 && ::_stricmp(argv[3], "-Embedding") == 0) {

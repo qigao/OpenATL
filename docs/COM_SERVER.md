@@ -359,8 +359,7 @@ LockServer, retained proxies after revocation, native process exit and exact
 registry cleanup. Quoted MODULE/unquoted MODULE_RAW supply the launch command
 and ServerExecutable. There is no direct CreateProcess launch or alternate
 transport, new binary, project or workflow. AppID security policy, arbitrary
-custom-interface marshaling, idle shutdown and positive EXE embedded-TypeLib
-acceptance remain separate.
+custom-interface marshaling and idle shutdown remain separate.
 
 AppID resource registration is now available through RegisterAppId/UnregisterAppId
 and DECLARE_REGISTRY_APPID_RESOURCEID. DLL exports and EXE registration commands
@@ -380,7 +379,19 @@ both command spellings, AppID ordering/rollback and captured policy, failure and
 exception propagation, persistent mode and ordinary-command continuity. Invalid
 input/state does not change the setting; a nested command incompatible with its
 enclosing module policy is rejected. The application hook used for the HKCU
-test is not positive EXE embedded-TypeLib qualification; see [command limits](ATL_MODULE.md).
+test alone is not EXE embedded-TypeLib qualification; see [command limits](ATL_MODULE.md).
+
+The existing EXE additionally embeds the same actual COMMap.tlb resource as the
+DLL and compiles the shared dispatch fixture. Separate STA/MTA module cases run
+the full per-user registration commands with real AppID and selected automatic
+class resource callbacks, standard module registration and OLEAUT32 TypeLib work.
+They verify the registered path is this EXE, actual library identity/version/
+SYSKIND, embedded and registered ITypeInfo::Invoke, missing-index/invalid-image
+preflight, absence after unregistration and zero locks/COM balance. A real
+TypeLib-key DACL denial must preserve the native failure and roll both class and
+AppID resources back, even when common hooks change the global mode. Preexisting
+sample metadata is rejected before writes. No new binary, target or workflow is
+added, and the original Microsoft IDL remains byte-identical.
 
 This is a restricted source-compatible resource-ID API, **not** a general
 RGS interpreter or the complete standalone registrar API. It preserves

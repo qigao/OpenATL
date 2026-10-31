@@ -10,8 +10,16 @@
 #include <vector>
 
 #define CHECK(x) do { if (!(x)) { std::fprintf(stderr, "ATL_MODULE_FAIL line=%d: %s\n", __LINE__, #x); return false; } } while (0)
+#if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
+bool RunExeTypeLibTests();
+#endif
 namespace {
 bool noCom() { ULONG_PTR token = 0; return ::CoGetContextToken(&token) == CO_E_NOTINITIALIZED; }
+struct InvalidTypeLibImage {
+    HINSTANCE previous = ATL::_AtlBaseModule.m_hInst;
+    InvalidTypeLibImage() { ATL::_AtlBaseModule.m_hInst = nullptr; }
+    ~InvalidTypeLibImage() { ATL::_AtlBaseModule.m_hInst = previous; }
+};
 std::vector<DWORD_PTR> order;
 HRESULT lateCallback = S_OK;
 void WINAPI record(DWORD_PTR value) {
@@ -357,8 +365,11 @@ bool executable_registration() {
         CHECK(context.Status() == S_OK);
         CHECK(module.RegisterServer(FALSE) == E_NOTIMPL && exeRegistryCalls == 0 && !exists());
         CHECK(module.RegisterServer(FALSE, &CLSID_NULL) == CLASS_E_CLASSNOTAVAILABLE && !exists());
-        CHECK(FAILED(module.RegisterServer(TRUE, &exeRegistryClassId)) && exeRegistryCalls == 0 && !exists());
-        CHECK(FAILED(module.UnregisterServer(TRUE, &exeRegistryClassId)) && exeRegistryCalls == 0);
+        {
+            InvalidTypeLibImage invalid;
+            CHECK(module.RegisterServer(TRUE, &exeRegistryClassId) == E_INVALIDARG && exeRegistryCalls == 0 && !exists());
+            CHECK(module.UnregisterServer(TRUE, &exeRegistryClassId) == E_INVALIDARG && exeRegistryCalls == 0);
+        }
         HRESULT other = S_OK, removed = S_OK;
         std::thread wrong([&] {
             other = module.RegisterServer(FALSE, &exeRegistryClassId);
@@ -832,12 +843,15 @@ bool auto_object_map() {
         // TRUE used to be ignored, executing the class callback and claiming
         // a complete install. Rejection must precede every class side effect.
         CHECK(registrationCalls == 0);
-        // This EXE has no embedded TypeLib: native loading must fail before
-        // callbacks, rather than ignore TRUE or invent a registration.
-        CHECK(FAILED(dll.RegisterServer(TRUE, &registrationClassId)));
-        CHECK(FAILED(dll.UnregisterServer(TRUE, &registrationClassId)));
-        CHECK(FAILED(dll.DllRegisterServer()));
-        CHECK(FAILED(dll.DllUnregisterServer()));
+        // An invalid own-image input must fail TypeLib preflight before
+        // callbacks. The real EXE now embeds the same MIDL TypeLib as the DLL.
+        {
+            InvalidTypeLibImage invalid;
+            CHECK(dll.RegisterServer(TRUE, &registrationClassId) == E_INVALIDARG);
+            CHECK(dll.UnregisterServer(TRUE, &registrationClassId) == E_INVALIDARG);
+            CHECK(dll.DllRegisterServer() == E_INVALIDARG);
+            CHECK(dll.DllUnregisterServer() == E_INVALIDARG);
+        }
         CHECK(registrationCalls == 0 && dll.GetLockCount() == 0);
         CHECK(dll.RegisterServer(FALSE, &registrationClassId) == S_OK);
         CHECK(dll.UnregisterServer(FALSE, &registrationClassId) == S_OK);
@@ -1301,6 +1315,9 @@ bool RunAtlModuleTests() {
            appid_registration<AppIdDll>() && per_user_commands() && dll_module() &&
            auto_object_map() && automatic_executable<false>() && automatic_executable<true>() &&
            cross_process_executable(false) && cross_process_executable(true) &&
+#if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
+           RunExeTypeLibTests() &&
+#endif
            duplicate_auto_map();
 }
 
