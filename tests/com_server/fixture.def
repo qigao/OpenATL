@@ -5,4 +5,5 @@ EXPORTS
     DllRegisterServer
     DllUnregisterServer
     OpenATLCreateEmbeddedDispatch
+    OpenATLCreateRegisteredDispatch
     OpenATLGetEmbeddedTypeInfo

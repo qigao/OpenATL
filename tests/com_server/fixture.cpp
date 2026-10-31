@@ -75,10 +75,22 @@ HRESULT withRegistryContext(BOOL installing) noexcept {
     ScopedRgsRegistrationContext scope(root.m_hKey, image,
                                         L"OpenATLNativeFixture");
     if (FAILED(scope.Status())) return scope.Status();
-    // This fixture has no TypeLib. Register its two classes explicitly;
-    // requesting the unimplemented TypeLib path must fail before writes.
+#if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
+    bool previous = false;
+    HRESULT hr = ATL::AtlGetPerUserRegistration(&previous);
+    if (FAILED(hr)) return hr;
+    struct RestoreMode {
+        bool previous;
+        ~RestoreMode() { ATL::AtlSetPerUserRegistration(previous); }
+    } restore{previous};
+    ATL::AtlSetPerUserRegistration(true);
+    return installing ? dllModule.DllRegisterServer()
+                      : dllModule.DllUnregisterServer();
+#else
+    // Cross-host fixtures without native MIDL still select class-only work.
     return installing ? dllModule.DllRegisterServer(FALSE)
                       : dllModule.DllUnregisterServer(FALSE);
+#endif
 }
 } // namespace
 

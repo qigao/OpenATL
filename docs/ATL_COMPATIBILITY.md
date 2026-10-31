@@ -20,11 +20,12 @@ target. Missing standard headers and APIs remain compatibility gaps; see the
 | `atlhost.h`, `atliface.h` | Windowed OLE containment, `CAxWindow`/`CAxWindow2`, site/ambient interfaces and explicit control creation; see [ownership contract](ACTIVEX_HOST.md) |
 | `atlcom.h` / `atlctl.h` | `AtlAdvise`/`AtlUnadvise`, `IDispEventSimpleImpl`, typed `SINK_ENTRY_INFO` maps |
 | `atlbase.h`: `CAtlModule`, `CAtlModuleT`, `CAtlExeModuleT` | Module locks, termination callbacks, balanced COM startup and explicit class-factory registration; see [module protocol](ATL_MODULE.md) |
-| `atlbase.h`: `CAtlDllModuleT<T>` | Real DLL exports and one `OpenATL::COM::Module` engine. Supports bound tables and static `OBJECT_ENTRY_AUTO` discovery, plus class-directed `UpdateRegistry(BOOL)` callbacks with ordered rollback; Bounded REGISTRY-resource scripts require an explicit registration context. TypeLib=TRUE fails E_NOTIMPL before class callbacks; automatic ProgID inference and TypeLib registration remain pending. |
+| `atlbase.h`: `CAtlDllModuleT<T>` | Real DLL exports and one `OpenATL::COM::Module` engine. Supports bound tables and static `OBJECT_ENTRY_AUTO` discovery, plus class-directed `UpdateRegistry(BOOL)` callbacks with ordered rollback; Bounded REGISTRY-resource scripts require an explicit registration context. TypeLib=TRUE preloads the own-image TypeLib, registers it through OLEAUT32 after classes, and rolls class callbacks back if TypeLib registration fails. Automatic ProgID inference remains pending. |
 | `OBJECT_ENTRY_AUTO(clsid, type)` | Static per-image class map and optional typed `UpdateRegistry(BOOL)` callback, bounded duplicate/invalid CLSID rejection, real `IClassFactory`/object/module-lock ownership and native STA/MTA activation. No COM, registry I/O or heap allocation in static constructor. |
 | `DECLARE_NO_REGISTRY()` | Explicit ATL class opt-out of persistent registration; absent `UpdateRegistry` without this opt-out fails `E_NOTIMPL`. |
 | `DECLARE_REGISTRY_RESOURCEID(id)` | Class-static `UpdateRegistry(BOOL)` loads a real `REGISTRY` resource from the explicit HMODULE, parses a bounded ATL RGS subset and executes the owner-verified plan only inside a scoped application registration context; no implicit HKCR or TypeLib registration. |
-| `IDispatchImpl<T, &IID, &LIBID, major, minor, holder>`, `CComTypeInfoHolder` | Real Windows type-info holder using `LoadRegTypeLib` and `GetTypeInfoOfGuid`; four IDispatch methods and `ITypeInfo::GetIDsOfNames/Invoke` delegation, with owned temporary pointers and no static type-info cache. Native OLEAUT32 tests cover real late binding. `GetTIFromFile` additionally loads **actual binary .tlb files** via `LoadTypeLibEx(REGKIND_NONE)`, verifies GUID/version/IID and exposes owned ITypeInfo without registry writes. Image TLB mode `0xffff/0xffff` loads this binary image with `REGKIND_NONE`, verifies LIBID/IID, and supports real dispatch over an embedded TypeLib. The image path is bounded to 8192 UTF-16 units; global registered TLB success remains separately unqualified. |
+| `IDispatchImpl<T, &IID, &LIBID, major, minor, holder>`, `CComTypeInfoHolder` | Real Windows type-info holder using `LoadRegTypeLib` and `GetTypeInfoOfGuid`; four IDispatch methods and `ITypeInfo::GetIDsOfNames/Invoke` delegation, with owned temporary pointers and no static type-info cache. Native OLEAUT32 tests cover real late binding. `GetTIFromFile` additionally loads **actual binary .tlb files** via `LoadTypeLibEx(REGKIND_NONE)`, verifies GUID/version/IID and exposes owned ITypeInfo without registry writes. Image TLB mode `0xffff/0xffff` loads this binary image with `REGKIND_NONE`, verifies LIBID/IID, and supports real dispatch over an embedded TypeLib. The image path is bounded to 8192 UTF-16 units; per-user registered TypeLib loading and real dispatch have native tests; machine-wide permission behavior remains a separate acceptance boundary. |
+| `AtlLoadTypeLib`, `AtlRegisterTypeLib`, `AtlUnRegisterTypeLib`, `AtlGetPerUserRegistration`, `AtlSetPerUserRegistration` | Standard global signatures, owning BSTR/ITypeLib outputs, bounded numeric resource index, own-image loading, and explicit native system/per-user OLEAUT32 registration. Per-user mode applies to these helpers and the DLL TypeLib path; RGS still requires its explicit root context. |
 | `DECLARE_LIBID(id)` | Original ATL module `InitLibId()` pattern initializes `CAtlModule::m_libid` at module construction. A native derived DLL module test checks actual GUID identity and avoids type-library registration side effects. |
 | `atlcom.h`: `CComObjectRootBase`, `CComObjectRootEx`, `CComObjectRoot` | Nonaggregated reference counting, thread-model critical section, construction/release hooks |
 | `CComObject<T>` | Concrete IUnknown, raw creation with initial reference count **zero**, typed QI, last-release destruction |
@@ -83,7 +84,7 @@ the existing owner-verified registry plan/inspection machinery, with
 fail-closed `ForceRemove`, reverse rollback and strict unregistration
 preflight. `DECLARE_REGISTRY_RESOURCEID` now supports a genuine Win32
 `REGISTRY` resource ID with strict encoding and explicit scoped owner/root
-policy. **Full RGS grammar and TypeLib registration remain unimplemented.**
+policy. **Full RGS grammar and implicit standard RGS registration policy remain unimplemented.**
 This isolated native admission does not qualify the original ATL applications'
 complete compile/link/activation. See [server registration](COM_SERVER.md).
 
@@ -97,7 +98,7 @@ the whole original COMMap DLL build/link or any of the 37 pure-ATL projects pass
 
 **Tracked compatibility gaps:** expanded ATL object-map entry variants
 (including aggregation, automatic aggregates and tear-offs),
-full RGS grammar and automatic registration policy, complete TypeLib registration/unregistration,
+full RGS grammar and automatic registration policy, complete CAtlComModule/legacy TypeLib API coverage and machine-wide registration acceptance,
 connection-point server templates, SAFEARRAY wrappers, windowless
 hosting, resource-based ActiveX dialogs and complete control/server support.
 `CComModule` has an implemented legacy object-map subset; its presence is

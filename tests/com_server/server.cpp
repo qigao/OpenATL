@@ -14,6 +14,7 @@
 #include <stdexcept>
 #include <thread>
 #include <vector>
+#include <sddl.h>
 
 using namespace OpenATL::COM;
 #define REQUIRE(condition) do { if (!(condition)) { \
@@ -362,11 +363,11 @@ public:
 };
 
 #if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
-bool embeddedDispatch(Dll& dll) {
+bool embeddedDispatch(Dll& dll, const char* creator = "OpenATLCreateEmbeddedDispatch") {
     using Create = HRESULT (WINAPI*)(IDispatch**);
     using TypeInfo = HRESULT (WINAPI*)(REFIID, REFGUID, ITypeInfo**);
     const auto create = reinterpret_cast<Create>(
-        ::GetProcAddress(dll.image, "OpenATLCreateEmbeddedDispatch"));
+        ::GetProcAddress(dll.image, creator));
     const auto query = reinterpret_cast<TypeInfo>(
         ::GetProcAddress(dll.image, "OpenATLGetEmbeddedTypeInfo"));
     REQUIRE(create && query);
@@ -414,6 +415,118 @@ bool embeddedDispatch(Dll& dll) {
     library.Release();
     REQUIRE(dll.unload() == S_OK);
     std::puts("OPENATL_EMBEDDED_TYPELIB_OK image=dll dispatch=1 invoke=1 register=0");
+    return true;
+}
+
+constexpr LPCWSTR typeLibKey = L"Software\\Classes\\TypeLib\\{4F9A68DD-DD9D-11CF-9462-00AA00BBAD7F}";
+bool absentTypeLibRegistration() {
+    const struct { LPCWSTR category; const GUID* id; } items[] = {
+        {L"TypeLib", &LIBID_COMMAPLib}, {L"Interface", &IID_IChain},
+        {L"Interface", &IID_IOuter}, {L"Interface", &IID_ITearOff1},
+        {L"Interface", &IID_ITearOff2}
+    };
+    for (HKEY root : {HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE}) {
+        for (const auto& item : items) {
+            wchar_t id[40]{};
+            REQUIRE(::StringFromGUID2(*item.id, id, 40));
+            const std::wstring path = std::wstring(L"Software\\Classes\\") + item.category + L"\\" + id;
+            HKEY key = nullptr;
+            const LSTATUS state = ::RegOpenKeyExW(root, path.c_str(), 0, KEY_READ, &key);
+            if (key) ::RegCloseKey(key);
+            REQUIRE(state == ERROR_FILE_NOT_FOUND || state == ERROR_PATH_NOT_FOUND);
+        }
+    }
+    return true;
+}
+
+// Deny writes only to a newly-created test-owned TypeLib GUID. Keep the
+// already-open security handle to restore its DACL on every exit path.
+struct DeniedTypeLib {
+    HKEY key = nullptr;
+    bool owned = false, denied = false;
+    std::vector<BYTE> security;
+    bool Open() {
+        DWORD disposition = 0;
+        REQUIRE(::RegCreateKeyExW(HKEY_CURRENT_USER, typeLibKey, 0, nullptr, 0,
+            KEY_ALL_ACCESS, nullptr, &key, &disposition) == ERROR_SUCCESS);
+        owned = disposition == REG_CREATED_NEW_KEY;
+        REQUIRE(owned);
+        DWORD bytes = 0;
+        REQUIRE(::RegGetKeySecurity(key, DACL_SECURITY_INFORMATION, nullptr,
+            &bytes) == ERROR_INSUFFICIENT_BUFFER);
+        security.resize(bytes);
+        REQUIRE(::RegGetKeySecurity(key, DACL_SECURITY_INFORMATION,
+            reinterpret_cast<PSECURITY_DESCRIPTOR>(security.data()), &bytes) == ERROR_SUCCESS);
+        PSECURITY_DESCRIPTOR deny = nullptr;
+        REQUIRE(::ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            L"D:P(D;;KW;;;WD)", SDDL_REVISION_1, &deny, nullptr));
+        const LSTATUS state = ::RegSetKeySecurity(key,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, deny);
+        ::LocalFree(deny);
+        denied = state == ERROR_SUCCESS;
+        REQUIRE(denied);
+        return true;
+    }
+    bool Close() {
+        if (denied) {
+            if (::RegSetKeySecurity(key, DACL_SECURITY_INFORMATION,
+                reinterpret_cast<PSECURITY_DESCRIPTOR>(security.data())) != ERROR_SUCCESS) return false;
+            denied = false;
+        }
+        if (key) { ::RegCloseKey(key); key = nullptr; }
+        if (owned) {
+            if (::RegDeleteKeyW(HKEY_CURRENT_USER, typeLibKey) != ERROR_SUCCESS) return false;
+            owned = false;
+        }
+        return true;
+    }
+    ~DeniedTypeLib() { Close(); }
+};
+
+bool typeLibHelpers(Dll& dll) {
+    bool perUser = true;
+    REQUIRE(ATL::AtlGetPerUserRegistration(&perUser) == S_OK && !perUser);
+    REQUIRE(ATL::AtlGetPerUserRegistration(nullptr) == E_POINTER);
+    {
+        ATL::CComBSTR path;
+        ATL::CComPtr<ITypeLib> library;
+        REQUIRE(ATL::AtlLoadTypeLib(dll.image, L"\\1", &path.m_str, &library.p) == S_OK);
+        REQUIRE(path.m_str && library.p && ::SysStringLen(path.m_str) > 2);
+        const UINT length = ::SysStringLen(path.m_str);
+        REQUIRE(std::wcscmp(path.m_str + length - 2, L"\\1") == 0);
+    }
+    BSTR path = reinterpret_cast<BSTR>(1);
+    ITypeLib* library = reinterpret_cast<ITypeLib*>(1);
+    REQUIRE(ATL::AtlLoadTypeLib(dll.image, L"/1", &path, &library) == E_INVALIDARG && !path && !library);
+    REQUIRE(FAILED(ATL::AtlLoadTypeLib(dll.image, L"\\999", &path, &library)) && !path && !library);
+    REQUIRE(ATL::AtlLoadTypeLib(nullptr, nullptr, &path, &library) == E_INVALIDARG && !path && !library);
+    REQUIRE(ATL::AtlLoadTypeLib(dll.image, nullptr, nullptr, &library) == E_POINTER && !library);
+    return true;
+}
+
+bool typeLibRollback(Dll& dll) {
+    REQUIRE(absentTypeLibRegistration()); // Never overwrite an installed sample.
+    bool previous = false;
+    REQUIRE(ATL::AtlGetPerUserRegistration(&previous) == S_OK);
+    struct Restore { bool value; ~Restore() { ATL::AtlSetPerUserRegistration(value); } } restore{previous};
+    REQUIRE(ATL::AtlSetPerUserRegistration(true) == S_OK);
+    bool enabled = false;
+    REQUIRE(ATL::AtlGetPerUserRegistration(&enabled) == S_OK && enabled);
+    DeniedTypeLib denied;
+    REQUIRE(denied.Open());
+    const HRESULT nativeFailure = ATL::AtlRegisterTypeLib(dll.image, nullptr);
+    REQUIRE(FAILED(nativeFailure) && nativeFailure != E_NOTIMPL);
+    REQUIRE(dll.install() == nativeFailure);
+    for (const GUID* id : {&CLSID_OpenATLValue, &CLSID_OpenATLAuxValue}) {
+        wchar_t text[40]{};
+        REQUIRE(::StringFromGUID2(*id, text, 40));
+        const std::wstring path = std::wstring(L"Software\\Classes\\CLSID\\") + text;
+        REQUIRE(!exists(HKEY_CURRENT_USER, path.c_str()));
+    }
+    REQUIRE(!exists(HKEY_CURRENT_USER, L"Software\\Classes\\OpenATL.Conformance.Server.1"));
+    REQUIRE(!exists(HKEY_CURRENT_USER, L"Software\\Classes\\OpenATL.Conformance.Aux.1"));
+    REQUIRE(denied.Close());
+    REQUIRE(absentTypeLibRegistration());
     return true;
 }
 #endif
@@ -555,6 +668,10 @@ bool native(DWORD apartment) {
     REQUIRE(dll.Open());
     REQUIRE(verifyResourceDocuments(dll.image));
     REQUIRE(scopedResourceRegistry(dll.image));
+#if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
+    REQUIRE(typeLibHelpers(dll));
+    REQUIRE(typeLibRollback(dll));
+#endif
     ULONG_PTR token = 0;
     REQUIRE(::CoGetContextToken(&token) == CO_E_NOTINITIALIZED);
     REQUIRE(dll.unload() == S_OK);
@@ -596,6 +713,12 @@ bool native(DWORD apartment) {
     struct ApartmentOwner { ~ApartmentOwner() { ::CoUninitialize(); } } owner;
 #if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
     REQUIRE(embeddedDispatch(dll));
+    REQUIRE(embeddedDispatch(dll, "OpenATLCreateRegisteredDispatch"));
+    REQUIRE(exists(HKEY_CURRENT_USER, typeLibKey));
+    ATL::CComPtr<ITypeLib> registeredTypeLib;
+    REQUIRE(::LoadRegTypeLib(LIBID_COMMAPLib, 1, 0, LOCALE_SYSTEM_DEFAULT,
+        &registeredTypeLib.p) == S_OK && registeredTypeLib.p);
+    registeredTypeLib.Release();
 #endif
     CLSID resolved{};
     REQUIRE(::CLSIDFromProgID(OpenATLTestProgId, &resolved) == S_OK &&
@@ -619,6 +742,9 @@ bool native(DWORD apartment) {
     REQUIRE(dll.unload() == S_OK);
     REQUIRE(dll.uninstall() == S_OK);
     dll.installed = false;
+#if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
+    REQUIRE(absentTypeLibRegistration());
+#endif
     void* missing = reinterpret_cast<void*>(1);
     REQUIRE(::CoCreateInstance(CLSID_OpenATLValue, nullptr, CLSCTX_INPROC_SERVER,
                                 IID_OpenATLValue, &missing) == REGDB_E_CLASSNOTREG && !missing);
