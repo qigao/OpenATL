@@ -493,21 +493,6 @@ private:
     bool initialized_ = false;
 };
 
-template<class T>
-class CAtlModuleT : public CAtlModule {
-public:
-    CAtlModuleT() noexcept { InitLibIdIfPresent<T>(0); }
-    // Persistent registration requires an application-owned installer policy.
-    HRESULT RegisterServer(BOOL = FALSE, const CLSID* = nullptr) noexcept { return E_NOTIMPL; }
-    HRESULT UnregisterServer(BOOL = FALSE, const CLSID* = nullptr) noexcept { return E_NOTIMPL; }
-private:
-    template<class U>
-    static auto InitLibIdIfPresent(int) noexcept
-        -> decltype(U::InitLibId(), void()) { U::InitLibId(); }
-    template<class U>
-    static void InitLibIdIfPresent(...) noexcept {}
-};
-
 namespace detail {
 inline HRESULT AtlModuleException() noexcept {
     try { throw; }
@@ -557,145 +542,8 @@ struct AutoObjectEntry {
     AutoObjectEntry(const AutoObjectEntry&) = delete;
     AutoObjectEntry& operator=(const AutoObjectEntry&) = delete;
 };
-}
-
-// DLL module lifetime and standard ATL export forwarding.
-//
-// BindServer() is the explicit-class-table bridge. The bound
-// OpenATL::COM::Module and its static class table must outlive the DLL
-// module and every factory/object/server lock. Binding is one-time; callers
-// must coordinate DLL unload and configuration externally.
-template<class T>
-class ATL_NO_VTABLE CAtlDllModuleT : public CAtlModuleT<T> {
-public:
-    CAtlDllModuleT() noexcept = default;
-    CAtlDllModuleT(const CAtlDllModuleT&) = delete;
-    CAtlDllModuleT& operator=(const CAtlDllModuleT&) = delete;
-
-    HRESULT BindServer(OpenATL::COM::Module& module) noexcept {
-        if (this->IsTerminated()) return E_UNEXPECTED;
-        const HRESULT status = module.Status();
-        if (FAILED(status)) return status;
-        OpenATL::COM::Module* expected = nullptr;
-        if (server_.compare_exchange_strong(expected, &module)) return S_OK;
-        return expected == &module ? S_OK : HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
-    }
-
-    // No COM initialization/registry updates may run under the loader lock.
-    BOOL WINAPI DllMain(DWORD /*reason*/, LPVOID /*reserved*/) noexcept {
-        return TRUE;
-    }
-
-    HRESULT DllCanUnloadNow() const noexcept {
-        if (this->IsTerminated() || this->GetLockCount() != 0) return S_FALSE;
-        const auto* server = server_.load(std::memory_order_acquire);
-        const auto* autoServer = autoServer_.load(std::memory_order_acquire);
-        if (server && server->CanUnloadNow() != S_OK) return S_FALSE;
-        if (autoServer && autoServer->CanUnloadNow() != S_OK) return S_FALSE;
-        return S_OK;
-    }
-
-    HRESULT DllGetClassObject(REFCLSID clsid, REFIID iid, LPVOID* output) noexcept {
-        if (!output) return E_POINTER;
-        *output = nullptr;
-        if (this->IsTerminated()) return E_UNEXPECTED;
-        // Match ATL's CRTP hook: the DLL export delegates to T::GetClassObject,
-        // allowing a derived module to provide a standard object-map lookup.
-        // Pin the image throughout this synchronous callback.
-        this->Lock();
-        HRESULT result = E_UNEXPECTED;
-        try {
-            result = static_cast<T*>(this)->GetClassObject(clsid, iid, output);
-        } catch (...) {
-            result = detail::AtlModuleException();
-        }
-        // A successful COM lookup without an owned interface must never be
-        // advertised as success, even by a custom derived ATL module.
-        if (SUCCEEDED(result) && *output == nullptr) result = E_UNEXPECTED;
-        if (FAILED(result)) *output = nullptr;
-        this->Unlock();
-        return result;
-    }
-
-    HRESULT GetClassObject(REFCLSID clsid, REFIID iid, LPVOID* output) noexcept {
-        if (!output) return E_POINTER;
-        *output = nullptr;
-        if (this->IsTerminated()) return E_UNEXPECTED;
-        // An explicitly bound legacy class table remains the single active
-        // server engine for that module. With no binding, discover standard
-        // ATL OBJECT_ENTRY_AUTO declarations and build that same engine once.
-        auto* server = server_.load(std::memory_order_acquire);
-        if (!server) {
-            const HRESULT hr = InitializeAutoMapOnce();
-            if (FAILED(hr)) return hr;
-            server = autoServer_.load(std::memory_order_acquire);
-        }
-        return server ? server->GetClassObject(clsid, iid, output)
-                      : CLASS_E_CLASSNOTAVAILABLE;
-    }
-
-    // ATL-compatible class-directed registration: each OBJECT_ENTRY_AUTO
-    // class must expose a real static UpdateRegistry(BOOL), or explicitly
-    // opt out with DECLARE_NO_REGISTRY. This path never derives ProgIDs or
-    // installer privileges from the CLSID; resource scripts retain the
-    // bounded parser and owner-verified registration policy.
-    HRESULT RegisterServer(BOOL registerTypeLib = FALSE, const CLSID* selected = nullptr) noexcept {
-        const bool perUser = detail::perUserRegistration.load();
-        OpenATL::COM::ScopedModuleRgsRegistration context(
-            _AtlBaseModule.GetModuleInstance(), perUser);
-        if (!registerTypeLib) return ApplyAutoRegistry(TRUE, selected);
-        if (this->IsTerminated()) return E_UNEXPECTED;
-        detail::TypeLibRegistration registration(perUser);
-        HRESULT hr = registration.Prepare(_AtlBaseModule.GetModuleInstance());
-        if (FAILED(hr)) return hr; // No class callback before TypeLib preflight.
-        hr = ApplyAutoRegistry(TRUE, selected);
-        if (FAILED(hr)) return hr;
-        hr = registration.Register();
-        if (FAILED(hr)) {
-            const HRESULT rollback = ApplyAutoRegistry(FALSE, selected);
-            return FAILED(rollback) ? rollback : hr;
-        }
-        return S_OK;
-    }
-    HRESULT UnregisterServer(BOOL unregisterTypeLib = FALSE, const CLSID* selected = nullptr) noexcept {
-        const bool perUser = detail::perUserRegistration.load();
-        OpenATL::COM::ScopedModuleRgsRegistration context(
-            _AtlBaseModule.GetModuleInstance(), perUser);
-        if (!unregisterTypeLib) return ApplyAutoRegistry(FALSE, selected);
-        if (this->IsTerminated()) return E_UNEXPECTED;
-        detail::TypeLibRegistration registration(perUser);
-        HRESULT hr = registration.Prepare(_AtlBaseModule.GetModuleInstance());
-        if (FAILED(hr)) return hr;
-        hr = ApplyAutoRegistry(FALSE, selected);
-        return FAILED(hr) ? hr : registration.Unregister();
-    }
-
-    // Pin active registration exports against a cooperative DLL unload.
-    HRESULT DllRegisterServer(BOOL registerTypeLib = TRUE) noexcept {
-        if (this->IsTerminated()) return E_UNEXPECTED;
-        this->Lock();
-        HRESULT result = E_UNEXPECTED;
-        try {
-            result = static_cast<T*>(this)->RegisterServer(registerTypeLib, nullptr);
-        } catch (...) {
-            result = detail::AtlModuleException();
-        }
-        this->Unlock();
-        return result;
-    }
-    HRESULT DllUnregisterServer(BOOL unregisterTypeLib = TRUE) noexcept {
-        if (this->IsTerminated()) return E_UNEXPECTED;
-        this->Lock();
-        HRESULT result = E_UNEXPECTED;
-        try {
-            result = static_cast<T*>(this)->UnregisterServer(unregisterTypeLib, nullptr);
-        } catch (...) {
-            result = detail::AtlModuleException();
-        }
-        this->Unlock();
-        return result;
-    }
-
+// One immutable image object map supplies DLL factories and module registration.
+class AutoObjectMap final {
 private:
     struct RegistryEntry {
         CLSID clsid;
@@ -709,12 +557,11 @@ private:
             if (a.Data4[i] != b.Data4[i]) return a.Data4[i] < b.Data4[i];
         return false;
     }
-    // All callbacks are immutable after the first successful class lookup.
-    // Registration order is CLSID-sorted, not dependent on loader/link order.
+public:
+    // Callbacks freeze on the first map initialization. Registration order is
+    // CLSID-sorted, not dependent on loader/link order.
     HRESULT ApplyAutoRegistry(BOOL installing, const CLSID* selected) noexcept {
-        if (this->IsTerminated()) return E_UNEXPECTED;
-        if (server_.load(std::memory_order_acquire)) return E_NOTIMPL;
-        HRESULT result = InitializeAutoMapOnce();
+        HRESULT result = Initialize();
         if (FAILED(result)) return result;
         size_t matched = 0;
         for (const auto& item : autoRegistrars_) {
@@ -754,7 +601,7 @@ private:
         return S_OK;
     }
 
-    HRESULT InitializeAutoMapOnce() noexcept {
+    HRESULT Initialize() noexcept {
         try {
             std::call_once(autoOnce_, [this]() noexcept {
                 try {
@@ -809,7 +656,10 @@ private:
         }
     }
 
-    std::atomic<OpenATL::COM::Module*> server_{nullptr};
+    OpenATL::COM::Module* Server() const noexcept {
+        return autoServer_.load(std::memory_order_acquire);
+    }
+private:
     // Member order: the server is destroyed before its immutable class table.
     std::once_flag autoOnce_;
     HRESULT autoStatus_ = CLASS_E_CLASSNOTAVAILABLE;
@@ -817,6 +667,176 @@ private:
     std::vector<RegistryEntry> autoRegistrars_;
     std::unique_ptr<OpenATL::COM::Module> autoOwned_;
     std::atomic<OpenATL::COM::Module*> autoServer_{nullptr};
+};
+
+}
+
+template<class T>
+class CAtlModuleT : public CAtlModule {
+public:
+    CAtlModuleT() noexcept { InitLibIdIfPresent<T>(0); }
+    // Common persistent registration for EXE and DLL modules. One snapshot
+    // supplies callbacks, resource ownership and the TypeLib mode policy.
+    HRESULT RegisterServer(BOOL registerTypeLib = FALSE, const CLSID* selected = nullptr) noexcept {
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        const bool perUser = detail::perUserRegistration.load();
+        OpenATL::COM::ScopedModuleRgsRegistration context(
+            _AtlBaseModule.GetModuleInstance(), perUser);
+        if (!registerTypeLib) return autoMap_.ApplyAutoRegistry(TRUE, selected);
+        detail::TypeLibRegistration registration(perUser);
+        HRESULT hr = registration.Prepare(_AtlBaseModule.GetModuleInstance());
+        if (FAILED(hr)) return hr; // No class callback before TypeLib preflight.
+        hr = autoMap_.ApplyAutoRegistry(TRUE, selected);
+        if (FAILED(hr)) return hr;
+        hr = registration.Register();
+        if (FAILED(hr)) {
+            const HRESULT rollback = autoMap_.ApplyAutoRegistry(FALSE, selected);
+            return FAILED(rollback) ? rollback : hr;
+        }
+        return S_OK;
+    }
+    HRESULT UnregisterServer(BOOL unregisterTypeLib = FALSE, const CLSID* selected = nullptr) noexcept {
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        const bool perUser = detail::perUserRegistration.load();
+        OpenATL::COM::ScopedModuleRgsRegistration context(
+            _AtlBaseModule.GetModuleInstance(), perUser);
+        if (!unregisterTypeLib) return autoMap_.ApplyAutoRegistry(FALSE, selected);
+        detail::TypeLibRegistration registration(perUser);
+        HRESULT hr = registration.Prepare(_AtlBaseModule.GetModuleInstance());
+        if (FAILED(hr)) return hr;
+        hr = autoMap_.ApplyAutoRegistry(FALSE, selected);
+        return FAILED(hr) ? hr : registration.Unregister();
+    }
+
+protected:
+    detail::AutoObjectMap autoMap_;
+private:
+    template<class U>
+    static auto InitLibIdIfPresent(int) noexcept
+        -> decltype(U::InitLibId(), void()) { U::InitLibId(); }
+    template<class U>
+    static void InitLibIdIfPresent(...) noexcept {}
+};
+
+// DLL module lifetime and standard ATL export forwarding.
+//
+// BindServer() is the explicit-class-table bridge. The bound
+// OpenATL::COM::Module and its static class table must outlive the DLL
+// module and every factory/object/server lock. Binding is one-time; callers
+// must coordinate DLL unload and configuration externally.
+template<class T>
+class ATL_NO_VTABLE CAtlDllModuleT : public CAtlModuleT<T> {
+public:
+    CAtlDllModuleT() noexcept = default;
+    CAtlDllModuleT(const CAtlDllModuleT&) = delete;
+    CAtlDllModuleT& operator=(const CAtlDllModuleT&) = delete;
+
+    HRESULT BindServer(OpenATL::COM::Module& module) noexcept {
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        const HRESULT status = module.Status();
+        if (FAILED(status)) return status;
+        OpenATL::COM::Module* expected = nullptr;
+        if (server_.compare_exchange_strong(expected, &module)) return S_OK;
+        return expected == &module ? S_OK : HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+    }
+
+    // No COM initialization/registry updates may run under the loader lock.
+    BOOL WINAPI DllMain(DWORD /*reason*/, LPVOID /*reserved*/) noexcept {
+        return TRUE;
+    }
+
+    HRESULT DllCanUnloadNow() const noexcept {
+        if (this->IsTerminated() || this->GetLockCount() != 0) return S_FALSE;
+        const auto* server = server_.load(std::memory_order_acquire);
+        const auto* autoServer = this->autoMap_.Server();
+        if (server && server->CanUnloadNow() != S_OK) return S_FALSE;
+        if (autoServer && autoServer->CanUnloadNow() != S_OK) return S_FALSE;
+        return S_OK;
+    }
+
+    HRESULT DllGetClassObject(REFCLSID clsid, REFIID iid, LPVOID* output) noexcept {
+        if (!output) return E_POINTER;
+        *output = nullptr;
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        // Match ATL's CRTP hook: the DLL export delegates to T::GetClassObject,
+        // allowing a derived module to provide a standard object-map lookup.
+        // Pin the image throughout this synchronous callback.
+        this->Lock();
+        HRESULT result = E_UNEXPECTED;
+        try {
+            result = static_cast<T*>(this)->GetClassObject(clsid, iid, output);
+        } catch (...) {
+            result = detail::AtlModuleException();
+        }
+        // A successful COM lookup without an owned interface must never be
+        // advertised as success, even by a custom derived ATL module.
+        if (SUCCEEDED(result) && *output == nullptr) result = E_UNEXPECTED;
+        if (FAILED(result)) *output = nullptr;
+        this->Unlock();
+        return result;
+    }
+
+    HRESULT GetClassObject(REFCLSID clsid, REFIID iid, LPVOID* output) noexcept {
+        if (!output) return E_POINTER;
+        *output = nullptr;
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        // An explicitly bound legacy class table remains the single active
+        // server engine for that module. With no binding, discover standard
+        // ATL OBJECT_ENTRY_AUTO declarations and build that same engine once.
+        auto* server = server_.load(std::memory_order_acquire);
+        if (!server) {
+            const HRESULT hr = this->autoMap_.Initialize();
+            if (FAILED(hr)) return hr;
+            server = this->autoMap_.Server();
+        }
+        return server ? server->GetClassObject(clsid, iid, output)
+                      : CLASS_E_CLASSNOTAVAILABLE;
+    }
+
+    // ATL-compatible class-directed registration: each OBJECT_ENTRY_AUTO
+    // class must expose a real static UpdateRegistry(BOOL), or explicitly
+    // opt out with DECLARE_NO_REGISTRY. This path never derives ProgIDs or
+    // installer privileges from the CLSID; resource scripts retain the
+    // bounded parser and owner-verified registration policy.
+    HRESULT RegisterServer(BOOL library = FALSE, const CLSID* selected = nullptr) noexcept {
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        if (server_.load(std::memory_order_acquire)) return E_NOTIMPL;
+        return CAtlModuleT<T>::RegisterServer(library, selected);
+    }
+    HRESULT UnregisterServer(BOOL library = FALSE, const CLSID* selected = nullptr) noexcept {
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        if (server_.load(std::memory_order_acquire)) return E_NOTIMPL;
+        return CAtlModuleT<T>::UnregisterServer(library, selected);
+    }
+
+    // Pin active registration exports against a cooperative DLL unload.
+    HRESULT DllRegisterServer(BOOL registerTypeLib = TRUE) noexcept {
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        this->Lock();
+        HRESULT result = E_UNEXPECTED;
+        try {
+            result = static_cast<T*>(this)->RegisterServer(registerTypeLib, nullptr);
+        } catch (...) {
+            result = detail::AtlModuleException();
+        }
+        this->Unlock();
+        return result;
+    }
+    HRESULT DllUnregisterServer(BOOL unregisterTypeLib = TRUE) noexcept {
+        if (this->IsTerminated()) return E_UNEXPECTED;
+        this->Lock();
+        HRESULT result = E_UNEXPECTED;
+        try {
+            result = static_cast<T*>(this)->UnregisterServer(unregisterTypeLib, nullptr);
+        } catch (...) {
+            result = detail::AtlModuleException();
+        }
+        this->Unlock();
+        return result;
+    }
+
+private:
+    std::atomic<OpenATL::COM::Module*> server_{nullptr};
 };
 
 template<class T>
@@ -839,6 +859,14 @@ public:
     static void UninitializeCom() noexcept { ::CoUninitialize(); }
     HRESULT GetInitHRESULT() const noexcept { return m_hr; }
 
+    HRESULT RegisterServer(BOOL library = FALSE, const CLSID* selected = nullptr) noexcept {
+        const HRESULT hr = CheckThread();
+        return FAILED(hr) ? hr : CAtlModuleT<T>::RegisterServer(library, selected);
+    }
+    HRESULT UnregisterServer(BOOL library = FALSE, const CLSID* selected = nullptr) noexcept {
+        const HRESULT hr = CheckThread();
+        return FAILED(hr) ? hr : CAtlModuleT<T>::UnregisterServer(library, selected);
+    }
     HRESULT SetClassObjects(const OpenATL::COM::ClassObjectEntry* entries, size_t count) noexcept {
         HRESULT hr = CheckThread();
         if (FAILED(hr)) return hr;

@@ -336,6 +336,13 @@ module helpers, external resource-only EXE loading, mixed MODULE/MODULE_RAW,
 explicit binding quotes/reset, raw owner markers and formatting-sensitive
 unregister preservation. The portable parser suite checks case folding, command
 suffixes, raw icon paths, quote budgets and unchanged outputs after failure.
+The common module and EXE persistent-registration paths now reuse the DLL's
+frozen automatic object map and registration workflow. Existing module tests
+drive a real class callback/resource under a GUID private HKCU root, verify EXE
+quoted/raw paths and raw ownership, reject deletion after a value change, and
+check preflight, wrong-thread, failed COM initialization and terminated state.
+Base-module execution retains its no-COM contract. Automatic EXE class-factory
+activation, AppID and positive EXE embedded-TypeLib acceptance remain separate.
 
 This is a restricted source-compatible resource-ID API, **not** a general
 RGS interpreter or the complete standalone registrar API. It preserves
