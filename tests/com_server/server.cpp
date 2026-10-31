@@ -1,4 +1,5 @@
 #include <atlbase.h>
+#include <atlcom.h>
 #include <statreg.h>
 #include <openatl/com_server.h>
 #include <openatl/com_registration.h>
