@@ -57,8 +57,19 @@ public:
 };
 OBJECT_ENTRY_AUTO(CLSID_OpenATLAuxValue, AuxValue)
 
-// No application-specific registration override or manual BindServer.
-class FixtureAtlModule : public ATL::CAtlDllModuleT<FixtureAtlModule> {};
+// The standard common-replacement hook supplies a real resource parameter.
+class FixtureAtlModule : public ATL::CAtlDllModuleT<FixtureAtlModule> {
+public:
+    HRESULT AddCommonRGSReplacements(IRegistrarBase* registrar) noexcept override {
+        // Exercise the operation's captured mode, including TypeLib failure
+        // rollback: changing the global mode here must not redirect any work.
+        ATL::AtlSetPerUserRegistration(false);
+        wchar_t model[] = L"Both";
+        const HRESULT hr = registrar->AddReplacement(L"THREADINGMODEL", model);
+        model[0] = L'X'; // The registrar must own the original value.
+        return hr;
+    }
+};
 FixtureAtlModule dllModule;
 
 HRESULT registerFixture(BOOL installing) noexcept {

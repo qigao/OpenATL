@@ -166,9 +166,32 @@ data, CR/LF and invalid expanded names fail before writes. Pointer-map strings
 are NUL-terminated; counted parser-map data additionally rejects embedded NUL.
 Unregistration must supply the same replacement values for ownership checks.
 
+The static helper invokes virtual `AddCommonRGSReplacements(IRegistrarBase*)`
+after copying and validating the explicit map, before resource parsing or
+default-root acquisition. The default hook adds no extra parameters. A derived
+module can use `AddReplacement` and `ClearReplacements`; explicit and common
+entries share the same limits and duplicate/reserved-name rules. Each addition
+owns its strings and commits only after validation; a failed addition leaves
+the earlier map unchanged. Clearing removes the custom map, while built-in
+MODULE ownership remains tied to the actual image. Hook failures propagate;
+exceptions preserve failing `CAtlException` HRESULTs, map allocation failures
+to `E_OUTOFMEMORY`, and map other exceptions to `E_UNEXPECTED`.
+
+`IRegistrarBase` has its published IID/IUnknown vtable and real reference
+counting. The hook receives a borrowed interface. It may retain an owned
+reference with AddRef/QI; that reference pins the ATL module until final Release.
+On every callback exit, including errors and exceptions, the capability is
+closed. Later `AddReplacement`/`ClearReplacements` calls return `E_UNEXPECTED`;
+QI and Release remain valid. Successful callbacks move an immutable owned map
+into parsing, so retained pointers cannot change installation or rollback.
+Mutation/closure are synchronized; callers still serialize installer operations
+and coordinate module destruction/unload. The helper captures the per-user
+setting before invoking application code, and preserves an enclosing module
+operation's existing context/mode.
+
 OpenWTL always uses its built-in static registrar. Dynamic
 `UpdateRegistryFromResourceD`, `IRegistrar`/`CRegObject`,
-`AddCommonRGSReplacements`, EXE-specific quoted `%MODULE%` and `%MODULE_RAW%`
+EXE-specific quoted `%MODULE%` and `%MODULE_RAW%`
 semantics remain unimplemented; these APIs are not redirected to another
 registrar implementation.
 
@@ -180,6 +203,11 @@ The existing `tests/com_server/fixture.cpp` now routes its actual COM DLL
 exports through `CAtlDllModuleT`, without manually opening a root or supplying
 an RGS context, and preserves real HKCU class registration,
 STA/MTA activation, object identity, server locks and unload behavior. The
+DLL's common hook supplies the auxiliary class's actual ThreadingModel resource
+parameter and deliberately changes the global mode, verifying that registration,
+TypeLib work and failure rollback retain the original per-user snapshot. Native
+tests also cover QI identity, retained-capability module pins and closed mutation,
+ClearReplacements, bounded additions, callback errors/exceptions and cleanup. The
 `atl_module.cpp` native test exercises failed/unbound/duplicate binding,
 IID rejection, factory and object lifetimes, registration forwarding and
 ordinary no-COM initialization.

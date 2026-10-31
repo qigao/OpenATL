@@ -11,7 +11,7 @@ HKCR
       ProgID = s 'OpenATL.Conformance.Aux.1'
       InprocServer32 = s '%MODULE%'
       {
-        val ThreadingModel = s 'Both'
+        val ThreadingModel = s '%THREADINGMODEL%'
       }
     }
   }
