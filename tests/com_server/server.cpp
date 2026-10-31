@@ -472,8 +472,8 @@ bool verifyTearOffDispatch(IDispatch* owner, IDispatch** retained) {
     }
     REQUIRE(tearOffProperty(first.p, IID_ITearOff1, L"OpenWTL tear one"));
     REQUIRE(tearOffProperty(cached.p, IID_ITearOff2, L"OpenWTL tear two"));
-    cached->AddRef();
-    *retained = static_cast<IDispatch*>(cached.p);
+    ATL::CComPtr<IDispatch> retainedInterface(cached.p);
+    *retained = retainedInterface.Detach();
     return true;
 }
 bool embeddedDispatch(Dll& dll, const char* creator = "OpenATLCreateEmbeddedDispatch") {
