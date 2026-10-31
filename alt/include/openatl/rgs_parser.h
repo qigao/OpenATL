@@ -31,6 +31,7 @@ struct Key {
 struct Document {
     std::vector<Key> keys; // Parents precede their children.
 };
+struct Replacement { std::wstring name; std::wstring text; };
 
 // Hard complexity ceilings. A resource exceeding any ceiling fails atomically;
 // the caller's output Document is unchanged on every failure.
@@ -41,6 +42,8 @@ constexpr size_t MaxNesting = 20;
 constexpr size_t MaxNameUnits = 128;
 constexpr size_t MaxPathUnits = 2048;
 constexpr size_t MaxValueUnits = 8192;
+constexpr size_t MaxReplacements = 64;
+constexpr size_t MaxReplacementNameUnits = 64;
 
 namespace detail {
 inline wchar_t Fold(wchar_t x) noexcept {
@@ -88,13 +91,48 @@ inline bool ValidSubstitution(std::wstring_view value) noexcept {
 }
 } // namespace detail
 
+// Replacement text is data within one key/name/value token, never RGS syntax.
+// Do not recursively expand data or permit it to introduce a second % pass.
+inline Error ValidateReplacements(const std::vector<Replacement>& map) noexcept {
+    if (map.size() > MaxReplacements) return Error::Limit;
+    size_t total = 0;
+    for (size_t i = 0; i < map.size(); ++i) {
+        const auto& item = map[i];
+        if (item.name.empty() || item.name.size() > MaxReplacementNameUnits)
+            return Error::InvalidName;
+        for (size_t j = 0; j < item.name.size(); ++j) {
+            const wchar_t ch = detail::Fold(item.name[j]);
+            if ((ch >= L'a' && ch <= L'z') || ch == L'_' ||
+                (j && ch >= L'0' && ch <= L'9')) continue;
+            return Error::InvalidName;
+        }
+        if (detail::Same(item.name, L"MODULE") ||
+            detail::Same(item.name, L"MODULE_RAW")) return Error::InvalidName;
+        if (item.text.size() > MaxValueUnits) return Error::Limit;
+        for (wchar_t ch : item.text)
+            if (!ch || ch == L'%' || ch == L'\r' || ch == L'\n')
+                return Error::Unsupported;
+        total += item.name.size() + item.text.size();
+        if (total > MaxSourceUnits) return Error::Limit;
+        for (size_t j = 0; j < i; ++j)
+            if (detail::Same(item.name, map[j].name)) return Error::Duplicate;
+    }
+    return Error::Ok;
+}
+
 class Parser final {
 public:
-    Error Parse(std::wstring_view source, Document& output) noexcept {
+    Error Parse(std::wstring_view source, Document& output,
+                const std::vector<Replacement>* replacements = nullptr) noexcept {
         if (source.empty()) return Error::Syntax;
         if (source.size() > MaxSourceUnits) return Error::Limit;
+        if (replacements) {
+            const Error error = ValidateReplacements(*replacements);
+            if (error != Error::Ok) return error;
+        }
         try {
             source_ = source;
+            replacements_ = replacements;
             at_ = 0;
             valueCount_ = 0;
             error_ = Error::Ok;
@@ -120,6 +158,32 @@ private:
     size_t valueCount_ = 0;
     Error error_ = Error::Ok;
     Document document_;
+    const std::vector<Replacement>* replacements_ = nullptr;
+
+    bool ExpandToken(std::wstring& token) {
+        std::wstring expanded;
+        for (size_t i = 0; i < token.size();) {
+            if (token[i] != L'%') { expanded += token[i++]; }
+            else {
+                const size_t end = token.find(L'%', i + 1);
+                if (end == token.npos) { Fail(Error::Unsupported); return false; }
+                const std::wstring_view name(token.data() + i + 1, end - i - 1);
+                if (detail::Same(name, L"MODULE")) expanded.append(token, i, end - i + 1);
+                else {
+                    const Replacement* found = nullptr;
+                    if (replacements_)
+                        for (const auto& entry : *replacements_)
+                            if (detail::Same(name, entry.name)) { found = &entry; break; }
+                    if (!found) { Fail(Error::Unsupported); return false; }
+                    expanded += found->text;
+                }
+                i = end + 1;
+            }
+            if (expanded.size() > MaxValueUnits) { Fail(Error::Limit); return false; }
+        }
+        token = std::move(expanded);
+        return true;
+    }
 
     Error Status() const noexcept { return error_ == Error::Ok ? Error::Syntax : error_; }
     bool IsWord(std::wstring_view name) const noexcept {
@@ -176,13 +240,13 @@ private:
             return;
         }
         if ((ch >= L'A' && ch <= L'Z') || (ch >= L'a' && ch <= L'z') ||
-            (ch >= L'0' && ch <= L'9') || ch == L'_' || ch == L'-') {
+            (ch >= L'0' && ch <= L'9') || ch == L'_' || ch == L'-' || ch == L'%') {
             token_.type = Kind::Word;
             size_t begin = at_++;
             while (at_ < n) {
                 wchar_t c = source_[at_];
                 if ((c >= L'A' && c <= L'Z') || (c >= L'a' && c <= L'z') ||
-                    (c >= L'0' && c <= L'9') || c == L'.' || c == L'_' || c == L'-')
+                    (c >= L'0' && c <= L'9') || c == L'.' || c == L'_' || c == L'-' || c == L'%')
                     ++at_;
                 else break;
                 if (at_ - begin > MaxNameUnits) { Fail(Error::Limit); return; }
@@ -198,6 +262,7 @@ private:
         if (!IsWord(L"s")) { Fail(Error::Unsupported); return false; }
         Advance();
         if (token_.type != Kind::Quoted) { Fail(Error::Syntax); return false; }
+        if (!ExpandToken(token_.text)) return false;
         if (!detail::ValidSubstitution(token_.text)) { Fail(Error::Unsupported); return false; }
         out = std::move(token_.text);
         Advance(); return error_ == Error::Ok;
@@ -226,6 +291,7 @@ private:
                     Fail(Error::Syntax); return false;
                 }
                 std::wstring name = std::move(token_.text);
+                if (!ExpandToken(name)) return false;
                 if (!detail::Name(name)) { Fail(Error::InvalidName); return false; }
                 Advance();
                 std::wstring value;
@@ -246,6 +312,7 @@ private:
                 Fail(Error::Syntax); return false;
             }
             std::wstring name = std::move(token_.text);
+            if (!ExpandToken(name)) return false;
             if (!detail::Name(name)) { Fail(Error::InvalidName); return false; }
             Advance();
             std::wstring path;
@@ -300,8 +367,14 @@ inline Error Parse(std::wstring_view text, Document& output) noexcept {
     Parser parser;
     return parser.Parse(text, output);
 }
+inline Error Parse(std::wstring_view text, const std::vector<Replacement>& map,
+                   Document& output) noexcept {
+    Parser parser;
+    return parser.Parse(text, output, &map);
+}
 
-// Substitute the *only* supported ATL variable. Expansion is an explicit,
+// Substitute the built-in MODULE variable after custom token replacements.
+// Expansion is an explicit,
 // bounded operation: no environment variables, registry/COM access or shell.
 inline Error ExpandModule(std::wstring_view text, std::wstring_view module,
                           std::wstring& output) noexcept {

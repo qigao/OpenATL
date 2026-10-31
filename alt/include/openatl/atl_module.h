@@ -23,6 +23,7 @@ class CAtlModule;
 // Construction/destruction require external quiescence, like ATL's image module.
 inline CAtlModule* _pAtlModule = nullptr;
 using _ATL_TERMFUNC = void (WINAPI*)(DWORD_PTR);
+struct _ATL_REGMAP_ENTRY { LPCOLESTR szKey; LPCOLESTR szData; };
 
 class CAtlModule {
 public:
@@ -71,6 +72,56 @@ public:
             return S_OK;
         } catch (const std::bad_alloc&) { return E_OUTOFMEMORY; }
           catch (...) { return E_UNEXPECTED; }
+    }
+    HRESULT WINAPI UpdateRegistryFromResourceS(LPCTSTR resource, BOOL install,
+                                _ATL_REGMAP_ENTRY* entries = nullptr) noexcept {
+        if (IsTerminated()) return E_UNEXPECTED;
+        try {
+            // Own all replacement strings before executing any resource or
+            // registry callback. The caller supplies a valid sentinel table.
+            std::vector<OpenATL::RGS::Replacement> map;
+            if (entries) {
+                for (size_t i = 0;; ++i) {
+                    const auto& entry = entries[i];
+                    if (!entry.szKey) {
+                        if (entry.szData) return E_INVALIDARG;
+                        break;
+                    }
+                    if (i == OpenATL::RGS::MaxReplacements)
+                        return HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW);
+                    if (!OpenATL::COM::registration_detail::bounded(
+                            entry.szKey, OpenATL::RGS::MaxReplacementNameUnits) ||
+                        !OpenATL::COM::registration_detail::bounded(
+                            entry.szData, OpenATL::RGS::MaxValueUnits))
+                        return E_INVALIDARG;
+                    map.push_back({entry.szKey, entry.szData});
+                }
+            }
+            const HRESULT hr = OpenATL::COM::rgs_registration_detail::MapError(
+                OpenATL::RGS::ValidateReplacements(map));
+            if (FAILED(hr)) return hr;
+            if (OpenATL::COM::rgs_resource_detail::Current() ||
+                OpenATL::COM::rgs_resource_detail::CurrentModule())
+                return OpenATL::COM::UpdateRegistryResource(resource, install, &map);
+            OpenATL::COM::ScopedModuleRgsRegistration scope(
+                _AtlBaseModule.GetModuleInstance(), detail::perUserRegistration.load());
+            return OpenATL::COM::UpdateRegistryResource(resource, install, &map);
+        } catch (const std::bad_alloc&) { return E_OUTOFMEMORY; }
+          catch (...) { return E_UNEXPECTED; }
+    }
+    HRESULT WINAPI UpdateRegistryFromResourceS(UINT id, BOOL install,
+                                _ATL_REGMAP_ENTRY* entries = nullptr) noexcept {
+        if (!id || id > 0xffff) return E_INVALIDARG;
+        return UpdateRegistryFromResourceS(MAKEINTRESOURCE(id), install, entries);
+    }
+    // OpenWTL always uses its built-in static registrar.
+    HRESULT WINAPI UpdateRegistryFromResource(LPCTSTR name, BOOL install,
+                                _ATL_REGMAP_ENTRY* entries = nullptr) noexcept {
+        return UpdateRegistryFromResourceS(name, install, entries);
+    }
+    HRESULT WINAPI UpdateRegistryFromResource(UINT id, BOOL install,
+                                _ATL_REGMAP_ENTRY* entries = nullptr) noexcept {
+        return UpdateRegistryFromResourceS(id, install, entries);
     }
     void Term() noexcept {
         std::vector<Termination> callbacks;

@@ -259,14 +259,23 @@ public: \
             ATL::detail::AutoRegistryMethod<type>::callback); \
     }
 
-// Class-directed original ATL REGISTRY resource-ID declaration. The owning
-// DLL export must first supply a ScopedRgsRegistrationContext with an
-// explicit opened Classes HKEY, image and owner identity. No HKCR default.
+// Standard module registration supplies a lazy image/root context; explicit
+// scoped installer contexts retain priority. Both macros use one registrar.
 #define DECLARE_REGISTRY_RESOURCEID(id) \
 public: \
     static HRESULT WINAPI UpdateRegistry(BOOL install) noexcept { \
+        if (::ATL::_pAtlModule) \
+            return ::ATL::_pAtlModule->UpdateRegistryFromResource( \
+                static_cast<UINT>(id), install); \
         return ::OpenATL::COM::UpdateRegistryResource( \
             static_cast<unsigned>(id), install); \
+    }
+#define DECLARE_REGISTRY_RESOURCE(name) \
+public: \
+    static HRESULT WINAPI UpdateRegistry(BOOL install) noexcept { \
+        if (::ATL::_pAtlModule) \
+            return ::ATL::_pAtlModule->UpdateRegistryFromResource((name), install); \
+        return ::OpenATL::COM::UpdateRegistryResource((name), install); \
     }
 
 // Original ATL module LIBID declaration. CAtlModuleT<T> calls the derived

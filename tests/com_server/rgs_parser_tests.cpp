@@ -83,6 +83,48 @@ bool Originals() {
     return true;
 }
 
+bool Replacements() {
+    const std::vector<Replacement> map = {
+        {L"KEY", L"OpenATL.Parameters"}, {L"FIELD", L"Description"},
+        {L"VALUE", L"O'Brien } Injected = s 'data' {"}
+    };
+    Document d;
+    RGS_CHECK(Parse(L"HKCR { ForceRemove '%key%' = s '%vAlUe%' "
+                    L"{ val %FIELD% = s 'prefix %VALUE% suffix' "
+                    L"val Module = s '%MODULE%' } }", map, d) == Error::Ok);
+    RGS_CHECK(d.keys.size() == 1 && d.keys[0].path == map[0].text &&
+              d.keys[0].values.size() == 3 &&
+              d.keys[0].values[0].text == map[2].text &&
+              d.keys[0].values[1].name == L"Description" &&
+              d.keys[0].values[1].text == L"prefix " + map[2].text + L" suffix" &&
+              d.keys[0].values[2].text == L"%MODULE%");
+    Document resolved;
+    RGS_CHECK(ResolveModule(d, L"C:\\server.dll", resolved) == Error::Ok &&
+              resolved.keys[0].values[0].text == map[2].text);
+    // Replacement data cannot introduce a directive or another grammar node.
+    RGS_CHECK(Parse(L"HKCR { %KEY% = s 'literal' }",
+                    {{L"KEY", L"ForceRemove"}}, resolved) == Error::Ok &&
+              resolved.keys.size() == 1 && resolved.keys[0].path == L"ForceRemove" &&
+              resolved.keys[0].directive == Directive::Ordinary);
+    const auto reject = [&](const std::vector<Replacement>& entries, Error error,
+                            std::wstring_view source = L"HKCR { '%KEY%' = s 'x' }") {
+        return Parse(source, entries, d) == error && d.keys.size() == 1 &&
+               d.keys[0].path == map[0].text &&
+               d.keys[0].values[0].text == map[2].text;
+    };
+    RGS_CHECK(reject({}, Error::Unsupported));
+    RGS_CHECK(reject({{L"KEY", L"..\\Escape"}}, Error::InvalidName));
+    RGS_CHECK(reject({{L"KEY", L"OpenATL.COMOwner"}}, Error::InvalidName));
+    RGS_CHECK(reject({{L"KEY", L"A"}, {L"key", L"B"}}, Error::Duplicate));
+    RGS_CHECK(reject({{L"MODULE", L"C:\\other.dll"}}, Error::InvalidName));
+    RGS_CHECK(reject({{L"VALUE", L"%MODULE%"}}, Error::Unsupported));
+    RGS_CHECK(reject({{L"VALUE", L"line\nbreak"}}, Error::Unsupported));
+    RGS_CHECK(reject({{L"VALUE", std::wstring(MaxValueUnits, L'x')}}, Error::Limit,
+                    L"HKCR { A = s '%VALUE%%VALUE%' }"));
+    RGS_CHECK(reject(std::vector<Replacement>(MaxReplacements + 1), Error::Limit));
+    return true;
+}
+
 bool RejectMalformed() {
     Document d;
     RGS_CHECK(Parse(L"HKCR { A = s 'ok' }", d) == Error::Ok);
@@ -117,7 +159,7 @@ bool RejectMalformed() {
 }
 } // namespace
 
-bool RunRgsParserTests() { return Originals() && RejectMalformed(); }
+bool RunRgsParserTests() { return Originals() && Replacements() && RejectMalformed(); }
 #ifdef OPENATL_RGS_TEST_STANDALONE
 int main() { return RunRgsParserTests() ? 0 : 1; }
 #endif

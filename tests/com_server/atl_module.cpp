@@ -416,6 +416,11 @@ bool auto_object_map() {
         CHECK(dll.RegisterServer(FALSE, &registrationClassId) == S_OK);
         CHECK(dll.UnregisterServer(FALSE, &registrationClassId) == S_OK);
         CHECK(registrationCalls == 2);
+        // This EXE has no REGISTRY resource. Direct static-helper failures
+        // must finish before acquiring a default root and release their scope.
+        CHECK(FAILED(dll.UpdateRegistryFromResourceS(L"Missing.RGS", TRUE)));
+        CHECK(!OpenATL::COM::rgs_resource_detail::Current() &&
+              !OpenATL::COM::rgs_resource_detail::CurrentModule());
         CHECK(noCom() && dll.DllCanUnloadNow() == S_OK);
         ATL::CComPtr<IClassFactory> factory;
         CHECK(dll.DllGetClassObject(autoClassId, IID_IClassFactory,

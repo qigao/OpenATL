@@ -188,6 +188,7 @@ public:
     }
     ScopedModuleRgsRegistration(const ScopedModuleRgsRegistration&) = delete;
     ScopedModuleRgsRegistration& operator=(const ScopedModuleRgsRegistration&) = delete;
+    HMODULE ResourceModule() const noexcept { return image_; }
 
     HRESULT Ensure() noexcept {
         if (rgs_resource_detail::Current()) return S_OK; // Explicit scope wins.
@@ -232,14 +233,23 @@ private:
 };
 
 // Resource loader (no registry I/O): the caller specifies both HMODULE and
-// integer resource ID, and the resource type must be literal "REGISTRY".
+// resource ID/name, and the resource type must be literal "REGISTRY".
 // A failed load/parse does not mutate the supplied output document.
-inline HRESULT ReadRgsResource(HMODULE image, unsigned resourceId,
-                               RGS::Document& document) noexcept {
-    if (!image || !resourceId || resourceId > 0xffff)
+inline HRESULT ReadRgsResource(HMODULE image, LPCWSTR resourceName,
+                               RGS::Document& document,
+                               const std::vector<RGS::Replacement>* map = nullptr) noexcept {
+    if (!image || !resourceName ||
+        (!IS_INTRESOURCE(resourceName) &&
+         (!registration_detail::bounded(resourceName, RGS::MaxNameUnits) ||
+          !*resourceName)))
         return E_INVALIDARG;
+    if (map) {
+        const HRESULT hr = rgs_registration_detail::MapError(
+            RGS::ValidateReplacements(*map));
+        if (FAILED(hr)) return hr;
+    }
     const HRSRC resource = ::FindResourceW(
-        image, MAKEINTRESOURCEW(resourceId), L"REGISTRY");
+        image, resourceName, L"REGISTRY");
     if (!resource)
         return rgs_resource_detail::Win32Failure(ERROR_RESOURCE_NAME_NOT_FOUND);
     const DWORD size = ::SizeofResource(image, resource);
@@ -255,7 +265,8 @@ inline HRESULT ReadRgsResource(HMODULE image, unsigned resourceId,
     HRESULT hr = rgs_resource_detail::Decode(bytes, size, wide);
     if (FAILED(hr)) return hr;
     RGS::Document parsed;
-    const RGS::Error error = RGS::Parse(wide, parsed);
+    RGS::Parser parser;
+    const RGS::Error error = parser.Parse(wide, parsed, map);
     if (error != RGS::Error::Ok)
         return rgs_registration_detail::MapError(error);
     try {
@@ -264,29 +275,42 @@ inline HRESULT ReadRgsResource(HMODULE image, unsigned resourceId,
     } catch (const std::bad_alloc&) { return E_OUTOFMEMORY; }
       catch (...) { return E_UNEXPECTED; }
 }
+inline HRESULT ReadRgsResource(HMODULE image, unsigned resourceId,
+                               RGS::Document& document,
+                               const std::vector<RGS::Replacement>* map = nullptr) noexcept {
+    if (!resourceId || resourceId > 0xffff) return E_INVALIDARG;
+    return ReadRgsResource(image, MAKEINTRESOURCEW(resourceId), document, map);
+}
 
 // Called by DECLARE_REGISTRY_RESOURCEID on an ATL class. A module supplies
 // the lazy default during registration; isolated callers can supply an
 // explicit context. Plain WTL/factory use creates neither policy nor COM.
-inline HRESULT UpdateRegistryResource(unsigned resourceId,
-                                      BOOL registerClass) noexcept {
+inline HRESULT UpdateRegistryResource(LPCWSTR resourceName, BOOL registerClass,
+                     const std::vector<RGS::Replacement>* map = nullptr) noexcept {
     const RgsRegistrationContext* context = rgs_resource_detail::Current();
+    auto* module = rgs_resource_detail::CurrentModule();
+    if (!context && !module) return E_UNEXPECTED;
+    // Decode, expand and parse before acquiring the default registry root.
+    RGS::Document document;
+    HRESULT hr = ReadRgsResource(context ? context->resourceModule :
+                                module->ResourceModule(), resourceName, document, map);
+    if (FAILED(hr)) return hr;
     if (!context) {
-        auto* module = rgs_resource_detail::CurrentModule();
-        if (!module) return E_UNEXPECTED;
-        const HRESULT hr = module->Ensure();
+        hr = module->Ensure();
         if (FAILED(hr)) return hr;
         context = rgs_resource_detail::Current();
     }
     if (!context) return E_UNEXPECTED;
-    RGS::Document document;
-    HRESULT hr = ReadRgsResource(context->resourceModule, resourceId, document);
-    if (FAILED(hr)) return hr;
     return registerClass
         ? RegisterRgs(context->classesRoot, document,
                       context->modulePath, context->ownerTag)
         : UnregisterRgs(context->classesRoot, document,
                         context->modulePath, context->ownerTag);
+}
+inline HRESULT UpdateRegistryResource(unsigned resourceId, BOOL registerClass,
+                     const std::vector<RGS::Replacement>* map = nullptr) noexcept {
+    if (!resourceId || resourceId > 0xffff) return E_INVALIDARG;
+    return UpdateRegistryResource(MAKEINTRESOURCEW(resourceId), registerClass, map);
 }
 }} // namespace OpenATL::COM
 #endif // OPENATL_RGS_RESOURCE_H

@@ -189,14 +189,17 @@ OpenATL build/runtime tests:
 
 | Sample | Observed dependencies still missing in OpenATL |
 | --- | --- |
-| COMMap | `CAtlDllModuleT`, `IDispatchImpl`, automatic object maps, tear-offs, aggregation and chained COM-map entries |
-| ATLCollections | `CAtlDllModuleT`, `IDispatchImpl`, `ICollectionOnSTLImpl`, `CComEnumOnSTL`, registrar and generated/imported type libraries |
-| ATLSafeArray | `CAtlDllModuleT`, `atlsafe.h` / `CComSafeArray`, `atlctl.h`, dispatch and type-library support |
+| COMMap | Aggregation, cached tear-offs, automatic aggregation, complete registrar APIs and generated `aggreg/aggreg.idl`; existing module/dispatch/map subsets do not qualify the whole project |
+| ATLCollections | `ICollectionOnSTLImpl`, `CComEnumOnSTL`, complete registrar APIs and generated/imported type-library integration |
+| ATLSafeArray | `atlsafe.h` / `CComSafeArray`, complete control/server support and whole-project generated TypeLib integration |
 
 Adding `atlcom.h` alone does not implement these contracts. The implemented
 nonaggregated object/map subset remains covered by OpenATL's native tests;
-see [ATL compatibility](ATL_COMPATIBILITY.md). `CComModule` is not currently implemented, but no standard ATL API is
-excluded merely because of the obsolete UI-only scope decision. Source
+see [ATL compatibility](ATL_COMPATIBILITY.md). `CComModule` has a legacy
+object-map/lifetime subset. Numeric/named module resource helpers and bounded
+replacement maps use the static registrar; dynamic registrar APIs and full
+grammar remain incomplete. No standard ATL API is excluded merely because of
+the obsolete UI-only scope decision. Source
 compatibility with the original pure ATL samples is the target.
 
 Sources:
