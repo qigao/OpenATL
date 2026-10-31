@@ -1,17 +1,17 @@
 cmake_minimum_required(VERSION 3.24)
-project(OpenATL VERSION 0.1.0 LANGUAGES CXX)
+project(OpenWTL VERSION 0.1.0 LANGUAGES CXX)
 
 # Only Windows-targeting compilers: llvm-mingw on Windows/Linux/macOS,
 # or MSVC cl.exe on Windows. OpenWTL::WTL is the public GUI target.
 if(NOT WIN32)
-  message(FATAL_ERROR "OpenATL targets Windows; cross-compile with llvm-mingw")
+  message(FATAL_ERROR "OpenWTL targets Windows; cross-compile with llvm-mingw")
 endif()
 # ATL headers are built from this checkout, never an external cache provider.
 # There is deliberately no supported OPENATL_ATL_INCLUDE_DIR override.
 if(DEFINED OPENATL_ATL_INCLUDE_DIR)
-  message(FATAL_ERROR "OPENATL_ATL_INCLUDE_DIR is obsolete; only source-tree include/ is supported")
+  message(FATAL_ERROR "OPENATL_ATL_INCLUDE_DIR is obsolete; only source-tree alt/include/ is supported")
 endif()
-set(_openatl_atl_include "${CMAKE_CURRENT_SOURCE_DIR}/include")
+set(_openatl_atl_include "${CMAKE_CURRENT_SOURCE_DIR}/alt/include")
 if(NOT EXISTS "${_openatl_atl_include}/atlbase.h" OR
    NOT EXISTS "${_openatl_atl_include}/atlwin.h" OR
    NOT EXISTS "${_openatl_atl_include}/atlfile.h" OR
@@ -320,7 +320,7 @@ if(OPENATL_BUILD_QUALIFICATION)
 endif()
 
 # Nonaggregated ATL object compatibility is explicit in atlcom.h; no obsolete module, RGS or RATL provider.
-# The clean-room MIT ATL implementation is owned here under include/.
+# The clean-room MIT ATL implementation is owned here under alt/include/.
 # No checkout patch or external ATL implementation is ever used.
 # Permanent source-tree-only API: no install(), export(), packaging, or
 # installed-consumer acceptance. This project never distributes an Installed SDK.

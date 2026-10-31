@@ -14,12 +14,12 @@ installed WTL source, adapted header copy or fallback remains.
 
 ## Verified original-source qualifications
 
-- [CI #40846739457](https://github.com/qigao/OpenATL/actions/runs/40846739457):
+- [CI #40846739457](https://github.com/qigao/OpenWTL/actions/runs/40846739457):
   original WTL builds every unchanged official Win32 sample under MSVC
   and llvm-mingw, CTest x5.
-- [CI #40850856167](https://github.com/qigao/OpenATL/actions/runs/40850856167):
+- [CI #40850856167](https://github.com/qigao/OpenWTL/actions/runs/40850856167):
   zero-adapter WTL native x64 CTest x5 on both MSVC and llvm-mingw.
-- [CI #40852048002](https://github.com/qigao/OpenATL/actions/runs/40852048002):
+- [CI #40852048002](https://github.com/qigao/OpenWTL/actions/runs/40852048002):
   8/8 SUCCESS; original and adapted ARM64 artifacts independently verify
   SHA256/PE/resources and real Windows ARM64 UI, COM and native lifecycles
   x5 each for MSVC and llvm-mingw.
@@ -53,7 +53,7 @@ original detached StartMonitor/Unlock/Term schedules.
 The actual Win32 `PrintDlgEx` printer-window and selection lifecycle
 also remains unqualified; COM callback/source tests cannot stand in
 for real printer UI acceptance. These two gates remain open under
-[Issue #44](https://github.com/qigao/OpenATL/issues/44); the Draft
+[Issue #44](https://github.com/qigao/OpenWTL/issues/44); the Draft
 PR is not to be merged or released on source-build evidence alone.
 
 ## Reproduce
