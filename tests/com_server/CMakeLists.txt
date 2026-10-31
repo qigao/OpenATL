@@ -246,8 +246,8 @@ if(CMAKE_HOST_WIN32)
     target_include_directories(${_image} PRIVATE "${_generated}"
       "${_openatl_commap_generated}" "${_openatl_commap_original}")
     target_compile_definitions(${_image} PRIVATE _ATL_APARTMENT_THREADED=)
-    set_source_files_properties("${_generated}/${_module}.rc" PROPERTIES
-      OBJECT_DEPENDS "${_generated}/${_module}.tlb")
+    set_source_files_properties("${_generated}/${_module}.rc"
+      TARGET_DIRECTORY ${_image} PROPERTIES OBJECT_DEPENDS "${_generated}/${_module}.tlb")
     add_dependencies(${_image} openatl_microsoft_commap_midl)
     # Keep every original private COM export and every existing GUI export.
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_own_exports}")

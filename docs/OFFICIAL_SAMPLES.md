@@ -189,7 +189,7 @@ OpenATL build/runtime tests:
 
 | Sample | Observed dependencies still missing in OpenATL |
 | --- | --- |
-| COMMap | Separate original DLL module/resource/registration admission and exact tear-off member/layout contracts; implemented basic/automatic aggregation/tear-off/module/dispatch/map subsets do not qualify the whole project |
+| COMMap | Original modules/resources and per-user two-DLL activation are admitted in existing images; untouched project builds, original output/export layout and exact tear-off member/layout remain open |
 | ATLCollections | `ICollectionOnSTLImpl`, `CComEnumOnSTL`, complete registrar APIs and generated/imported type-library integration |
 | ATLSafeArray | `atlsafe.h` / `CComSafeArray`, complete control/server support and whole-project generated TypeLib integration |
 
