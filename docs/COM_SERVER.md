@@ -281,8 +281,12 @@ and rejects later mutation. The per-user snapshot is captured before the hook.
 The separate persistent `IRegistrar` execution interface and static CRegObject
 facade now use that same replacement-map implementation, parser and executor.
 They support string scripts, bounded strict-encoding disk files and REGISTRY
-resources in the current registration image. The common-hook interface itself
-still rejects extended IRegistrar QI. Foreign/unloaded resource images,
+resources in explicit PE files. External resources use owned read-only/datafile
+mapping handles; DllMain/static imports are not executed. A persistent MODULE
+binding supplies the server identity, otherwise the resource source path is used.
+Both the expanded values and registration owner marker use that same canonical
+path, without changing the surrounding root context. The common-hook interface
+still rejects extended IRegistrar QI and MODULE overrides.
 CLSID_Registrar activation, dynamic registrar APIs and full CRegObject
 inheritance compatibility remain separate work; see [module limits](ATL_MODULE.md).
 
@@ -319,6 +323,11 @@ and both UTF-16 file byte orders, writer-sharing denial, invalid/oversized
 files, numeric/named resources, resource-image identity, QI identity, interface
 survival after facade destruction, and final module-pin cleanup. These are
 extensions of the same executable; no installer/consumer project is added.
+External-resource tests additionally use a copied DLL with a rejected executable
+entry point, confirm resource-only loading succeeds, reject wrong-identity
+unregistration, verify MODULE binding/reset and sharing errors, delete the copy
+after all calls, and perform native HKCU per-user registration/cleanup with a
+fresh GUID key. Existing failure/TypeLib/class rollback tests remain active.
 
 This is a restricted source-compatible resource-ID API, **not** a general
 RGS interpreter or the complete standalone registrar API. It preserves

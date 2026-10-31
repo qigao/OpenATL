@@ -895,7 +895,7 @@ bool staticRegistrarScripts(HMODULE image, HKEY root) {
                                              L"REGISTRY") == S_OK);
         wchar_t host[OpenATL::RGS::MaxPathUnits + 2]{};
         REQUIRE(::GetModuleFileNameW(nullptr, host, static_cast<DWORD>(sizeof(host) / sizeof(host[0]))));
-        REQUIRE(object.ResourceRegister(host, IDR_MICROSOFT_CHAIN, L"REGISTRY") == E_INVALIDARG);
+        REQUIRE(FAILED(object.ResourceRegister(host, IDR_MICROSOFT_CHAIN, L"REGISTRY")));
         REQUIRE(object.ResourceRegister(path.c_str(), IDR_MICROSOFT_CHAIN, L"RCDATA") ==
                 HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED));
         REQUIRE(object.ResourceRegister(path.c_str(), 0, L"REGISTRY") == E_INVALIDARG);
@@ -920,6 +920,156 @@ bool staticRegistrarScripts(HMODULE image, HKEY root) {
     REQUIRE(ATL::AtlCreateRegistrar(&rejected) == E_UNEXPECTED && !rejected);
     ATL::CRegObject stopped;
     REQUIRE(stopped.StringRegister(source) == E_UNEXPECTED);
+    ULONG_PTR token = 0;
+    REQUIRE(::CoGetContextToken(&token) == CO_E_NOTINITIALIZED);
+    return true;
+}
+
+struct ResourceExecutionGate {
+    std::wstring previous;
+    bool existed = false;
+    bool armed = false;
+    bool Open() {
+        ::SetLastError(ERROR_SUCCESS);
+        const DWORD size = ::GetEnvironmentVariableW(OPENATL_RESOURCE_EXECUTION_GUARD, nullptr, 0);
+        const DWORD error = ::GetLastError();
+        existed = size != 0 || error == ERROR_SUCCESS;
+        if (!size && error != ERROR_SUCCESS && error != ERROR_ENVVAR_NOT_FOUND) return false;
+        if (size) {
+            std::vector<wchar_t> value(size);
+            const DWORD length = ::GetEnvironmentVariableW(OPENATL_RESOURCE_EXECUTION_GUARD,
+                                                           value.data(), size);
+            if (!length || length >= size) return false;
+            previous.assign(value.data(), length);
+        }
+        armed = ::SetEnvironmentVariableW(OPENATL_RESOURCE_EXECUTION_GUARD, L"1") != FALSE;
+        return armed;
+    }
+    ~ResourceExecutionGate() {
+        if (armed) ::SetEnvironmentVariableW(OPENATL_RESOURCE_EXECUTION_GUARD,
+                                            existed ? previous.c_str() : nullptr);
+    }
+};
+
+bool externalRegistrarResources(HMODULE image, HKEY root) {
+    StaticRegistrarTestModule module;
+    TempRgsFile copy;
+    REQUIRE(copy.Open());
+    wchar_t imagePath[OpenATL::RGS::MaxPathUnits + 2]{};
+    REQUIRE(::GetModuleFileNameW(image, imagePath,
+        static_cast<DWORD>(sizeof(imagePath) / sizeof(imagePath[0]))));
+    REQUIRE(::CopyFileW(imagePath, copy.path.c_str(), FALSE));
+    ResourceExecutionGate gate;
+    REQUIRE(gate.Open());
+    REQUIRE(!::GetModuleHandleW(copy.path.c_str()));
+    HMODULE executable = ::LoadLibraryW(copy.path.c_str());
+    const DWORD executionError = ::GetLastError();
+    if (executable) ::FreeLibrary(executable);
+    REQUIRE(!executable && executionError == ERROR_DLL_INIT_FAILED);
+    ATL::CRegObject object;
+    {
+        ScopedRgsRegistrationContext context(root, image, L"ExternalRegistrarTest");
+        REQUIRE(context.Status() == S_OK);
+        REQUIRE(object.AddReplacement(L"KEY", L"OpenATL.External.Resource") == S_OK &&
+                object.AddReplacement(L"VALUE", L"external resource") == S_OK &&
+                object.AddReplacement(L"FIELD", L"Description") == S_OK);
+        REQUIRE(object.ResourceRegisterSz(copy.path.c_str(), L"OPENATL_PARAMETERS", L"REGISTRY") == S_OK);
+        ATL::CRegKey key;
+        REQUIRE(key.Open(root, L"OpenATL.External.Resource", KEY_READ) == ERROR_SUCCESS);
+        wchar_t value[OpenATL::RGS::MaxPathUnits + 2]{};
+        ULONG count = static_cast<ULONG>(sizeof(value) / sizeof(value[0]));
+        REQUIRE(key.QueryStringValue(L"Module", value, &count) == ERROR_SUCCESS &&
+                std::wstring_view(value) == copy.path);
+        key.Close();
+        REQUIRE(!::GetModuleHandleW(copy.path.c_str()));
+        REQUIRE(FAILED(object.ResourceUnregisterSz(imagePath, L"OPENATL_PARAMETERS", L"REGISTRY")) &&
+                exists(root, L"OpenATL.External.Resource"));
+        REQUIRE(object.ResourceUnregisterSz(copy.path.c_str(), L"OPENATL_PARAMETERS", L"REGISTRY") == S_OK &&
+                !exists(root, L"OpenATL.External.Resource"));
+        REQUIRE(object.ResourceRegister(copy.path.c_str(), IDR_MICROSOFT_CHAIN, L"REGISTRY") == S_OK &&
+                exists(root, L"COMMap.Chain.1"));
+        REQUIRE(object.ResourceUnregister(copy.path.c_str(), IDR_MICROSOFT_CHAIN, L"REGISTRY") == S_OK &&
+                !exists(root, L"COMMap.Chain.1"));
+        REQUIRE(FAILED(object.ResourceRegister(copy.path.c_str(), 65535, L"REGISTRY")));
+        copy.writer = ::CreateFileW(copy.path.c_str(), GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        REQUIRE(copy.writer != INVALID_HANDLE_VALUE);
+        REQUIRE(object.ResourceRegister(copy.path.c_str(), IDR_MICROSOFT_CHAIN, L"REGISTRY") ==
+                HRESULT_FROM_WIN32(ERROR_SHARING_VIOLATION));
+        copy.CloseWriter();
+
+        REQUIRE(object.AddReplacement(L"MODULE", L"relative.dll") == E_INVALIDARG);
+        REQUIRE(object.AddReplacement(L"module", copy.path.c_str()) == S_OK);
+        REQUIRE(object.AddReplacement(L"MODULE", imagePath) == E_INVALIDARG);
+        const wchar_t* source = L"HKCR { ForceRemove '%KEY%' = s '%MODULE%' }";
+        REQUIRE(object.StringRegister(source) == S_OK);
+        REQUIRE(key.Open(root, L"OpenATL.External.Resource", KEY_READ) == ERROR_SUCCESS);
+        count = static_cast<ULONG>(sizeof(value) / sizeof(value[0]));
+        REQUIRE(key.QueryStringValue(nullptr, value, &count) == ERROR_SUCCESS &&
+                std::wstring_view(value) == copy.path);
+        key.Close();
+        REQUIRE(object.StringUnregister(source) == S_OK);
+        REQUIRE(object.ClearReplacements() == S_OK &&
+                object.AddReplacement(L"KEY", L"OpenATL.External.Resource") == S_OK);
+        REQUIRE(object.StringRegister(source) == S_OK);
+        REQUIRE(key.Open(root, L"OpenATL.External.Resource", KEY_READ) == ERROR_SUCCESS);
+        count = static_cast<ULONG>(sizeof(value) / sizeof(value[0]));
+        REQUIRE(key.QueryStringValue(nullptr, value, &count) == ERROR_SUCCESS &&
+                std::wstring_view(value) == rgs_resource_detail::Current()->modulePath);
+        key.Close();
+        REQUIRE(object.StringUnregister(source) == S_OK);
+        REQUIRE(object.ClearReplacements() == S_OK &&
+                object.AddReplacement(L"KEY", L"OpenATL.External.Resource") == S_OK &&
+                object.AddReplacement(L"VALUE", L"explicit server identity") == S_OK &&
+                object.AddReplacement(L"FIELD", L"Description") == S_OK &&
+                object.AddReplacement(L"MODULE", imagePath) == S_OK);
+        REQUIRE(object.ResourceRegisterSz(copy.path.c_str(), L"OPENATL_PARAMETERS", L"REGISTRY") == S_OK);
+        REQUIRE(key.Open(root, L"OpenATL.External.Resource", KEY_READ) == ERROR_SUCCESS);
+        count = static_cast<ULONG>(sizeof(value) / sizeof(value[0]));
+        REQUIRE(key.QueryStringValue(L"Module", value, &count) == ERROR_SUCCESS &&
+                std::wstring_view(value) == rgs_resource_detail::Current()->modulePath);
+        key.Close();
+        REQUIRE(object.ResourceUnregisterSz(copy.path.c_str(), L"OPENATL_PARAMETERS", L"REGISTRY") == S_OK);
+    }
+    // Exercise the default per-user root as well as the explicit private root.
+    struct RestoreMode {
+        bool previous = false;
+        bool armed = false;
+        ~RestoreMode() { if (armed) ATL::AtlSetPerUserRegistration(previous); }
+    } mode;
+    REQUIRE(ATL::AtlGetPerUserRegistration(&mode.previous) == S_OK);
+    REQUIRE(ATL::AtlSetPerUserRegistration(true) == S_OK);
+    mode.armed = true;
+    GUID id{};
+    wchar_t guid[40]{};
+    REQUIRE(::CoCreateGuid(&id) == S_OK && ::StringFromGUID2(id, guid, 40));
+    std::wstring name = L"OpenATL.External.";
+    for (wchar_t ch : guid) if (OpenATL::RGS::detail::Hex(ch)) name += ch;
+    const std::wstring path = L"Software\\Classes\\" + name;
+    REQUIRE(object.ClearReplacements() == S_OK && object.AddReplacement(L"KEY", name.c_str()) == S_OK &&
+            object.AddReplacement(L"FIELD", L"Description") == S_OK &&
+            object.AddReplacement(L"VALUE", L"per-user external resource") == S_OK);
+    struct CleanupRegistration {
+        ATL::CRegObject& object;
+        const std::wstring& image;
+        bool installed = false;
+        ~CleanupRegistration() {
+            if (installed) object.ResourceUnregisterSz(image.c_str(), L"OPENATL_PARAMETERS", L"REGISTRY");
+        }
+    } cleanup{object, copy.path};
+    REQUIRE(object.ResourceRegisterSz(copy.path.c_str(), L"OPENATL_PARAMETERS", L"REGISTRY") == S_OK);
+    cleanup.installed = true;
+    REQUIRE(exists(HKEY_CURRENT_USER, path.c_str()));
+    REQUIRE(FAILED(object.ResourceUnregisterSz(imagePath, L"OPENATL_PARAMETERS", L"REGISTRY")) &&
+            exists(HKEY_CURRENT_USER, path.c_str()));
+    REQUIRE(object.ResourceUnregisterSz(copy.path.c_str(), L"OPENATL_PARAMETERS", L"REGISTRY") == S_OK);
+    cleanup.installed = false;
+    REQUIRE(!exists(HKEY_CURRENT_USER, path.c_str()));
+    REQUIRE(!rgs_resource_detail::Current() && !rgs_resource_detail::CurrentModule());
+    REQUIRE(!::GetModuleHandleW(copy.path.c_str()));
+    REQUIRE(::DeleteFileW(copy.path.c_str())); // Both file and mapping handles retired.
+    copy.path.clear();
     ULONG_PTR token = 0;
     REQUIRE(::CoGetContextToken(&token) == CO_E_NOTINITIALIZED);
     return true;
@@ -1025,6 +1175,7 @@ bool scopedResourceRegistry(HMODULE image) {
     }
     REQUIRE(commonResourceReplacements(image, root.key));
     REQUIRE(staticRegistrarScripts(image, root.key));
+    REQUIRE(externalRegistrarResources(image, root.key));
     REQUIRE(root.Close());
     return true;
 }
