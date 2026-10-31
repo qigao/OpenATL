@@ -119,8 +119,14 @@ bool OriginalClassBodies() {
     }
     ATL::CComPtr<ISupportErrorInfo> support;
     ORIGINAL_CLASS_CHECK(outer->QueryInterface(IID_ISupportErrorInfo, reinterpret_cast<void**>(&support.p)) == S_OK);
-    ORIGINAL_CLASS_CHECK(support->InterfaceSupportsErrorInfo(IID_IOuter) == S_OK &&
-        support->InterfaceSupportsErrorInfo(IID_IChain) == S_OK && support->InterfaceSupportsErrorInfo(IID_IStream) == S_FALSE);
+    // The original map places the explicit blind aggregate before its local
+    // ISupportErrorInfo entry. That aggregate's support view wins this QI.
+    ORIGINAL_CLASS_CHECK(support->InterfaceSupportsErrorInfo(IID_IAggBlind) == S_OK &&
+        support->InterfaceSupportsErrorInfo(IID_IOuter) == S_FALSE &&
+        support->InterfaceSupportsErrorInfo(IID_IChain) == S_FALSE &&
+        support->InterfaceSupportsErrorInfo(IID_IStream) == S_FALSE);
+    ORIGINAL_CLASS_CHECK(data->COuter::InterfaceSupportsErrorInfo(IID_IOuter) == S_OK &&
+        data->COuter::InterfaceSupportsErrorInfo(IID_IChain) == S_OK);
     support.Release();
     // Real original ITypeInfo drives the unmodified GetName vtable, without
     // registry writes or replacing the object's registered-mode IDispatchImpl.

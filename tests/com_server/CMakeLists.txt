@@ -137,7 +137,12 @@ if(CMAKE_HOST_WIN32)
       ${_openatl_midl_cpp_args} ${_openatl_midl_include_flags}
       /out "${_openatl_commap_generated}" /h COMMap.h
       /iid COMMap_i.c /tlb COMMap.tlb "${_openatl_commap_idl}"
+    COMMAND "${CMAKE_COMMAND}" "-DOPENATL_MIDL_MINGW=${MINGW}"
+      "-DOPENATL_MIDL_HEADER=${_openatl_commap_header}"
+      -P "${PROJECT_SOURCE_DIR}/cmake/OpenATLMidlUUID.cmake"
     DEPENDS "${_openatl_commap_idl}"
+      "${PROJECT_SOURCE_DIR}/cmake/OpenATLMidlUUID.cmake"
+      "${PROJECT_SOURCE_DIR}/cmake/OpenATLRibbon.cmake"
     COMMENT "Actual Windows SDK MIDL: original Microsoft COMMap.idl"
     VERBATIM)
   # The original COuter includes and activates the sample's four aggregate
@@ -155,7 +160,12 @@ if(CMAKE_HOST_WIN32)
       ${_openatl_midl_cpp_args} ${_openatl_midl_include_flags}
       /out "${_openatl_aggreg_generated}" /h Aggreg.h
       /iid aggreg_i.c /tlb Aggreg.tlb "${_openatl_aggreg_idl}"
+    COMMAND "${CMAKE_COMMAND}" "-DOPENATL_MIDL_MINGW=${MINGW}"
+      "-DOPENATL_MIDL_HEADER=${_openatl_aggreg_generated}/Aggreg.h"
+      -P "${PROJECT_SOURCE_DIR}/cmake/OpenATLMidlUUID.cmake"
     DEPENDS "${_openatl_aggreg_idl}"
+      "${PROJECT_SOURCE_DIR}/cmake/OpenATLMidlUUID.cmake"
+      "${PROJECT_SOURCE_DIR}/cmake/OpenATLRibbon.cmake"
     COMMENT "Actual Windows SDK MIDL: original Microsoft Aggreg.idl"
     VERBATIM)
   add_custom_target(openatl_microsoft_commap_midl ALL DEPENDS

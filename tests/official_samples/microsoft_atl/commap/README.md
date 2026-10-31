@@ -33,3 +33,11 @@ remain unqualified. All 37 original pure-ATL applications therefore remain
 not-qualified. Exact Microsoft tear-off member/layout compatibility is also
 separate. Non-Windows cross hosts do not run Windows SDK MIDL and do not count
 as native original-class admission.
+
+
+Native MIDL-generated headers additionally receive MinGW UUID template
+bindings derived from their own annotations, reusing the existing Ribbon UUID
+formatter. No original source or handwritten IID table is substituted. The
+original COuter map puts its explicit blind aggregate before local
+ISupportErrorInfo; QI therefore returns that aggregate's support view. The
+harness checks this ordering and separately checks COuter's own support method.

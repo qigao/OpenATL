@@ -249,3 +249,11 @@ VCXPROJ deployment remain unqualified. The test uses explicit ITypeInfo::Invoke;
 it does not replace the original registered-mode IDispatchImpl or prove that
 unregistered libraries can resolve through it. All 37 full original pure-ATL
 applications remain not-qualified.
+
+
+Native MIDL-generated headers additionally receive MinGW UUID template
+bindings derived from their own annotations, reusing the existing Ribbon UUID
+formatter. No original source or handwritten IID table is substituted. The
+original COuter map puts its explicit blind aggregate before local
+ISupportErrorInfo; QI therefore returns that aggregate's support view. The
+harness checks this ordering and separately checks COuter's own support method.
