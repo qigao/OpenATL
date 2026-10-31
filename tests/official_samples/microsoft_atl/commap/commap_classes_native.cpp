@@ -154,7 +154,12 @@ bool OriginalRgsCallbacks(OriginalClassModule& module) {
         const auto classPath = GuidPath(L"CLSID\\", *rows[n].clsid);
         wchar_t imagePath[8193]{};
         ORIGINAL_CLASS_CHECK(::GetModuleFileNameW(rows[n].image, imagePath, 8193) > 0);
-        ORIGINAL_CLASS_CHECK(RegistryText(root.key, classPath + L"\\InprocServer32", nullptr, imagePath));
+        // The existing resource contract quotes %MODULE% for an EXE image;
+        // the DLL image expands it to the unquoted module path.
+        std::wstring expectedImage(imagePath);
+        if (rows[n].image == ::GetModuleHandleW(nullptr))
+            expectedImage = L"\"" + expectedImage + L"\"";
+        ORIGINAL_CLASS_CHECK(RegistryText(root.key, classPath + L"\\InprocServer32", nullptr, expectedImage));
         ORIGINAL_CLASS_CHECK(RegistryText(root.key, classPath + L"\\InprocServer32", L"ThreadingModel", L"both"));
         ORIGINAL_CLASS_CHECK(RegistryText(root.key, classPath + L"\\ProgID", nullptr, rows[n].versioned));
         ORIGINAL_CLASS_CHECK(RegistryText(root.key, classPath + L"\\VersionIndependentProgID", nullptr, rows[n].independent));

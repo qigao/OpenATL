@@ -29,7 +29,8 @@ The six original automatic UpdateRegistry callbacks execute through selected
 module RegisterServer/UnregisterServer calls against a unique temporary HKCU
 root. Original resource IDs overlap, so COMMap scripts live in the existing
 ActiveX executable and Aggreg scripts in the existing COM fixture DLL. Tests
-check the actual image paths, ProgIDs, threading values, duplicate-install
+check the actual image paths (including EXE %MODULE% quoting), ProgIDs,
+threading values, duplicate-install
 rejection and reverse cleanup. No globally visible class registration is used.
 
 Both native MIDL TypeLibs are embedded as resources 1 and 2. Public per-user
