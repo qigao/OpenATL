@@ -4,5 +4,6 @@ HKCR
     {
         val '%FIELD%' = s 'prefix %VALUE% suffix'
         val Module = s '%MODULE%'
+        val RawModule = s '%MODULE_RAW%'
     }
 }

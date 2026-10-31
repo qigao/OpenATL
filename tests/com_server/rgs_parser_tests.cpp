@@ -125,6 +125,37 @@ bool Replacements() {
     return true;
 }
 
+bool ModulePaths() {
+    const std::wstring path = L"C:\\Program Files\\OpenWTL\\server.exe";
+    const std::wstring quoted = L"\"" + path + L"\"";
+    Document source, resolved;
+    RGS_CHECK(Parse(L"HKCR { Server = s '%mOdUlE% /Embedding' "
+                    L"{ val Icon = s '@%module_RAW%,-100' "
+                    L"val Both = s '%MODULE%|%MODULE_RAW%' } }", source) == Error::Ok);
+    RGS_CHECK(ResolveModule(source, path, resolved, true) == Error::Ok);
+    RGS_CHECK(resolved.keys[0].values[0].text == quoted + L" /Embedding" &&
+              resolved.keys[0].values[1].text == L"@" + path + L",-100" &&
+              resolved.keys[0].values[2].text == quoted + L"|" + path);
+    RGS_CHECK(source.keys[0].values[0].text == L"%mOdUlE% /Embedding");
+    RGS_CHECK(ResolveModule(source, path, resolved) == Error::Ok &&
+              resolved.keys[0].values[2].text == path + L"|" + path);
+    std::wstring text = L"unchanged";
+    RGS_CHECK(ExpandModule(L"%MODULE_RAW%", path, text, true) == Error::Ok && text == path);
+    const std::wstring full(MaxValueUnits - path.size(), L'x');
+    RGS_CHECK(ExpandModule(full + L"%MODULE_RAW%", path, text, true) == Error::Ok &&
+              text.size() == MaxValueUnits);
+    RGS_CHECK(ExpandModule(full + L"%MODULE%", path, text, true) == Error::Limit &&
+              text.size() == MaxValueUnits); // Added quotes count toward the limit.
+    RGS_CHECK(ExpandModule(L"%MODULE_RAW", path, text, true) == Error::Unsupported &&
+              text.size() == MaxValueUnits);
+    source.keys[0].values[1].text = L"%UNKNOWN%";
+    RGS_CHECK(ResolveModule(source, path, resolved, true) == Error::Unsupported &&
+              resolved.keys[0].values[0].text == path + L" /Embedding");
+    RGS_CHECK(Parse(L"HKCR { A = s '%MODULE_RAW%' }",
+                    {{L"MODULE_RAW", L"override"}}, source) == Error::InvalidName);
+    return true;
+}
+
 bool RejectMalformed() {
     Document d;
     RGS_CHECK(Parse(L"HKCR { A = s 'ok' }", d) == Error::Ok);
@@ -159,7 +190,7 @@ bool RejectMalformed() {
 }
 } // namespace
 
-bool RunRgsParserTests() { return Originals() && Replacements() && RejectMalformed(); }
+bool RunRgsParserTests() { return Originals() && Replacements() && ModulePaths() && RejectMalformed(); }
 #ifdef OPENATL_RGS_TEST_STANDALONE
 int main() { return RunRgsParserTests() ? 0 : 1; }
 #endif

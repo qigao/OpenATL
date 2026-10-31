@@ -241,7 +241,20 @@ module path. An explicit binding permits an external resource template to
 describe a different server module. Root selection and owner tags still come
 from the existing explicit/operation/default context, which is never rewritten.
 Common replacement hooks and explicit module regmap tables retain their
-reserved-MODULE policy; MODULE_RAW and EXE quoting remain pending.
+reserved-MODULE policy; MODULE_RAW is always derived from the canonical path.
+
+Both built-in tokens are case-insensitive. Automatically supplied `%MODULE%`
+is quoted for the current EXE and unquoted for a DLL; `%MODULE_RAW%` is always
+unquoted. Explicit resource-file calls inspect the source PE's DLL characteristic
+through the held read-only handle, without executing it or guessing from its
+filename. A persistent MODULE binding preserves the caller's choice: an unquoted
+absolute path stays unquoted, while one enclosing pair of double quotes requests
+quoted MODULE expansion. MODULE_RAW and owner markers use the canonical path
+without those quotes. Malformed/interior quotes are rejected atomically. Clearing
+the binding restores automatic selection. Quote characters count toward the
+existing expanded-value limit. The low-level ResolveModule/RegisterRgs/
+UnregisterRgs APIs retain their unquoted default and accept a final quoteModule
+flag when the caller explicitly selects EXE formatting.
 
 Native tests use a copied fixture whose DllMain is deliberately rejected by a
 scoped test gate: executable loading fails with ERROR_DLL_INIT_FAILED while
@@ -249,12 +262,16 @@ resource registration/unregistration succeeds. They verify automatic and bound
 MODULE values, wrong-owner unregister preservation, sharing denial, final file
 deletion, and default HKCU per-user installation/cleanup with a fresh GUID key.
 No new test executable or workflow is introduced.
+The existing test EXE also embeds the same REGISTRY resource set to verify module
+helpers and resource-only EXE calls, MODULE_RAW, explicit quoted/unquoted bindings,
+reset behavior and content-verified unregister rejection when formatting differs.
 
 CLSID_Registrar activation, dynamic UpdateRegistryFromResourceD, full CRegObject
-inheritance/legacy ABI, EXE-specific quoted MODULE/MODULE_RAW and full RGS
-grammar remain unimplemented. No second registrar is selected.
+inheritance/legacy ABI, complete EXE COM-server lifecycle compatibility and full
+RGS grammar remain unimplemented. No second registrar is selected.
 
 Resource mapping contract: [LoadLibraryExW](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryexw).
+Built-in token formatting: [ATL replaceable parameters](https://learn.microsoft.com/en-us/cpp/atl/using-replaceable-parameters-the-registrar-s-preprocessor).
 
 Public signature references: [CAtlModule registry helpers](https://learn.microsoft.com/en-us/cpp/atl/reference/catlmodule-class),
 [registry macros](https://learn.microsoft.com/en-us/cpp/atl/reference/registry-macros),

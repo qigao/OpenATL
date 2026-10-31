@@ -64,20 +64,20 @@ private:
         return module ? module->ResourceModule() : _AtlBaseModule.GetModuleInstance();
     }
     static HRESULT Execute(const OpenATL::RGS::Document& document, BOOL install,
-                           bool perUser, std::wstring_view module) noexcept {
+                           bool perUser, std::wstring_view module, bool quoteModule = false) noexcept {
         if (OpenATL::COM::rgs_resource_detail::Current() ||
             OpenATL::COM::rgs_resource_detail::CurrentModule())
-            return OpenATL::COM::ApplyRgsDocument(document, install, module);
+            return OpenATL::COM::ApplyRgsDocument(document, install, module, quoteModule);
         OpenATL::COM::ScopedModuleRgsRegistration scope(Image(), perUser);
-        return OpenATL::COM::ApplyRgsDocument(document, install, module);
+        return OpenATL::COM::ApplyRgsDocument(document, install, module, quoteModule);
     }
     HRESULT ParseAndExecute(std::wstring_view source,
              const std::vector<OpenATL::RGS::Replacement>& map, BOOL install,
-             bool perUser, std::wstring_view module) noexcept {
+             bool perUser, std::wstring_view module, bool quoteModule) noexcept {
         OpenATL::RGS::Document document;
         const HRESULT hr = OpenATL::COM::rgs_registration_detail::MapError(
             OpenATL::RGS::Parse(source, map, document));
-        return FAILED(hr) ? hr : Execute(document, install, perUser, module);
+        return FAILED(hr) ? hr : Execute(document, install, perUser, module, quoteModule);
     }
     HRESULT String(LPCOLESTR source, BOOL install) noexcept {
         const bool perUser = perUserRegistration.load();
@@ -85,8 +85,9 @@ private:
             !*source) return E_INVALIDARG;
         std::vector<OpenATL::RGS::Replacement> map;
         std::wstring module;
-        const HRESULT hr = map_.Snapshot(map, module);
-        return FAILED(hr) ? hr : ParseAndExecute(source, map, install, perUser, module);
+        bool quoteModule = false;
+        const HRESULT hr = map_.Snapshot(map, module, quoteModule);
+        return FAILED(hr) ? hr : ParseAndExecute(source, map, install, perUser, module, quoteModule);
     }
     struct FileHandle {
         HANDLE value = INVALID_HANDLE_VALUE;
@@ -95,6 +96,31 @@ private:
         FileHandle& operator=(const FileHandle&) = delete;
         ~FileHandle() { if (value != INVALID_HANDLE_VALUE) ::CloseHandle(value); }
     };
+    static HRESULT ResourceQuotesModule(HANDLE file, bool& quoteModule) noexcept {
+        const auto read = [file](void* data, DWORD size) noexcept -> HRESULT {
+            DWORD count = 0;
+            if (!::ReadFile(file, data, size, &count, nullptr))
+                return OpenATL::COM::rgs_resource_detail::Win32Failure(ERROR_READ_FAULT);
+            return count == size ? S_OK : HRESULT_FROM_WIN32(ERROR_BAD_EXE_FORMAT);
+        };
+        IMAGE_DOS_HEADER dos{};
+        HRESULT hr = read(&dos, sizeof(dos));
+        if (FAILED(hr)) return hr;
+        if (dos.e_magic != IMAGE_DOS_SIGNATURE || dos.e_lfanew <= 0)
+            return HRESULT_FROM_WIN32(ERROR_BAD_EXE_FORMAT);
+        LARGE_INTEGER position{};
+        position.QuadPart = dos.e_lfanew;
+        if (!::SetFilePointerEx(file, position, nullptr, FILE_BEGIN))
+            return OpenATL::COM::rgs_resource_detail::Win32Failure(ERROR_READ_FAULT);
+        DWORD signature = 0;
+        hr = read(&signature, sizeof(signature));
+        if (FAILED(hr)) return hr;
+        if (signature != IMAGE_NT_SIGNATURE) return HRESULT_FROM_WIN32(ERROR_BAD_EXE_FORMAT);
+        IMAGE_FILE_HEADER header{};
+        hr = read(&header, sizeof(header));
+        if (SUCCEEDED(hr)) quoteModule = (header.Characteristics & IMAGE_FILE_DLL) == 0;
+        return hr;
+    }
     static HRESULT ReadFileText(LPCOLESTR path, std::wstring& text) noexcept {
         if (!OpenATL::COM::registration_detail::bounded(path, OpenATL::RGS::MaxPathUnits))
             return E_INVALIDARG;
@@ -141,11 +167,12 @@ private:
         const bool perUser = perUserRegistration.load();
         std::vector<OpenATL::RGS::Replacement> map;
         std::wstring module;
-        HRESULT hr = map_.Snapshot(map, module);
+        bool quoteModule = false;
+        HRESULT hr = map_.Snapshot(map, module, quoteModule);
         if (FAILED(hr)) return hr;
         std::wstring source;
         hr = ReadFileText(path, source);
-        return FAILED(hr) ? hr : ParseAndExecute(source, map, install, perUser, module);
+        return FAILED(hr) ? hr : ParseAndExecute(source, map, install, perUser, module, quoteModule);
     }
     HRESULT Resource(LPCOLESTR path, LPCOLESTR name, LPCOLESTR type, BOOL install) noexcept {
         const bool perUser = perUserRegistration.load();
@@ -163,7 +190,8 @@ private:
             if (FAILED(hr)) return hr;
             std::vector<OpenATL::RGS::Replacement> map;
             std::wstring module;
-            hr = map_.Snapshot(map, module);
+            bool quoteModule = false;
+            hr = map_.Snapshot(map, module, quoteModule);
             if (FAILED(hr)) return hr;
             // Hold a read-only handle through execution: the resource file
             // cannot be written or replaced between parsing and registry work.
@@ -182,13 +210,17 @@ private:
                 LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE | LOAD_LIBRARY_AS_IMAGE_RESOURCE);
             if (!image.value)
                 return OpenATL::COM::rgs_resource_detail::Win32Failure(ERROR_BAD_EXE_FORMAT);
+            if (module.empty()) {
+                hr = ResourceQuotesModule(file.value, quoteModule);
+                if (FAILED(hr)) return hr;
+            }
             OpenATL::RGS::Document document;
             hr = OpenATL::COM::ReadRgsResource(image.value, name, document, &map);
             if (FAILED(hr)) return hr;
             // Resource source and server identity may differ only through an
             // explicit owned MODULE binding; otherwise the resource path owns
             // both MODULE expansion and the verified registration marker.
-            return Execute(document, install, perUser, module.empty() ? requested : module);
+            return Execute(document, install, perUser, module.empty() ? requested : module, quoteModule);
         } catch (...) { return AtlModuleException(); }
     }
     RegistrarModulePin pin_; // Kept until after map destruction.

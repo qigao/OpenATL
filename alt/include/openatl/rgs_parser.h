@@ -80,12 +80,18 @@ inline bool Name(std::wstring_view s) noexcept {
     }
     return true;
 }
+inline size_t ModuleTokenLength(std::wstring_view value, size_t at) noexcept {
+    if (at > value.size()) return 0;
+    if (value.size() - at >= 12 && Same(value.substr(at, 12), L"%MODULE_RAW%")) return 12;
+    if (value.size() - at >= 8 && Same(value.substr(at, 8), L"%MODULE%")) return 8;
+    return 0;
+}
 inline bool ValidSubstitution(std::wstring_view value) noexcept {
     for (size_t i = 0; i < value.size(); ++i) {
         if (value[i] != L'%') continue;
-        if (i + 8 > value.size() || !Same(value.substr(i, 8), L"%MODULE%"))
-            return false;
-        i += 7;
+        const size_t length = ModuleTokenLength(value, i);
+        if (!length) return false;
+        i += length - 1;
     }
     return true;
 }
@@ -168,7 +174,8 @@ private:
                 const size_t end = token.find(L'%', i + 1);
                 if (end == token.npos) { Fail(Error::Unsupported); return false; }
                 const std::wstring_view name(token.data() + i + 1, end - i - 1);
-                if (detail::Same(name, L"MODULE")) expanded.append(token, i, end - i + 1);
+                if (detail::Same(name, L"MODULE") || detail::Same(name, L"MODULE_RAW"))
+                    expanded.append(token, i, end - i + 1);
                 else {
                     const Replacement* found = nullptr;
                     if (replacements_)
@@ -343,16 +350,16 @@ private:
 // Produce a stable expanded plan without mutating the original document.
 // The calling installer must still validate module path ownership itself.
 inline Error ExpandModule(std::wstring_view text, std::wstring_view module,
-                          std::wstring& output) noexcept;
+                          std::wstring& output, bool quoteModule = false) noexcept;
 
 inline Error ResolveModule(const Document& source, std::wstring_view module,
-                           Document& output) noexcept {
+                           Document& output, bool quoteModule = false) noexcept {
     try {
         Document expanded = source;
         for (Key& key : expanded.keys) {
             for (Value& value : key.values) {
                 std::wstring text;
-                Error e = ExpandModule(value.text, module, text);
+                Error e = ExpandModule(value.text, module, text, quoteModule);
                 if (e != Error::Ok) return e;
                 value.text = std::move(text);
             }
@@ -373,17 +380,25 @@ inline Error Parse(std::wstring_view text, const std::vector<Replacement>& map,
     return parser.Parse(text, output, &map);
 }
 
-// Substitute the built-in MODULE variable after custom token replacements.
+// Substitute MODULE/MODULE_RAW after custom token replacements. Only MODULE
+// receives the selected quoting policy; the canonical path itself is unchanged.
 // Expansion is an explicit,
 // bounded operation: no environment variables, registry/COM access or shell.
 inline Error ExpandModule(std::wstring_view text, std::wstring_view module,
-                          std::wstring& output) noexcept {
+                          std::wstring& output, bool quoteModule) noexcept {
     if (module.empty() || module.size() > MaxPathUnits) return Error::InvalidName;
     if (!detail::ValidSubstitution(text)) return Error::Unsupported;
     try {
         std::wstring expanded;
         for (size_t i = 0; i < text.size();) {
-            if (text[i] == L'%') { expanded.append(module); i += 8; }
+            if (text[i] == L'%') {
+                const size_t length = detail::ModuleTokenLength(text, i);
+                const bool quoted = quoteModule && length == 8;
+                if (quoted) expanded += L'"';
+                expanded.append(module);
+                if (quoted) expanded += L'"';
+                i += length;
+            }
             else { expanded += text[i++]; }
             if (expanded.size() > MaxValueUnits) return Error::Limit;
         }

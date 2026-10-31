@@ -134,11 +134,15 @@ public:
                     value, OpenATL::RGS::MaxValueUnits)) return E_INVALIDARG;
             if (allowModule && OpenATL::RGS::detail::Same(name, L"MODULE")) {
                 if (!module_.empty()) return E_INVALIDARG;
+                std::wstring_view raw(value);
+                const bool quoted = raw.size() >= 2 && raw.front() == L'"' && raw.back() == L'"';
+                if (quoted) { raw.remove_prefix(1); raw.remove_suffix(1); }
                 std::wstring canonical;
                 const HRESULT hr = OpenATL::COM::rgs_registration_detail::CanonicalModule(
-                    value, canonical);
+                    raw, canonical);
                 if (FAILED(hr)) return hr;
                 module_ = std::move(canonical);
+                quoteModule_ = quoted;
                 return S_OK;
             }
             if (map_.size() == OpenATL::RGS::MaxReplacements)
@@ -158,16 +162,18 @@ public:
             if (!accepting_) return E_UNEXPECTED;
             map_.clear();
             module_.clear();
+            quoteModule_ = false;
             return S_OK;
         } catch (...) { return AtlModuleException(); }
     }
     HRESULT Snapshot(std::vector<OpenATL::RGS::Replacement>& output,
-                     std::wstring& module) noexcept {
+                     std::wstring& module, bool& quoteModule) noexcept {
         try {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!accepting_) return E_UNEXPECTED;
             output = map_;
             module = module_;
+            quoteModule = quoteModule_;
             return S_OK;
         } catch (...) { return AtlModuleException(); }
     }
@@ -176,17 +182,20 @@ public:
         accepting_ = false;
         map_.clear();
         module_.clear();
+        quoteModule_ = false;
     }
     void Freeze(std::vector<OpenATL::RGS::Replacement>& output) noexcept {
         std::lock_guard<std::mutex> lock(mutex_);
         accepting_ = false;
         output = std::move(map_);
         module_.clear();
+        quoteModule_ = false;
     }
 private:
     std::mutex mutex_;
     std::vector<OpenATL::RGS::Replacement> map_;
     std::wstring module_; // Persistent registrar's optional canonical MODULE binding.
+    bool quoteModule_ = false;
     bool accepting_ = true;
 };
 class RegistrarModulePin final {

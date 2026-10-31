@@ -47,7 +47,8 @@ inline bool OwnerTag(std::wstring_view owner) noexcept {
 }
 inline bool AbsoluteModule(std::wstring_view value) noexcept {
     if (value.empty() || value.size() > RGS::MaxPathUnits ||
-        value.find(L'\0') != value.npos || value.find(L'%') != value.npos)
+        value.find(L'\0') != value.npos || value.find(L'%') != value.npos ||
+        value.find(L'"') != value.npos)
         return false;
     bool drive = value.size() >= 3 &&
         ((value[0] >= L'A' && value[0] <= L'Z') ||
@@ -110,14 +111,14 @@ inline bool HasParentBefore(const RGS::Document& doc, size_t i) noexcept {
 }
 inline HRESULT Prepare(const RGS::Document& source,
                        std::wstring_view module, std::wstring_view owner,
-                       Prepared& prepared) {
+                       Prepared& prepared, bool quoteModule = false) {
     if (!OwnerTag(owner) || source.keys.empty() ||
         source.keys.size() > RGS::MaxKeys) return E_INVALIDARG;
     std::wstring canonical;
     HRESULT hr = CanonicalModule(module, canonical);
     if (FAILED(hr)) return hr;
     RGS::Document expanded;
-    const RGS::Error error = RGS::ResolveModule(source, canonical, expanded);
+    const RGS::Error error = RGS::ResolveModule(source, canonical, expanded, quoteModule);
     if (error != RGS::Error::Ok) return MapError(error);
     const std::wstring marker = std::wstring(L"RGS1:") +
                                 std::wstring(owner) + L":" + canonical;
@@ -184,12 +185,12 @@ inline HRESULT PreflightNew(HKEY root, const Prepared& plan) noexcept {
 // Caller must serialize all writers to the explicit Classes root.
 inline HRESULT RegisterRgs(HKEY classesRoot, const RGS::Document& document,
                            std::wstring_view modulePath,
-                           std::wstring_view ownerTag) noexcept {
+                           std::wstring_view ownerTag, bool quoteModule = false) noexcept {
     using namespace rgs_registration_detail;
     if (!OpenedRoot(classesRoot)) return E_INVALIDARG;
     try {
         Prepared plan;
-        HRESULT hr = Prepare(document, modulePath, ownerTag, plan);
+        HRESULT hr = Prepare(document, modulePath, ownerTag, plan, quoteModule);
         if (FAILED(hr)) return hr;
         hr = PreflightNew(classesRoot, plan);
         if (FAILED(hr)) return hr;
@@ -242,12 +243,12 @@ inline HRESULT RegisterRgs(HKEY classesRoot, const RGS::Document& document,
 // this installation was the operation that first created it.
 inline HRESULT UnregisterRgs(HKEY classesRoot, const RGS::Document& document,
                              std::wstring_view modulePath,
-                             std::wstring_view ownerTag) noexcept {
+                             std::wstring_view ownerTag, bool quoteModule = false) noexcept {
     using namespace rgs_registration_detail;
     if (!OpenedRoot(classesRoot)) return E_INVALIDARG;
     try {
         Prepared plan;
-        const HRESULT hr = Prepare(document, modulePath, ownerTag, plan);
+        const HRESULT hr = Prepare(document, modulePath, ownerTag, plan, quoteModule);
         if (FAILED(hr)) return hr;
         return registration_detail::result(registration_detail::remove(
             classesRoot, plan.plan, plan.owned, true, true));
