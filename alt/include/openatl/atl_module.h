@@ -124,7 +124,7 @@ class RgsReplacementMap final {
 public:
     explicit RgsReplacementMap(std::vector<OpenATL::RGS::Replacement>&& map = {}) noexcept
         : map_(std::move(map)) {}
-    HRESULT Add(LPCOLESTR name, LPCOLESTR value) noexcept {
+    HRESULT Add(LPCOLESTR name, LPCOLESTR value, bool allowModule = false) noexcept {
         try {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!accepting_) return E_UNEXPECTED;
@@ -132,6 +132,15 @@ public:
                     name, OpenATL::RGS::MaxReplacementNameUnits) ||
                 !OpenATL::COM::registration_detail::bounded(
                     value, OpenATL::RGS::MaxValueUnits)) return E_INVALIDARG;
+            if (allowModule && OpenATL::RGS::detail::Same(name, L"MODULE")) {
+                if (!module_.empty()) return E_INVALIDARG;
+                std::wstring canonical;
+                const HRESULT hr = OpenATL::COM::rgs_registration_detail::CanonicalModule(
+                    value, canonical);
+                if (FAILED(hr)) return hr;
+                module_ = std::move(canonical);
+                return S_OK;
+            }
             if (map_.size() == OpenATL::RGS::MaxReplacements)
                 return HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW);
             auto staged = map_;
@@ -148,14 +157,17 @@ public:
             std::lock_guard<std::mutex> lock(mutex_);
             if (!accepting_) return E_UNEXPECTED;
             map_.clear();
+            module_.clear();
             return S_OK;
         } catch (...) { return AtlModuleException(); }
     }
-    HRESULT Snapshot(std::vector<OpenATL::RGS::Replacement>& output) noexcept {
+    HRESULT Snapshot(std::vector<OpenATL::RGS::Replacement>& output,
+                     std::wstring& module) noexcept {
         try {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!accepting_) return E_UNEXPECTED;
             output = map_;
+            module = module_;
             return S_OK;
         } catch (...) { return AtlModuleException(); }
     }
@@ -163,15 +175,18 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
         accepting_ = false;
         map_.clear();
+        module_.clear();
     }
     void Freeze(std::vector<OpenATL::RGS::Replacement>& output) noexcept {
         std::lock_guard<std::mutex> lock(mutex_);
         accepting_ = false;
         output = std::move(map_);
+        module_.clear();
     }
 private:
     std::mutex mutex_;
     std::vector<OpenATL::RGS::Replacement> map_;
+    std::wstring module_; // Persistent registrar's optional canonical MODULE binding.
     bool accepting_ = true;
 };
 class RegistrarModulePin final {

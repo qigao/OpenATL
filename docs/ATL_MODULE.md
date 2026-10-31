@@ -221,13 +221,40 @@ through one owned handle, require EOF, and reuse the strict UTF-8/BOM UTF-16
 LE/BE decoder. The decoded source retains the 65536-unit limit. Read/decode/parse
 errors precede registry writes, and no source file is modified.
 
-Resource methods accept only REGISTRY resources from the active registration
-image. The supplied absolute canonical module path must match that image;
-foreign/unloaded resource images are rejected instead of loaded or executed.
-Numeric IDs and named-resource limits are unchanged. General resource-file
-loading, CLSID_Registrar activation, dynamic UpdateRegistryFromResourceD,
-full CRegObject inheritance/legacy ABI, EXE-specific quoted MODULE/MODULE_RAW
-and full RGS grammar remain unimplemented. No second registrar is selected.
+Resource methods accept REGISTRY resources in an explicitly named PE file,
+including one not loaded for execution. The bounded absolute path is canonicalized;
+a read-only FILE_SHARE_READ handle and a LoadLibraryEx mapping with
+LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE | LOAD_LIBRARY_AS_IMAGE_RESOURCE stay owned
+through parsing and execution. The loader reads resources without executing
+the DLL entry point or loading static imports. Both handles retire on every
+return path. Numeric IDs, named-resource, encoding and parser limits are unchanged.
+The supplied path is retained directly; datafile handles are not passed to
+GetModuleFileName.
+
+Persistent IRegistrar/CRegObject additionally accept a case-insensitive
+`AddReplacement(L"MODULE", absolutePath)` binding. The canonical owned path is
+snapshotted with custom entries and supplies both MODULE expansion and the
+owner marker. Duplicate bindings and invalid paths fail without changing state;
+ClearReplacements clears the binding. Without a binding, resource operations
+use their source PE path, while string/file operations use the active context's
+module path. An explicit binding permits an external resource template to
+describe a different server module. Root selection and owner tags still come
+from the existing explicit/operation/default context, which is never rewritten.
+Common replacement hooks and explicit module regmap tables retain their
+reserved-MODULE policy; MODULE_RAW and EXE quoting remain pending.
+
+Native tests use a copied fixture whose DllMain is deliberately rejected by a
+scoped test gate: executable loading fails with ERROR_DLL_INIT_FAILED while
+resource registration/unregistration succeeds. They verify automatic and bound
+MODULE values, wrong-owner unregister preservation, sharing denial, final file
+deletion, and default HKCU per-user installation/cleanup with a fresh GUID key.
+No new test executable or workflow is introduced.
+
+CLSID_Registrar activation, dynamic UpdateRegistryFromResourceD, full CRegObject
+inheritance/legacy ABI, EXE-specific quoted MODULE/MODULE_RAW and full RGS
+grammar remain unimplemented. No second registrar is selected.
+
+Resource mapping contract: [LoadLibraryExW](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryexw).
 
 Public signature references: [CAtlModule registry helpers](https://learn.microsoft.com/en-us/cpp/atl/reference/catlmodule-class),
 [registry macros](https://learn.microsoft.com/en-us/cpp/atl/reference/registry-macros),

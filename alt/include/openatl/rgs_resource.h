@@ -285,7 +285,8 @@ inline HRESULT ReadRgsResource(HMODULE image, unsigned resourceId,
 // Called by DECLARE_REGISTRY_RESOURCEID on an ATL class. A module supplies
 // the lazy default during registration; isolated callers can supply an
 // explicit context. Plain WTL/factory use creates neither policy nor COM.
-inline HRESULT ApplyRgsDocument(const RGS::Document& document, BOOL registerClass) noexcept {
+inline HRESULT ApplyRgsDocument(const RGS::Document& document, BOOL registerClass,
+                                std::wstring_view modulePath = {}) noexcept {
     const RgsRegistrationContext* context = rgs_resource_detail::Current();
     if (!context) {
         auto* module = rgs_resource_detail::CurrentModule();
@@ -295,9 +296,10 @@ inline HRESULT ApplyRgsDocument(const RGS::Document& document, BOOL registerClas
         context = rgs_resource_detail::Current();
     }
     if (!context) return E_UNEXPECTED;
+    if (modulePath.empty()) modulePath = context->modulePath;
     return registerClass
-        ? RegisterRgs(context->classesRoot, document, context->modulePath, context->ownerTag)
-        : UnregisterRgs(context->classesRoot, document, context->modulePath, context->ownerTag);
+        ? RegisterRgs(context->classesRoot, document, modulePath, context->ownerTag)
+        : UnregisterRgs(context->classesRoot, document, modulePath, context->ownerTag);
 }
 inline HRESULT UpdateRegistryResource(LPCWSTR resourceName, BOOL registerClass,
                      const std::vector<RGS::Replacement>* map = nullptr) noexcept {

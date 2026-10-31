@@ -99,6 +99,10 @@ HRESULT registerFixture(BOOL installing) noexcept {
 } // namespace
 
 extern "C" BOOL WINAPI DllMain(HINSTANCE, DWORD reason, void* reserved) {
+    // Native test gate: resource-only mapping must never execute this entry
+    // point. The original fixture is loaded before the gate is armed.
+    if (reason == DLL_PROCESS_ATTACH &&
+        ::GetEnvironmentVariableW(OPENATL_RESOURCE_EXECUTION_GUARD, nullptr, 0)) return FALSE;
     return dllModule.DllMain(reason, reserved);
 }
 extern "C" HRESULT WINAPI DllGetClassObject(
