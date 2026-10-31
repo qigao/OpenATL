@@ -43,7 +43,7 @@ standard ATL modules, object maps or registration by name.
 
 **Missing compatibility features, not exclusions:** expanded object maps,
 aggregation and tear-offs, full RGS, complete EXE-server registration,
-complete type-library registration/image loading and Automation,
+complete type-library registration and Automation,
 SAFEARRAY wrappers and full ActiveX/OLE controls. Implement these against
 original ATL consumers and qualify native behavior. The existing server
 supports explicit nonaggregated factories and CLSID/ProgID registration.
@@ -56,6 +56,12 @@ prevent unload. Explicit registration refuses existing keys and validates
 ownership before nonrecursive deletion. Its root handle is supplied by the
 application; tests use private HKCU roots and a uniquely identified COM class.
 See [COM server API, ownership and registration](COM_SERVER.md).
+
+Image-based `IDispatchImpl` uses the standard 0xffff/0xffff version sentinel
+to load its own PE image with REGKIND_NONE. The backend validates LIBID/IID,
+retains no static ITypeInfo cache and does not register the TypeLib.
+`CAtlBaseModule` uses the image-local PE linker symbol instead of the host
+process EXE handle.
 
 ## Upstream pins and licenses
 

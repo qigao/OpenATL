@@ -24,7 +24,7 @@ target. Missing standard headers and APIs remain compatibility gaps; see the
 | `OBJECT_ENTRY_AUTO(clsid, type)` | Static per-image class map and optional typed `UpdateRegistry(BOOL)` callback, bounded duplicate/invalid CLSID rejection, real `IClassFactory`/object/module-lock ownership and native STA/MTA activation. No COM, registry I/O or heap allocation in static constructor. |
 | `DECLARE_NO_REGISTRY()` | Explicit ATL class opt-out of persistent registration; absent `UpdateRegistry` without this opt-out fails `E_NOTIMPL`. |
 | `DECLARE_REGISTRY_RESOURCEID(id)` | Class-static `UpdateRegistry(BOOL)` loads a real `REGISTRY` resource from the explicit HMODULE, parses a bounded ATL RGS subset and executes the owner-verified plan only inside a scoped application registration context; no implicit HKCR or TypeLib registration. |
-| `IDispatchImpl<T, &IID, &LIBID, major, minor, holder>`, `CComTypeInfoHolder` | Real Windows type-info holder using `LoadRegTypeLib` and `GetTypeInfoOfGuid`; four IDispatch methods and `ITypeInfo::GetIDsOfNames/Invoke` delegation, with owned temporary pointers and no static type-info cache. Native OLEAUT32 tests cover real late binding. `GetTIFromFile` additionally loads **actual binary .tlb files** via `LoadTypeLibEx(REGKIND_NONE)`, verifies GUID/version/IID and exposes owned ITypeInfo without registry writes. Image TLB mode `0xffff/0xffff` remains **E_NOTIMPL**, and global registered TLB success is not qualified. |
+| `IDispatchImpl<T, &IID, &LIBID, major, minor, holder>`, `CComTypeInfoHolder` | Real Windows type-info holder using `LoadRegTypeLib` and `GetTypeInfoOfGuid`; four IDispatch methods and `ITypeInfo::GetIDsOfNames/Invoke` delegation, with owned temporary pointers and no static type-info cache. Native OLEAUT32 tests cover real late binding. `GetTIFromFile` additionally loads **actual binary .tlb files** via `LoadTypeLibEx(REGKIND_NONE)`, verifies GUID/version/IID and exposes owned ITypeInfo without registry writes. Image TLB mode `0xffff/0xffff` loads this binary image with `REGKIND_NONE`, verifies LIBID/IID, and supports real dispatch over an embedded TypeLib. The image path is bounded to 8192 UTF-16 units; global registered TLB success remains separately unqualified. |
 | `DECLARE_LIBID(id)` | Original ATL module `InitLibId()` pattern initializes `CAtlModule::m_libid` at module construction. A native derived DLL module test checks actual GUID identity and avoids type-library registration side effects. |
 | `atlcom.h`: `CComObjectRootBase`, `CComObjectRootEx`, `CComObjectRoot` | Nonaggregated reference counting, thread-model critical section, construction/release hooks |
 | `CComObject<T>` | Concrete IUnknown, raw creation with initial reference count **zero**, typed QI, last-release destruction |
@@ -90,13 +90,14 @@ complete compile/link/activation. See [server registration](COM_SERVER.md).
 Original Microsoft COMMap `COMMap.idl` is pinned and submitted to native
 Windows SDK `midl.exe` on Windows CI. The generated binary TypeLib,
 interface header and IID implementation are checked through actual OLEAUT32
-loading and native compilation. This is original-IDL admission, not whole
-COMMap DLL build/link or any of the 37 original pure-ATL projects passing.
+loading and native compilation. The same MIDL output is embedded in the existing native DLL fixture. Its
+IChain implementation uses standard 0xffff/0xffff dispatch for real property
+Invoke in STA/MTA. This is original-IDL and embedded-dispatch admission, not
+the whole original COMMap DLL build/link or any of the 37 pure-ATL projects passing.
 
 **Tracked compatibility gaps:** expanded ATL object-map entry variants
 (including aggregation, automatic aggregates and tear-offs),
-image-embedded TypeLib dispatch, full RGS grammar and automatic registration
-policy, complete TypeLib registration/unregistration,
+full RGS grammar and automatic registration policy, complete TypeLib registration/unregistration,
 connection-point server templates, SAFEARRAY wrappers, windowless
 hosting, resource-based ActiveX dialogs and complete control/server support.
 `CComModule` has an implemented legacy object-map subset; its presence is

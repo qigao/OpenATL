@@ -1,6 +1,6 @@
 // OpenATL - true Automation type-info dispatch over Windows OLEAUT32.
 //
-// Real LoadRegTypeLib / ITypeInfo behavior. No handwritten DISPIDs, no
+// Real registered/image TypeLib and ITypeInfo behavior. No handwritten DISPIDs, no
 // alternate dispatch engine and no implicit type-library registration.
 // Each query owns and releases its temporary type-library/type-info handles;
 // static holder state does not retain an unloaded DLL's ITypeInfo.
@@ -81,11 +81,29 @@ public:
         if (!iid || !libid || IsEqualGUID(*iid, GUID_NULL) ||
             IsEqualGUID(*libid, GUID_NULL)) return E_INVALIDARG;
         if (major == 0xffff || minor == 0xffff) {
-            // ATL's special image-based type-library mode requires an
-            // explicit live image+module owner. Do not silently use the
-            // registry provider, or pretend image mode already works.
-            return major == 0xffff && minor == 0xffff
-                ? E_NOTIMPL : E_INVALIDARG;
+            if (major != 0xffff || minor != 0xffff) return E_INVALIDARG;
+            // Standard ATL sentinel: load this binary's embedded TypeLib,
+            // independently of registry state and of the host EXE image.
+            wchar_t path[8193]{};
+            const DWORD length = ::GetModuleFileNameW(
+                _AtlBaseModule.GetModuleInstance(), path, 8193);
+            if (!length) return HRESULT_FROM_WIN32(::GetLastError());
+            if (length >= 8193) return HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW);
+            CComPtr<ITypeLib> library;
+            HRESULT hr = ::LoadTypeLibEx(path, REGKIND_NONE, &library.p);
+            if (FAILED(hr)) return hr;
+            if (!library.p) return E_UNEXPECTED;
+            TLIBATTR* attr = nullptr;
+            hr = library->GetLibAttr(&attr);
+            if (FAILED(hr)) return hr;
+            if (!attr) return E_UNEXPECTED;
+            const bool identity = ::IsEqualGUID(attr->guid, *libid);
+            library->ReleaseTLibAttr(attr);
+            if (!identity) return TYPE_E_ELEMENTNOTFOUND;
+            hr = library->GetTypeInfoOfGuid(*iid, output);
+            if (SUCCEEDED(hr) && !*output) return E_UNEXPECTED;
+            if (FAILED(hr)) *output = nullptr;
+            return hr;
         }
         CComPtr<ITypeLib> library;
         HRESULT hr = ::LoadRegTypeLib(*libid, major, minor, locale,
@@ -103,7 +121,8 @@ public:
 // The optional sixth parameter is an injectable type-info holder (the
 // default is the real registered TypeLib loader). A custom holder needs
 // GetTI(iid, libid, major, minor, LCID, ITypeInfo**) -> HRESULT.
-// This does not implement ATL's image-typelib 0xffff/0xffff mode yet.
+// The 0xffff/0xffff mode selects this image's embedded TypeLib without
+// registering it or falling back to the registry on a missing resource.
 // The module-scoped LIBID is populated by DECLARE_LIBID on CAtlModuleT<T>.
 template<class T, const IID* piid = &__uuidof(T),
          const GUID* plibid = &CAtlModule::m_libid,

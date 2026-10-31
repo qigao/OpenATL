@@ -13,7 +13,7 @@ set(_openatl_fixture_rc "${CMAKE_CURRENT_BINARY_DIR}/fixture_registry.rc")
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/fixture_registry.rc.in"
   "${_openatl_fixture_rc}" @ONLY)
 add_library(openatl_com_server_fixture SHARED
-  fixture.cpp fixture.def fixture_registry_ids.h
+  fixture.cpp embedded_dispatch.cpp fixture.def fixture_registry_ids.h
   "${_openatl_fixture_rc}" interfaces.h)
 set_target_properties(openatl_com_server_fixture PROPERTIES PREFIX "")
 target_link_libraries(openatl_com_server_fixture PRIVATE OpenWTL::WTL)
@@ -83,6 +83,14 @@ if(CMAKE_HOST_WIN32)
   # /cpp_cmd + /cpp_opt to explicitly select GNU preprocessing. Preserve
   # all SDK IDL preprocessor directives (do not use /no_cpp).
   set(_openatl_midl_cpp_args)
+  set(_openatl_midl_env win32)
+  set(_openatl_midl_cpp_target i686-w64-mingw32)
+  if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    # Automation TypeLibs distinguish Win32 and Win64 pointer/vtable widths.
+    # Both supported 64-bit Windows CPUs use SYS_WIN64 TypeLib metadata.
+    set(_openatl_midl_env amd64)
+    set(_openatl_midl_cpp_target x86_64-w64-mingw32)
+  endif()
   if(MINGW)
     find_program(OPENATL_COMMAP_PINNED_CLANG_EXECUTABLE NAMES clang.exe
       HINTS "$ENV{OPENATL_LLVM_MINGW_BIN}" NO_DEFAULT_PATH REQUIRED)
@@ -109,9 +117,9 @@ if(CMAKE_HOST_WIN32)
     # MIDL expects literal __stdcall/__cdecl tokens in SDK IDL, whereas
     # llvm-mingw's GNU-mode Clang predefines them as GNU __attribute__(())
     # macros. Undefine those ABI sugar macros, retain real IDL declarations,
-    # and match /env win32's target width instead of the host's x64 width.
+    # and match the target TypeLib's pointer width.
     set(_openatl_midl_cpp_options
-      "-E -x c --target=i686-w64-mingw32 -U__stdcall -U__cdecl -U__fastcall -U_stdcall -U_cdecl -U_fastcall @${_openatl_midl_rsp}")
+      "-E -x c --target=${_openatl_midl_cpp_target} -U__stdcall -U__cdecl -U__fastcall -U_stdcall -U_cdecl -U_fastcall @${_openatl_midl_rsp}")
     list(APPEND _openatl_midl_cpp_args
       /cpp_cmd "${OPENATL_COMMAP_PINNED_CLANG_EXECUTABLE}"
       /cpp_opt "${_openatl_midl_cpp_options}")
@@ -124,7 +132,7 @@ if(CMAKE_HOST_WIN32)
   add_custom_command(
     OUTPUT "${_openatl_commap_header}" "${_openatl_commap_iid}"
            "${_openatl_commap_tlb}"
-    COMMAND "${OPENATL_COMMAP_MIDL_EXECUTABLE}" /nologo /env win32
+    COMMAND "${OPENATL_COMMAP_MIDL_EXECUTABLE}" /nologo /env ${_openatl_midl_env}
       ${_openatl_midl_cpp_args} ${_openatl_midl_include_flags}
       /out "${_openatl_commap_generated}" /h COMMap.h
       /iid COMMap_i.c /tlb COMMap.tlb "${_openatl_commap_idl}"
@@ -143,6 +151,19 @@ if(CMAKE_HOST_WIN32)
   target_include_directories(openatl_com_server_tests PRIVATE
     "${_openatl_commap_generated}")
   target_compile_definitions(openatl_com_server_tests PRIVATE
+    OPENATL_ORIGINAL_COMMAP_MIDL=1)
+  # Embed the very same real MIDL output in the existing native DLL fixture.
+  # Target ordering makes the TypeLib available before Windows RC runs.
+  set(_openatl_embedded_rc "${CMAKE_CURRENT_BINARY_DIR}/fixture_typelib.rc")
+  file(WRITE "${_openatl_embedded_rc}" "1 TYPELIB \"${_openatl_commap_tlb}\"\n")
+  target_sources(openatl_com_server_fixture PRIVATE
+    "${_openatl_embedded_rc}" "${_openatl_commap_iid}")
+  set_source_files_properties("${_openatl_embedded_rc}" PROPERTIES
+    OBJECT_DEPENDS "${_openatl_commap_tlb}")
+  add_dependencies(openatl_com_server_fixture openatl_microsoft_commap_midl)
+  target_include_directories(openatl_com_server_fixture PRIVATE
+    "${_openatl_commap_generated}")
+  target_compile_definitions(openatl_com_server_fixture PRIVATE
     OPENATL_ORIGINAL_COMMAP_MIDL=1)
   add_test(NAME openatl.microsoft_commap_midl
     COMMAND openatl_com_server_tests --commap-tlb "${_openatl_commap_tlb}")
