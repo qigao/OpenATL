@@ -575,10 +575,14 @@ The existing core suite tests independent instance/cache identities, fallback
 QI, owner retention after the original pointer is released, exact destruction
 ordering, HRESULT/exception/allocation failure and retry, recursive construction
 rejection, eight-thread first-publication and aggregated owner data. The same
-MIDL-generated original ITearOff1/2 interfaces now run through actual EXE/DLL
-embedded/registered type information and property Invoke in existing native
-cases, including a retained cached interface after the DLL owner pointer is
-released. No original Microsoft application is thereby marked qualified.
+MIDL-generated original ITearOff1/2 interfaces now run through real vtable
+calls in the existing EXE/DLL cases. The unchanged original library omits
+these unreferenced interface descriptions; GetTypeInfo must report
+TYPE_E_ELEMENTNOTFOUND. Both tear-offs additionally implement the original
+IOuter interface, whose actual embedded/registered type information drives
+GetTypeInfo/GetIDsOfNames/Invoke with a short argument and BSTR result.
+A retained cached IOuter is invoked after the DLL owner pointer is released.
+No original Microsoft application is thereby marked qualified.
 
 m_pOwner deliberately stores the actual Owner*; the exact Microsoft
 CComObject<Owner>* member type and layout remain unqualified. See

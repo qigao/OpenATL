@@ -207,8 +207,12 @@ Sources:
 - [Microsoft sample catalog](https://learn.microsoft.com/en-us/cpp/overview/visual-cpp-samples)
 - [Pinned Microsoft ATL sample sources](https://github.com/microsoft/VCSamples/tree/9e1d4475555b76a17a3568369867f1d7b6cc6126/VC2010Samples/ATL/General)
 
-The original MIDL ITearOff1/ITearOff2 metadata additionally drives ordinary and
-cached tear-off fixtures with real property Invoke, owner identity and DLL
-retirement tests. This qualifies the mapped API subset, not compilation of the
-unchanged Outer.cpp/Chain.cpp or the whole COMMap DLL. Exact Microsoft tear-off
-member pointer/layout compatibility and automatic aggregates remain separate.
+The original MIDL ITearOff1/ITearOff2 declarations additionally drive ordinary
+and cached tear-off vtable/identity/lifetime tests. Their descriptions are
+absent from the unchanged library because neither original coclass references
+them; GetTypeInfo must fail TYPE_E_ELEMENTNOTFOUND. Each tear-off also implements
+the original IOuter interface, whose real embedded/registered type information
+drives native Invoke and a retained cached interface after DLL owner release.
+This qualifies the mapped API subset, not the unchanged Outer.cpp/Chain.cpp or
+the whole COMMap DLL. Exact Microsoft tear-off member pointer/layout compatibility
+and automatic aggregates remain separate.
