@@ -41,7 +41,7 @@ CMake cache or copied WTL headers, validates the ARM64 PE and resources,
 and produces exact SHA256 provenance for the separately built binaries.
 `native_arm64.py` refuses non-native Windows ARM64 runners.
 
-## Remaining independent native behavior gates — Issue #44
+## Remaining native monitor behavior — Issue #44
 
 The original `WTL::CServerAppModule::StartMonitor()` discards its
 worker handle. Its non-atomic `m_bActivity`, concurrent
@@ -50,11 +50,10 @@ provide a safe join or unload proof. Existing `server_monitor.cpp` only
 qualifies an explicitly retained worker with bounded join, not the
 original detached StartMonitor/Unlock/Term schedules.
 
-The actual Win32 `PrintDlgEx` printer-window and selection lifecycle
-also remains unqualified; COM callback/source tests cannot stand in
-for real printer UI acceptance. These two gates remain open under
-[Issue #44](https://github.com/qigao/OpenWTL/issues/44); the Draft
-PR is not to be merged or released on source-build evidence alone.
+Real printer-backed PrintDlgEx UI/DC behavior and hardware HSP enforcement
+are outside CI by owner decision (2026-10-31). They do not block this milestone
+or PR merges. Device-independent PrintDlgEx COM callback/site tests remain in
+native CI; Issue #44 now tracks the monitor-worker lifecycle only.
 
 ## Reproduce
 
@@ -107,74 +106,23 @@ handle, the fixture is confined to a separate process and calls
 `ExitProcess` rather than running `Term()` against a potentially live
 worker. **This proves only real API startup/idle notification**, not a
 join, concurrent shutdown, safe DLL unload, or full COM server retirement.
-Those remain a hard Draft blocker in Issue #44.
+Those remain implementation and native lifetime work in Issue #44.
 
-## 2026-10-29 hosted HSP preset regression (CI #40889043223)
+## Optional local printer diagnostics — outside CI
 
-MSVC x64 native WTL tests passed, but the second `cmake --preset msvc-x64`
-reconfiguration re-applied the preset's intentional
-`OPENATL_REQUIRE_CET_RUNTIME=ON` default after the first hosted invocation
-had overridden it to OFF. The hosted GitHub Windows image reported
-`parent_enabled=0`: **a genuine HSP-enforcement qualification failure**,
-not a WTL compilation failure. The second hosted reconfigure now explicitly
-sets OFF, checks the exact CMakeCache value, and logs HSP as **UNQUALIFIED**.
-The canonical `msvc-x64` preset still defaults to ON, and
-`.github/workflows/openatl-hsp-dedicated.yml` still requires real hardware
-HSP ten times under each compiler; no HSP bypass or test removal is accepted.
+The existing executable retains an explicit manual mode:
 
-## PrintDlgEx Win32 default-printer probe — not a modal UI qualification
+```powershell
+.\build-msvc-x64\openatl_wtl_unmodified_headers.exe --print-defaults
+```
 
-The direct-original-header test now calls `WTL::CPrintDialogEx::GetDefaults()`,
-which executes the genuine Win32 `PrintDlgEx` with `PD_RETURNDEFAULT`
-but **without** the optional driver-dependent `PD_RETURNDC`. A separate
-`GetDefaultPrinterW` call distinguishes a configured default printer from
-a hosted machine with none. Where one exists, the test validates Unicode
-`DEVNAMES` and `DEVMODE` bounds, manual `GlobalFree`, and explicit STA
-COM shutdown. Device-context allocation and `DeleteDC` require a separate
-real printer-enabled gate and are not inferred from successful metadata
-retrieval. Where no
-default exists it requires a failed Win32 call and emits
-`WTL_PRINTER_READINESS default=0 ... modal=UNQUALIFIED` rather than inventing
-a printer or accepting false success. Unexpected errors with a configured
-printer are real REDs. This test is included in native CTest and the real
-ARM64 five-pass suite, with strictly parsed two-line readiness diagnostics.
+It creates a real HWND owner and compares the original WTL GetDefaults()
+call with Win32 PrintDlgExW using matching flags. Successful metadata must have
+bounded DEVNAMES/DEVMODE and correct cleanup. This is an optional diagnostic;
+CTest and the real ARM64 runner never invoke it. It does not qualify modal
+selection/cancel, a printer DC or a functioning printer driver.
 
-**Still unqualified:** visible `PrintDlgEx::DoModal()` property-sheet
-creation, actual printer selection/cancellation, callback sequencing, and
-modal window/resource retirement on a printer-enabled native runner. No
-fake printer, WTL source edit, static stub or second printing provider.
-
-### Hosted printer driver discovery — CI #40891861080
-
-On the generic Windows x64 runner, `GetDefaultPrinterW` reported a
-configured default printer, but the first probe's combined
-`PD_RETURNDEFAULT | PD_RETURNDC` call returned
-`0x80070006` (`ERROR_INVALID_HANDLE`). This is a real RED, not a
-passing printer DC claim. The metadata-only probe now omits the optional
-`PD_RETURNDC` flag and retains strict Win32 HRESULT and bounds checks.
-A native printer-DC and modal UI test must still require an actual
-functional printer driver; its absence remains **UNQUALIFIED**.
-
-## Strict Win32 PrintDlgEx reference and HWND owner
-
-Microsoft PRINTDLGEXW requires a **valid hwndOwner** even with non-modal
-PD_RETURNDEFAULT. A console process generally has no active window; the
-original WTL GetDefaults() fallback to GetActiveWindow() may yield NULL
-and HRESULT_FROM_WIN32(ERROR_INVALID_HANDLE). The earlier probe also
-removed original WTL PD_NOPAGENUMS while leaving the page-range fields
-uninitialized, violating another documented input contract. These were
-**test fixture errors**, not evidence that ATL/WTL needed an API deletion.
-
-The revised fixture creates a real hidden Win32 owner window (and destroys it
-before COM apartment teardown), retains the original WTL page-range exclusion
-flags, and verifies that GetDefaults() clears PD_RETURNDEFAULT on return,
-as upstream actually does. The same STA then calls an independently initialized
-Win32 PRINTDLGEXW with the same owner, flags and starting page. Both calls must
-return the *same HRESULT* and, if successful, each must have valid, bounded
-DEVNAMES/DEVMODE with all allocated handles freed.
-
-A consistent failure is recorded explicitly as
-`metadata=UNQUALIFIED` and qualifies only **WTL-to-Win32 API parity**,
-not a functioning printer, native DC, or interactive DoModal. A mismatch
-or malformed successful result is a mandatory test RED. A native
-printer-backed DC and modal UI admission remains required under Issue #44.
+The normal mode continues to verify original PrintDlgEx COM callback/site
+identity and ownership without opening a printer or querying printer devices.
+Hardware diagnostics likewise remain explicit local invocations only; see
+[CET_HARDWARE_ACCEPTANCE.md](CET_HARDWARE_ACCEPTANCE.md).

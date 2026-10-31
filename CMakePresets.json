@@ -22,9 +22,6 @@
       "toolchainFile": "${sourceDir}/cmake/toolchains/llvm-mingw.cmake",
       "environment": {
         "OPENATL_LLVM_MINGW_BIN": "$penv{OPENATL_LLVM_MINGW_BIN}"
-      },
-      "cacheVariables": {
-        "OPENATL_REQUIRE_CET_RUNTIME": "OFF"
       }
     },
     {

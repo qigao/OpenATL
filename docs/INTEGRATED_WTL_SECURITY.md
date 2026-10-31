@@ -1,28 +1,20 @@
-# Integrated OpenATL WTL security native qualification
+# Integrated OpenWTL native security qualification
 
-This Draft composes the exact HEADs of OpenATL PR #7 (SDI UI), #8 (CFG /
-hardware x64 CET) and #11 (bounded DLL unload). The merge tree has all
-three heads as parents. No release, Installed SDK, COM Server, provider
-fallback, runtime switch or compatibility API is added.
+The current exact-head CI combines:
 
-**ONE exact-head CI must simultaneously require:**
-- Actual WTL10 SDI + comctl32 v6 manifest: native menus, modal dialogs,
-  button, remote Unicode WM_SETTEXT -> EN_CHANGE, and File/Exit.
-- Real Windows x64 MSVC and llvm-mingw CFG guard PE, hardware CET Shadow
-  Stack with actual WndProc thunk, and separate corrupt-return child with
-  precise FAST_FAIL=0x39. The current hosted LLVM-MinGW job checks image
-  metadata and excludes HSP runtime tests because worker capability varies;
-  LLVM-MinGW hardware enforcement is qualified locally or by the dedicated
-  manual workflow. MSVC retains five mandatory native HSP repetitions.
-  ARM64 never claims x64 CET compatibility.
-- DLL plugin: real LoadLibrary/FreeLibrary 12 rounds per native test,
-  deterministically held callback, closed submission admission, bounded
-  external caller lease (including capacity/underflow), joined producers,
-  WNDPROC/thunk retirement, class unregister and reload; five repeats.
-- SHA256+PE verified genuine Windows ARM64 native MSVC/llvm-mingw, and
-  Linux/macOS x64/ARM64 Windows cross-build validation.
+- Windows x64 MSVC/llvm-mingw native UI/COM/WTL suites, repeated five times.
+- CFG/CETCOMPAT PE metadata, real guarded RX thunks and dynamic-code denial.
+- DLL unload/reload with closed admission, bounded caller leases, joined callers,
+  thunk retirement, window-class unregister and module ownership.
+- SHA256/PE/resource-verified real Windows ARM64 native behavior on both compilers.
+- Source-owned ATL/WTL provenance and no implicit COM initialization for UI.
 
-These sources modify the same CMake, CI workflow and native ARM64 manifest;
-individually green PRs do not establish combined CI acceptance. Keep all
-Draft PRs unmerged until this precise combined head passes and final
-source review sets the merge sequence.
+Actual hardware HSP enforcement and real printer probes are outside CI by owner
+decision (2026-10-31). There are no hardware-only workflows or required dedicated
+runners. Device-independent printing COM callbacks remain covered. Optional
+local diagnostics do not block merge or feature completion and do not turn PE
+metadata into a hardware-enforcement claim.
+
+See [ACCEPTANCE.md](ACCEPTANCE.md), [TOOLCHAIN_MATRIX.md](TOOLCHAIN_MATRIX.md),
+[UNLOAD_ACCEPTANCE.md](UNLOAD_ACCEPTANCE.md) and
+[CET_HARDWARE_ACCEPTANCE.md](CET_HARDWARE_ACCEPTANCE.md).

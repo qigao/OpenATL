@@ -38,8 +38,7 @@ jobs:
   windows-llvm:
     needs: source-tree-only
     name: llvm-mingw x64 native + ARM64 PE and native qualification
-    # Hosted workers do not guarantee hardware HSP (Issue #15). Keep CFG/CET
-    # image checks here; use the dedicated hardware workflow for HSP runtime.
+    # CFG/CET image checks remain; hardware HSP and printer probes are manual only.
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
@@ -117,10 +116,6 @@ jobs:
             $peCheck=@('tests/wtl10/verify_pe_mitigations.py',"$build/openatl_mitigation_runtime.exe",$arch,'--require-cfg')
             if($arch -eq 'x86_64') { $peCheck+='--require-cet' }
             Run python $peCheck
-            if($arch -eq 'x86_64') {
-              Run python @('tests/wtl10/verify_pe_mitigations.py',
-                "$build/openatl_cet_shadow_stack.exe",$arch,'--require-cfg','--require-cet')
-            }
             foreach($name in @('console','dialog','window')) {
               Run python @('tests/wtl10/verify_pe_machine.py',"$build/openatl_ratl_$name.exe",$arch,'--require-resources')
             }
@@ -138,8 +133,6 @@ jobs:
               $manifest[$dllName]=(Get-FileHash $dll -Algorithm SHA256).Hash.ToLowerInvariant()
             }
             if($arch -eq 'x86_64') {
-              # Inventory also executes the HSP death test when the parent is
-              # protected. Exclude all CET runtime cases on hosted LLVM jobs.
               Run ctest @('--preset',"llvm-$arch",'--repeat','until-fail:5')
             } else {
               $manifest | ConvertTo-Json -Depth 3 | Set-Content "$build/manifest.json" -Encoding utf8
@@ -207,9 +200,7 @@ jobs:
   msvc-windows:
     needs: source-tree-only
     name: MSVC ${{ matrix.target }} native/build qualification
-    # Generic hosted Windows build: hardware HSP is NOT guaranteed by this
-    # image. Native CET remains fail-closed until a dedicated HSP-backed
-    # runner is provisioned and fully qualified (Issue #15).
+    # Hardware HSP and real printers are outside CI qualification.
     runs-on: windows-2022
     timeout-minutes: 45
     strategy:
@@ -263,24 +254,11 @@ jobs:
           $build="build-msvc-$arch"
           $sample=(Resolve-Path tools/wtl10-test).Path
           $cmakeArgs=@('--preset',"msvc-$arch","-DOPENATL_WTL_DEMO_DIR=$sample","-DOPENATL_BUILD_WTL_UNMODIFIED=ON")
-          if($arch -eq 'x64') {
-            # GitHub's generic windows-2022 image has no guaranteed hardware
-            # Shadow Stack. Preserve strict HSP proof in the dedicated
-            # hardware-only workflow; this hosted job qualifies the PE image,
-            # UI/COM native behavior and does NOT claim hardware HSP admission.
-            $cmakeArgs+='-DOPENATL_REQUIRE_CET_RUNTIME=OFF'
-            Write-Host '::notice::Hardware CET/HSP is UNQUALIFIED on generic hosted Windows; strict independent admission requires openatl-hsp-dedicated.yml and a real HSP runner (#15).'
-          }
           Run cmake $cmakeArgs
           Run cmake @('--build','--preset',"msvc-$arch",'--parallel','2')
           $peCheck=@('tests/wtl10/verify_pe_mitigations.py',"$build/openatl_mitigation_runtime.exe",$machine,'--require-cfg')
           if($machine -eq 'x86_64') { $peCheck+='--require-cet' }
           Run python $peCheck
-          if($machine -eq 'x86_64') {
-            Run python @('tests/wtl10/verify_pe_mitigations.py',
-              "$build/openatl_cet_shadow_stack.exe",$machine,'--require-cfg','--require-cet')
-            Run "$build/openatl_cet_shadow_stack.exe" @('--inventory')
-          }
           $identity=Get-ChildItem "$build/CMakeFiles" -Recurse -Filter CMakeCXXCompiler.cmake | Select-Object -First 1
           if(!$identity -or !(Select-String -Path $identity.FullName -Pattern 'CMAKE_CXX_COMPILER_ID "MSVC"' -Quiet)) {
             throw 'MSVC cl.exe was not the actual compiler'
@@ -316,22 +294,12 @@ jobs:
             & $tool @argv
             if($LASTEXITCODE -ne 0) { throw "$tool failed: exit $LASTEXITCODE" }
           }
-          # The shared msvc-x64 preset intentionally defaults to mandatory
-          # hardware HSP=ON for the separately qualified dedicated runner.
-          # Every hosted reconfigure MUST override it: otherwise this second
-          # CMake invocation re-enables CET HSP on a runner that has no HSP.
           Run cmake @('--preset','msvc-x64',
                       '-DOPENATL_WTL_FULL_ORIGINAL=ON',
-                      '-DOPENATL_BUILD_WTL_UNMODIFIED=ON',
-                      '-DOPENATL_REQUIRE_CET_RUNTIME=OFF')
-          $cache=Get-Content 'build-msvc-x64/CMakeCache.txt'
-          if ($cache -notcontains 'OPENATL_REQUIRE_CET_RUNTIME:BOOL=OFF') {
-            throw 'Hosted WTL x64 reconfigure unexpectedly enabled mandatory HSP'
-          }
-          Write-Host '::notice::Hosted Windows x64 HSP remains UNQUALIFIED; openatl-hsp-dedicated.yml requires real HSP x10, no fallback.'
+                      '-DOPENATL_BUILD_WTL_UNMODIFIED=ON')
           Run cmake @('--build','--preset','msvc-x64','--parallel','2')
           Run ctest @('--preset','msvc-x64','--repeat','until-fail:5')
-          Write-Host 'OPENATL_WTL_FULL_ORIGINAL_MSVC_X64_OK original=1 adapter=0 native=1 repeats=5 hsp=UNQUALIFIED'
+          Write-Host 'OPENATL_WTL_FULL_ORIGINAL_MSVC_X64_OK original=1 adapter=0 native=1 repeats=5'
       - uses: actions/upload-artifact@v4
         if: matrix.target == 'arm64'
         with:

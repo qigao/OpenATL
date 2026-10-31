@@ -84,15 +84,15 @@ same toolchain; native runtime acceptance runs on Windows.
 For MSVC, use an x64 developer environment:
 
 ```sh
-cmake --preset msvc-x64 -DOPENATL_REQUIRE_CET_RUNTIME=OFF
+cmake --preset msvc-x64
 cmake --build --preset msvc-x64
 ctest --preset msvc-x64 --output-on-failure
 ```
 
-The x64 MSVC preset defaults to mandatory hardware shadow-stack acceptance
-for the dedicated runner. The override above selects the ordinary native
-suite on a host without guaranteed HSP. Hardware CET/HSP acceptance remains
-an independent [documented gate](docs/CET_HARDWARE_ACCEPTANCE.md).
+Hardware CET/HSP enforcement and real printer probes are outside CI and are
+not merge or feature-completion gates. Optional local diagnostics are documented
+in [hardware diagnostics](docs/CET_HARDWARE_ACCEPTANCE.md) and
+[WTL acceptance](docs/WTL_UNMODIFIED.md).
 Use `msvc-arm64` in a HostX64-to-ARM64 developer environment for ARM64.
 
 The regular CI matrix builds with MSVC and llvm-mingw for Windows x64 and

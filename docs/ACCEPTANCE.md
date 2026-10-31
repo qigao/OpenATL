@@ -22,7 +22,7 @@ on the exact branch HEAD.
 | CAtlExeModuleT lifecycle, raw registry QueryValue and three unchanged RATL samples | 5× native module + sample behavior | Native module; sample PE build | 5× native module + sample behavior | Native module; sample PE build |
 | Optional explicit COM server: interface identity, class factories, module locks, constructor rollback, registry ownership/conflicts, real STA/MTA DLL activation and unregistration | 5× native | 5× real native | 5× native | 5× real native |
 | Standard ATL COM Server DLL modules, automatic/chained object maps, RGS, Automation/type libraries and SAFEARRAY | **Compatibility gaps; implementation required** | Not qualified | Not qualified | Not qualified |
-| CFG/CET, DSO unload, interactive full SDI | Image CFG/CET + native unload/SDI, no hosted HSP claim | Native CFG/unload/SDI | Native CFG/unload/SDI, hardware HSP independently gated on qualified host (#15) | Native CFG/unload/SDI |
+| CFG/CET, DSO unload, interactive full SDI | Image CFG/CET + native unload/SDI, no hosted HSP claim | Native CFG/unload/SDI | Native CFG/unload/SDI; no hardware HSP test | Native CFG/unload/SDI |
 | ATL-compatible nonaggregated object creation, COM maps, canonical identity, FinalConstruct/FinalRelease and explicit module pins | 5× native | 5× real native | 5× native | 5× real native |
 
 **Separation contracts**:
@@ -44,6 +44,11 @@ on the exact branch HEAD.
 - Native ARM64 receives independently built PE files and SHA256
   provenance and executes on genuine Windows ARM64; a Windows x64→ARM64 build is not a native ARM64 run.
 - No required test may be skipped, disabled, or replaced by a fake pass.
+
+Real printer/PrintDlgEx device probes and hardware HSP enforcement are outside
+CI by owner decision (2026-10-31), including manual GitHub Actions workflows.
+They are not merge or feature-completion requirements. Device-independent
+printing COM callback/site tests and CFG/CET PE metadata checks remain in scope.
 
 **Scope qualification:** passing the exact-head Windows x64/ARM64 native tests qualifies the checked-in source-tree APIs, not production CFG/CET mitigation compliance. The PR may be reviewed for merge separately; this document does not authorize an automatic merge.
 

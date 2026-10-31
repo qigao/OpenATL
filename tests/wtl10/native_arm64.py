@@ -64,8 +64,6 @@ CASES = (
      "OPENATL_WTL_HYPERLINK_OK registry=1 original=1 colors=1 no_com=1 cleanup=1"),
     ("openatl_wtl_unmodified_headers", ("--start-monitor-process",),
      "OPENATL_WTL_START_MONITOR_PROCESS_OK quit=1 original=1 join=UNQUALIFIED"),
-    ("openatl_wtl_unmodified_headers", ("--print-defaults",),
-     "OPENATL_WTL_PRINT_DEFAULTS_PARITY_OK win32=1 cleanup=1 modal=UNQUALIFIED"),
     ("openatl_com_client", ("--sta",), "ATL_COM_CLIENT_MODE_OK mode=sta apartment=1 activation=1 balance=1 changed=0"),
     ("openatl_com_client", ("--mta",), "ATL_COM_CLIENT_MODE_OK mode=mta apartment=1 activation=1 balance=1 changed=0"),
     ("openatl_com_client", ("--changed-sta",), "ATL_COM_CLIENT_MODE_OK mode=changed-sta apartment=1 activation=1 balance=1 changed=1"),
@@ -106,30 +104,6 @@ def native_stderr_ok(name: str, args: tuple, stderr: str) -> bool:
         previous_ticks = ticks
     return True
 
-_PRINTER_READINESS = re.compile(
-    r"WTL_PRINTER_READINESS default=([01]) win32=0x([0-9a-f]{8}) "
-    r"wtl=0x([0-9a-f]{8}) metadata=(QUALIFIED|UNQUALIFIED) modal=UNQUALIFIED"
-)
-def native_stdout_ok(name: str, args: tuple, stdout: str) -> bool:
-    if name != "openatl_wtl_unmodified_headers" or args != ("--print-defaults",):
-        return True
-    lines = stdout.strip().splitlines()
-    if len(lines) != 2 or lines[1] != (
-        "OPENATL_WTL_PRINT_DEFAULTS_PARITY_OK win32=1 cleanup=1 modal=UNQUALIFIED"
-    ):
-        return False
-    match = _PRINTER_READINESS.fullmatch(lines[0])
-    if not match:
-        return False
-    default_present = match.group(1) == "1"
-    win32_hr = int(match.group(2), 16)
-    wtl_hr = int(match.group(3), 16)
-    qualified = match.group(4) == "QUALIFIED"
-    succeeded = (wtl_hr & 0x80000000) == 0
-    return (wtl_hr == win32_hr and
-            qualified == (default_present and succeeded) and
-            (default_present or not succeeded))
-
 def main() -> int:
     if len(sys.argv) != 3 or sys.argv[2] not in ("llvm", "msvc"):
         raise SystemExit("Usage: python tests/wtl10/native_arm64.py ARTIFACT_DIR llvm|msvc")
@@ -168,7 +142,6 @@ def main() -> int:
                                   errors="replace", timeout=20, check=False)
             last_line = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else ""
             if (proc.returncode != 0 or not native_stderr_ok(name, args, proc.stderr)
-                    or not native_stdout_ok(name, args, proc.stdout)
                     or last_line != expected):
                 raise SystemExit(
                     f"Native ARM64 {name} {args} repeat {attempt} "
