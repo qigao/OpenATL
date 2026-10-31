@@ -348,9 +348,17 @@ native cookie helpers and rollback. STA/MTA tests cover real same-process
 CoGetClassObject/CoCreateInstance, class identity, object/server locks, retained
 factory lifetime after revocation, wrong-thread/duplicate-map rejection,
 repeated Run, loop exceptions and Term/destructor cleanup before COM teardown.
-Factory activation performs no persistent class registration. AppID,
-cross-process EXE launch/marshaling and positive EXE embedded-TypeLib acceptance
-remain separate.
+Factory activation performs no persistent class registration. A separate part
+of the existing module admission installs a unique owner-verified HKCU
+LocalServer32 entry and lets Windows SCM launch this same executable. STA/MTA
+children expose system IClassFactory/IDispatch/IPersist interfaces; the client
+checks the remote PID/image/CLSID through real proxy calls, both creation APIs,
+LockServer, retained proxies after revocation, native process exit and exact
+registry cleanup. Quoted MODULE/unquoted MODULE_RAW supply the launch command
+and ServerExecutable. There is no direct CreateProcess launch or alternate
+transport, new binary, project or workflow. AppID/security policy, arbitrary
+custom-interface marshaling, idle shutdown and positive EXE embedded-TypeLib
+acceptance remain separate.
 
 This is a restricted source-compatible resource-ID API, **not** a general
 RGS interpreter or the complete standalone registrar API. It preserves

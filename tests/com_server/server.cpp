@@ -26,6 +26,7 @@ using namespace OpenATL::COM;
 bool RunAtlCompatibilityTests();
 bool RunAtlDispatchTests();
 bool RunAtlModuleTests();
+int RunAtlModuleServer(const char* token, bool apartment);
 bool RunRgsParserTests();
 bool RunRgsRegistryTests();
 #if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
@@ -1349,6 +1350,10 @@ bool native(DWORD apartment) {
 } // namespace
 
 int main(int argc, char** argv) {
+    if (argc == 4 && ::_stricmp(argv[3], "-Embedding") == 0) {
+        if (std::strcmp(argv[1], "--module-server-sta") == 0) return RunAtlModuleServer(argv[2], true);
+        if (std::strcmp(argv[1], "--module-server-mta") == 0) return RunAtlModuleServer(argv[2], false);
+    }
 #if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
     if (argc == 3 && std::strcmp(argv[1], "--commap-tlb") == 0) {
         if (!RunOriginalCommapTypeLibTest(argv[2])) return 1;
