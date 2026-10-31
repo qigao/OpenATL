@@ -683,7 +683,7 @@ bool scopedResourceRegistry(HMODULE image) {
             {L"KEY", L"OpenATL.ModuleResource"}, {L"FIELD", L"Description"},
             {L"VALUE", L"O'Brien } Other = s 'literal' {"}, {nullptr, nullptr}
         };
-        REQUIRE(registrar.UpdateRegistryFromResourceS(L"OpenATL.Parameters", TRUE, map) == S_OK);
+        REQUIRE(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE, map) == S_OK);
         ATL::CRegKey registered;
         REQUIRE(registered.Open(root.key, map[0].szData, KEY_READ) == ERROR_SUCCESS);
         wchar_t value[1024]{};
@@ -698,24 +698,24 @@ bool scopedResourceRegistry(HMODULE image) {
                 std::wstring_view(value) == OpenATL::COM::rgs_resource_detail::Current()->modulePath);
         registered.Close();
         REQUIRE(!exists(root.key, L"Other"));
-        REQUIRE(registrar.UpdateRegistryFromResource(L"OpenATL.Parameters", TRUE, map) ==
+        REQUIRE(registrar.UpdateRegistryFromResource(L"OPENATL_PARAMETERS", TRUE, map) ==
                 HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS));
         map[2].szData = L"wrong unregister value";
-        REQUIRE(FAILED(registrar.UpdateRegistryFromResourceS(L"OpenATL.Parameters", FALSE, map)));
+        REQUIRE(FAILED(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", FALSE, map)));
         REQUIRE(exists(root.key, map[0].szData));
         map[2].szData = L"O'Brien } Other = s 'literal' {";
-        REQUIRE(registrar.UpdateRegistryFromResource(L"OpenATL.Parameters", FALSE, map) == S_OK);
+        REQUIRE(registrar.UpdateRegistryFromResource(L"OPENATL_PARAMETERS", FALSE, map) == S_OK);
         REQUIRE(!exists(root.key, map[0].szData));
 
         ATL::_ATL_REGMAP_ENTRY duplicate[] = {{L"KEY", L"A"}, {L"key", L"B"}, {nullptr, nullptr}};
-        REQUIRE(registrar.UpdateRegistryFromResourceS(L"OpenATL.Parameters", TRUE, duplicate) == E_INVALIDARG);
+        REQUIRE(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE, duplicate) == E_INVALIDARG);
         ATL::_ATL_REGMAP_ENTRY unterminated[OpenATL::RGS::MaxReplacements + 1];
         for (auto& entry : unterminated) entry = {L"KEY", L"A"};
-        REQUIRE(registrar.UpdateRegistryFromResourceS(L"OpenATL.Parameters", TRUE, unterminated) ==
+        REQUIRE(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE, unterminated) ==
                 HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW));
         ATL::_ATL_REGMAP_ENTRY badData[] = {{L"KEY", nullptr}, {nullptr, nullptr}};
-        REQUIRE(registrar.UpdateRegistryFromResourceS(L"OpenATL.Parameters", TRUE, badData) == E_INVALIDARG);
-        REQUIRE(FAILED(registrar.UpdateRegistryFromResourceS(L"OpenATL.Parameters", TRUE)));
+        REQUIRE(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE, badData) == E_INVALIDARG);
+        REQUIRE(FAILED(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE)));
         REQUIRE(FAILED(registrar.UpdateRegistryFromResourceS(L"missing", TRUE)));
         REQUIRE(FAILED(registrar.UpdateRegistryFromResourceS(IDR_WRONG_RESOURCE_TYPE, TRUE)));
         REQUIRE(registrar.UpdateRegistryFromResourceS(0U, TRUE) == E_INVALIDARG);
