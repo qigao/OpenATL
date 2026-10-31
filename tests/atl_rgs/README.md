@@ -33,6 +33,10 @@ or COM initialization. The numeric/named `DECLARE_REGISTRY_RESOURCEID` and
 through the module's default context or an explicit installer context.
 `CAtlModule::UpdateRegistryFromResourceS` feeds bounded replacement maps into
 the same parser: only key/name/string data is substituted, never syntax.
+Both `%MODULE%` and `%MODULE_RAW%` resolve through that parser; automatic EXE
+MODULE values receive double quotes while MODULE_RAW and DLL paths stay raw.
+Additional source-owned cases check formatting and limits without modifying
+the pinned Microsoft inputs.
 The fixture embeds the unchanged
 Microsoft Chain/Outer files as resources and compares their loaded AST to
 these pinned text inputs. Real COM classes use two class-matching RGS

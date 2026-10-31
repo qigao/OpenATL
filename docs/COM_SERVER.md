@@ -141,7 +141,7 @@ resources. It accepts a symbolic `HKCR` root; nested `NoRemove` and
 `REG_SZ` values (`= s '...'` and `val Name = s '...'`);
 GUID key names; quoted bare `Programmable` keys; `TypeLib`,
 `Version`, `AppID`, `LocalizedString`; and explicit, bounded
-`%MODULE%` replacement.
+`%MODULE%` and `%MODULE_RAW%` replacement.
 
 Inputs must fit **65,536 UTF-16 code units**, **512 keys**, **1,024 values**,
 **20 nested scopes** and bounded name/path/value lengths. Unsupported
@@ -188,7 +188,7 @@ key. Predefined `HKEY_CLASSES_ROOT`, `HKEY_LOCAL_MACHINE`,
 `HKEY_CURRENT_USER` and other predefined handles are rejected, and there
 is no implicit elevation or registry-view switch.
 
-Registration requires an absolute, bounded, canonicalized DLL path and a
+Registration requires an absolute, bounded, canonicalized module path and a
 caller-owned ASCII registration tag (1–64 letters/digits/periods/hyphens/
 underscores). The entire resolved RGS tree is validated **before mutation**:
 bounded depth/keys/values, ordered parents, canonical safe names and paths,
@@ -201,7 +201,7 @@ and is never removed, even if created by this registration.
 Every newly owned key receives `OpenATL.COMOwner` as its first REG_SZ value
 (`RGS1:<ownerTag>:<canonical module path>`); all original default/named
 REG_SZ values are then written unmodified apart from bounded
-`%MODULE%` expansion. A write failure triggers an owner/content-verified
+`%MODULE%` / `%MODULE_RAW%` expansion. A write failure triggers an owner/content-verified
 reverse cleanup of newly created keys. Cleanup errors override the initial
 write failure; external changes are **never** silently deleted.
 
@@ -284,8 +284,11 @@ They support string scripts, bounded strict-encoding disk files and REGISTRY
 resources in explicit PE files. External resources use owned read-only/datafile
 mapping handles; DllMain/static imports are not executed. A persistent MODULE
 binding supplies the server identity, otherwise the resource source path is used.
-Both the expanded values and registration owner marker use that same canonical
-path, without changing the surrounding root context. The common-hook interface
+Both tokens derive from the canonical path. Automatic MODULE expansion quotes
+EXE paths, while MODULE_RAW and the registration owner marker stay unquoted.
+Resource-file calls select formatting from the source PE header; explicit MODULE
+bindings preserve the caller's enclosing-quote choice. The surrounding root
+context is unchanged. The common-hook interface
 still rejects extended IRegistrar QI and MODULE overrides.
 CLSID_Registrar activation, dynamic registrar APIs and full CRegObject
 inheritance compatibility remain separate work; see [module limits](ATL_MODULE.md).
@@ -328,6 +331,11 @@ entry point, confirm resource-only loading succeeds, reject wrong-identity
 unregistration, verify MODULE binding/reset and sharing errors, delete the copy
 after all calls, and perform native HKCU per-user registration/cleanup with a
 fresh GUID key. Existing failure/TypeLib/class rollback tests remain active.
+The same resource set is also embedded in the test EXE. Native checks cover EXE
+module helpers, external resource-only EXE loading, mixed MODULE/MODULE_RAW,
+explicit binding quotes/reset, raw owner markers and formatting-sensitive
+unregister preservation. The portable parser suite checks case folding, command
+suffixes, raw icon paths, quote budgets and unchanged outputs after failure.
 
 This is a restricted source-compatible resource-ID API, **not** a general
 RGS interpreter or the complete standalone registrar API. It preserves

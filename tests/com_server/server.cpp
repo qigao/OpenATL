@@ -895,7 +895,9 @@ bool staticRegistrarScripts(HMODULE image, HKEY root) {
                                              L"REGISTRY") == S_OK);
         wchar_t host[OpenATL::RGS::MaxPathUnits + 2]{};
         REQUIRE(::GetModuleFileNameW(nullptr, host, static_cast<DWORD>(sizeof(host) / sizeof(host[0]))));
-        REQUIRE(FAILED(object.ResourceRegister(host, IDR_MICROSOFT_CHAIN, L"REGISTRY")));
+        REQUIRE(object.ResourceRegister(host, IDR_MICROSOFT_CHAIN, L"REGISTRY") == S_OK);
+        REQUIRE(object.ResourceUnregister(host, IDR_MICROSOFT_CHAIN, L"REGISTRY") == S_OK &&
+                !exists(root, L"COMMap.Chain.1"));
         REQUIRE(object.ResourceRegister(path.c_str(), IDR_MICROSOFT_CHAIN, L"RCDATA") ==
                 HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED));
         REQUIRE(object.ResourceRegister(path.c_str(), 0, L"REGISTRY") == E_INVALIDARG);
@@ -979,6 +981,9 @@ bool externalRegistrarResources(HMODULE image, HKEY root) {
         wchar_t value[OpenATL::RGS::MaxPathUnits + 2]{};
         ULONG count = static_cast<ULONG>(sizeof(value) / sizeof(value[0]));
         REQUIRE(key.QueryStringValue(L"Module", value, &count) == ERROR_SUCCESS &&
+                std::wstring_view(value) == copy.path);
+        count = static_cast<ULONG>(sizeof(value) / sizeof(value[0]));
+        REQUIRE(key.QueryStringValue(L"RawModule", value, &count) == ERROR_SUCCESS &&
                 std::wstring_view(value) == copy.path);
         key.Close();
         REQUIRE(!::GetModuleHandleW(copy.path.c_str()));
@@ -1070,6 +1075,74 @@ bool externalRegistrarResources(HMODULE image, HKEY root) {
     REQUIRE(!::GetModuleHandleW(copy.path.c_str()));
     REQUIRE(::DeleteFileW(copy.path.c_str())); // Both file and mapping handles retired.
     copy.path.clear();
+    ULONG_PTR token = 0;
+    REQUIRE(::CoGetContextToken(&token) == CO_E_NOTINITIALIZED);
+    return true;
+}
+
+bool exeModulePaths(HKEY root) {
+    StaticRegistrarTestModule module;
+    const HMODULE image = ::GetModuleHandleW(nullptr);
+    ScopedRgsRegistrationContext context(root, image, L"ExeModulePaths");
+    REQUIRE(context.Status() == S_OK);
+    const std::wstring path = rgs_resource_detail::Current()->modulePath;
+    const std::wstring quoted = L"\"" + path + L"\"";
+    const wchar_t* name = L"OpenATL.Exe.ModulePaths";
+    const auto verify = [&](std::wstring_view formatted, bool command) {
+        ATL::CRegKey key;
+        if (key.Open(root, name, KEY_READ) != ERROR_SUCCESS) return false;
+        const auto valueIs = [&](LPCWSTR field, std::wstring_view expected) {
+            wchar_t actual[OpenATL::RGS::MaxPathUnits + 32]{};
+            ULONG count = static_cast<ULONG>(sizeof(actual) / sizeof(actual[0]));
+            return key.QueryStringValue(field, actual, &count) == ERROR_SUCCESS &&
+                   std::wstring_view(actual) == expected;
+        };
+        const std::wstring display = std::wstring(formatted) + (command ? L" /Embedding" : L"");
+        return valueIs(L"Module", display) && valueIs(L"RawModule", path) &&
+               valueIs(L"OpenATL.COMOwner", L"RGS1:ExeModulePaths:" + path);
+    };
+    ATL::_ATL_REGMAP_ENTRY entries[] = {
+        {L"KEY", name}, {L"FIELD", L"Description"}, {L"VALUE", L"EXE resource"}, {nullptr, nullptr}
+    };
+    REQUIRE(module.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE, entries) == S_OK);
+    REQUIRE(verify(quoted, false));
+    REQUIRE(module.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", FALSE, entries) == S_OK &&
+            !exists(root, name));
+
+    ATL::CRegObject object;
+    const auto reset = [&]() {
+        return object.ClearReplacements() == S_OK && object.AddReplacement(L"KEY", name) == S_OK &&
+               object.AddReplacement(L"FIELD", L"Description") == S_OK &&
+               object.AddReplacement(L"VALUE", L"EXE resource") == S_OK;
+    };
+    REQUIRE(reset());
+    // A resource-only mapping of the EXE selects quoting from its PE header.
+    REQUIRE(object.ResourceRegisterSz(path.c_str(), L"OPENATL_PARAMETERS", L"REGISTRY") == S_OK);
+    REQUIRE(verify(quoted, false));
+    REQUIRE(object.ResourceUnregisterSz(path.c_str(), L"OPENATL_PARAMETERS", L"REGISTRY") == S_OK);
+    const wchar_t* script = L"HKCR { ForceRemove '%KEY%' "
+                            L"{ val Module = s '%MODULE% /Embedding' "
+                            L"val RawModule = s '%MODULE_RAW%' } }";
+    REQUIRE(object.StringRegister(script) == S_OK && verify(quoted, true));
+    // The owner path stays raw; changed value formatting still blocks deletion.
+    REQUIRE(object.AddReplacement(L"MODULE", path.c_str()) == S_OK);
+    REQUIRE(FAILED(object.StringUnregister(script)) && exists(root, name));
+    REQUIRE(reset() && object.StringUnregister(script) == S_OK && !exists(root, name));
+    REQUIRE(object.AddReplacement(L"MODULE", path.c_str()) == S_OK);
+    REQUIRE(object.StringRegister(script) == S_OK && verify(path, true));
+    REQUIRE(object.StringUnregister(script) == S_OK);
+    REQUIRE(reset());
+    REQUIRE(object.AddReplacement(L"MODULE", (L"\"" + path).c_str()) == E_INVALIDARG);
+    REQUIRE(object.AddReplacement(L"MODULE", (quoted + L" /Embedding").c_str()) == E_INVALIDARG);
+    REQUIRE(object.AddReplacement(L"MODULE_RAW", path.c_str()) == E_INVALIDARG);
+    REQUIRE(object.AddReplacement(L"MODULE", quoted.c_str()) == S_OK);
+    REQUIRE(object.StringRegister(script) == S_OK && verify(quoted, true));
+    REQUIRE(object.StringUnregister(script) == S_OK);
+    REQUIRE(object.ResourceRegisterSz(path.c_str(), L"OPENATL_PARAMETERS", L"REGISTRY") == S_OK &&
+            verify(quoted, false));
+    REQUIRE(object.ResourceUnregisterSz(path.c_str(), L"OPENATL_PARAMETERS", L"REGISTRY") == S_OK);
+    REQUIRE(reset() && object.StringRegister(script) == S_OK && verify(quoted, true));
+    REQUIRE(object.StringUnregister(script) == S_OK && !exists(root, name));
     ULONG_PTR token = 0;
     REQUIRE(::CoGetContextToken(&token) == CO_E_NOTINITIALIZED);
     return true;
@@ -1176,6 +1249,7 @@ bool scopedResourceRegistry(HMODULE image) {
     REQUIRE(commonResourceReplacements(image, root.key));
     REQUIRE(staticRegistrarScripts(image, root.key));
     REQUIRE(externalRegistrarResources(image, root.key));
+    REQUIRE(exeModulePaths(root.key));
     REQUIRE(root.Close());
     return true;
 }
