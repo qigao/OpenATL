@@ -1097,22 +1097,30 @@ public:
                 const wchar_t* option = args[i];
                 if (*option != L'/' && *option != L'-') continue;
                 ++option;
-                if (::_wcsicmp(option, L"RegServer") == 0) {
+                const bool perUserInstall = ::_wcsicmp(option, L"RegServerPerUser") == 0;
+                const bool perUserRemove = ::_wcsicmp(option, L"UnregServerPerUser") == 0;
+                const bool install = perUserInstall || ::_wcsicmp(option, L"RegServer") == 0;
+                const bool remove = perUserRemove || ::_wcsicmp(option, L"UnregServer") == 0;
+                if (!install && !remove) continue;
+                run = false;
+                if (perUserInstall || perUserRemove) {
+                    const auto* enclosing = OpenATL::COM::rgs_resource_detail::CurrentModule();
+                    if (enclosing && !enclosing->PerUserRegistration()) {
+                        *result = E_UNEXPECTED; break;
+                    }
+                    *result = AtlSetPerUserRegistration(true);
+                    if (FAILED(*result)) break;
+                }
+                if (install) {
                     *result = this->RegisterApplication([&] {
                         return static_cast<T*>(this)->RegisterServer(TRUE);
                     });
-                    run = false; break;
-                }
-                if (::_wcsicmp(option, L"UnregServer") == 0) {
+                } else {
                     *result = this->UnregisterApplication([&] {
                         return static_cast<T*>(this)->UnregisterServer(TRUE);
                     });
-                    run = false; break;
                 }
-                if (::_wcsicmp(option, L"RegServerPerUser") == 0 ||
-                    ::_wcsicmp(option, L"UnregServerPerUser") == 0) {
-                    *result = E_NOTIMPL; run = false; break;
-                }
+                break;
             }
         } catch (...) { *result = detail::AtlModuleException(); run = false; }
         ::LocalFree(args);
