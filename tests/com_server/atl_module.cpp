@@ -210,6 +210,7 @@ bool executable() {
     {
         Executable module;
         CHECK(module.GetInitHRESULT() == S_OK && !noCom());
+        CHECK(module.SetClassObjects(nullptr, 0) == S_OK); // Explicitly disable the automatic map.
         ATL::CComObject<Value>* value = nullptr;
         CHECK(ATL::CComObject<Value>::CreateInstance(&value) == S_OK);
         CHECK(module.GetLockCount() == 1 && value->AddRef() == 1);
@@ -266,6 +267,7 @@ bool executable() {
         HRESULT result = S_OK;
         CHECK(!module.ParseCommandLine(L"app.exe /RegServer", &result) && FAILED(result));
         CHECK(!module.ParseCommandLine(L"app.exe /RegServerPerUser", &result) && result == E_NOTIMPL);
+        CHECK(module.SetClassObjects(nullptr, 0) == S_OK);
         CHECK(module.WinMain(SW_HIDE) == static_cast<int>(S_FALSE));
     }
     {
@@ -287,6 +289,7 @@ bool executable() {
         CHECK(module.GetInitHRESULT() == RPC_E_CHANGED_MODE && module.Run() == RPC_E_CHANGED_MODE);
         CHECK(module.RegisterServer(FALSE, &exeRegistryClassId) == RPC_E_CHANGED_MODE &&
               module.UnregisterServer(FALSE, &exeRegistryClassId) == RPC_E_CHANGED_MODE);
+        CHECK(module.RegisterClassObjects(CLSCTX_LOCAL_SERVER, REGCLS_MULTIPLEUSE) == RPC_E_CHANGED_MODE);
     }
     APTTYPE type; APTTYPEQUALIFIER qualifier;
     CHECK(::CoGetApartmentType(&type, &qualifier) == S_OK &&
@@ -567,6 +570,130 @@ bool auto_object_map() {
     return true;
 }
 
+bool activateAutomaticValue() {
+    ATL::CComPtr<IClassFactory> factory;
+    CHECK(::CoGetClassObject(autoClassId, CLSCTX_LOCAL_SERVER, nullptr, IID_IClassFactory,
+                            reinterpret_cast<void**>(&factory.p)) == S_OK && factory.p);
+    void* output = reinterpret_cast<void*>(1);
+    CHECK(factory->CreateInstance(reinterpret_cast<IUnknown*>(1), IID_IPersist, &output) ==
+          CLASS_E_NOAGGREGATION && !output);
+    ATL::CComPtr<IPersist> first, second;
+    CHECK(factory->CreateInstance(nullptr, IID_IPersist, reinterpret_cast<void**>(&first.p)) == S_OK);
+    CHECK(::CoCreateInstance(autoClassId, nullptr, CLSCTX_LOCAL_SERVER, IID_IPersist,
+                             reinterpret_cast<void**>(&second.p)) == S_OK);
+    CHECK(autoLive == 2 && ATL::_pAtlModule->GetLockCount() == 2);
+    CLSID actual{};
+    CHECK(first->GetClassID(&actual) == S_OK && IsEqualCLSID(actual, autoClassId));
+    CHECK(second->GetClassID(&actual) == S_OK && IsEqualCLSID(actual, autoClassId));
+    CHECK(factory->LockServer(FALSE) == E_UNEXPECTED && factory->LockServer(TRUE) == S_OK &&
+          factory->LockServer(FALSE) == S_OK);
+    first.Release();
+    second.Release();
+    factory.Release();
+    CHECK(autoLive == 0 && ATL::_pAtlModule->GetLockCount() == 0);
+    return true;
+}
+
+template<bool Apartment>
+class AutomaticExecutable : public ATL::CAtlExeModuleT<AutomaticExecutable<Apartment>> {
+public:
+    static HRESULT InitializeCom() noexcept {
+        return ::CoInitializeEx(nullptr, Apartment ? COINIT_APARTMENTTHREADED : COINIT_MULTITHREADED);
+    }
+    int loops = 0;
+    bool activated = false;
+    bool throwInLoop = false;
+    bool CanRetire() const noexcept {
+        const auto* server = this->autoMap_.Server();
+        return !server || server->CanUnloadNow() == S_OK;
+    }
+    void RunMessageLoop() {
+        ++loops;
+        activated = activateAutomaticValue() &&
+            this->SetClassObjects(nullptr, 0) == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+        if (throwInLoop) throw ATL::CAtlException(E_ABORT);
+        ::PostQuitMessage(0);
+        ATL::CAtlExeModuleT<AutomaticExecutable<Apartment>>::RunMessageLoop();
+    }
+};
+
+bool absentAutomaticFactory() {
+    void* output = reinterpret_cast<void*>(1);
+    CHECK(::CoGetClassObject(autoClassId, CLSCTX_LOCAL_SERVER, nullptr, IID_IClassFactory,
+                            &output) == REGDB_E_CLASSNOTREG && !output);
+    return true;
+}
+
+template<bool Apartment>
+bool automatic_executable() {
+    CHECK(noCom() && !ATL::_pAtlModule && autoLive == 0);
+    const int releasedBefore = autoFinalRelease.load();
+    const int registryBefore = exeRegistryCalls;
+    {
+        AutomaticExecutable<Apartment> module;
+        CHECK(module.GetInitHRESULT() == S_OK && absentAutomaticFactory());
+        // An invalid explicit override must not disable the automatic map.
+        CHECK(module.SetClassObjects(nullptr, 1) == E_INVALIDARG);
+        CHECK(module.RegisterClassObjects(CLSCTX_LOCAL_SERVER, REGCLS_MULTIPLEUSE) == S_OK);
+        CHECK(!module.CanRetire()); // The OS owns the automatic factories.
+        CHECK(module.RegisterClassObjects(CLSCTX_LOCAL_SERVER, REGCLS_MULTIPLEUSE) ==
+              HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS));
+        CHECK(module.SetClassObjects(nullptr, 0) == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS));
+        HRESULT registered = S_OK, revoked = S_OK;
+        std::thread wrong([&] {
+            registered = module.RegisterClassObjects(CLSCTX_LOCAL_SERVER, REGCLS_MULTIPLEUSE);
+            revoked = module.RevokeClassObjects();
+        });
+        wrong.join();
+        CHECK(registered == RPC_E_WRONG_THREAD && revoked == RPC_E_WRONG_THREAD);
+        CHECK(activateAutomaticValue());
+        ATL::CComPtr<IClassFactory> retained;
+        CHECK(::CoGetClassObject(autoClassId, CLSCTX_LOCAL_SERVER, nullptr, IID_IClassFactory,
+                                reinterpret_cast<void**>(&retained.p)) == S_OK);
+        CHECK(module.RevokeClassObjects() == S_OK && module.RevokeClassObjects() == S_FALSE);
+        CHECK(absentAutomaticFactory() && !module.CanRetire());
+        // Revocation retires OS publication; the client's retained factory
+        // still owns this engine and can finish work before module teardown.
+        ATL::CComPtr<IPersist> value;
+        CHECK(retained->CreateInstance(nullptr, IID_IPersist, reinterpret_cast<void**>(&value.p)) == S_OK);
+        CHECK(retained->LockServer(TRUE) == S_OK && retained->LockServer(FALSE) == S_OK);
+        value.Release();
+        retained.Release();
+        CHECK(module.CanRetire() && module.GetLockCount() == 0);
+        CHECK(module.Run() == S_OK && module.loops == 1 && module.activated && module.CanRetire());
+        CHECK(absentAutomaticFactory());
+        module.throwInLoop = true;
+        CHECK(module.Run() == E_ABORT && module.loops == 2 && module.activated && module.CanRetire());
+        CHECK(module.RevokeClassObjects() == S_FALSE && absentAutomaticFactory());
+        CHECK(module.SetClassObjects(nullptr, 0) == S_OK && module.Run() == S_FALSE && module.loops == 2);
+    }
+    CHECK(noCom() && !ATL::_pAtlModule && autoLive == 0 &&
+          autoFinalRelease == releasedBefore + 7 && exeRegistryCalls == registryBefore);
+    {
+        AutomaticExecutable<Apartment> module;
+        CHECK(absentAutomaticFactory());
+        CHECK(module.RegisterClassObjects(CLSCTX_LOCAL_SERVER, REGCLS_MULTIPLEUSE) == S_OK);
+        module.Term(); // Explicit retirement revokes publication before Term callbacks.
+        CHECK(module.CanRetire() && absentAutomaticFactory());
+        CHECK(module.RegisterClassObjects(CLSCTX_LOCAL_SERVER, REGCLS_MULTIPLEUSE) == E_UNEXPECTED);
+    }
+    CHECK(noCom() && !ATL::_pAtlModule);
+    {
+        AutomaticExecutable<Apartment> module;
+        CHECK(absentAutomaticFactory());
+        CHECK(module.RegisterClassObjects(CLSCTX_LOCAL_SERVER, REGCLS_MULTIPLEUSE) == S_OK);
+        // Leave the registrations to the destructor; its Term runs while
+        // the owning apartment is still initialized.
+    }
+    CHECK(noCom() && !ATL::_pAtlModule);
+    {
+        AutomaticExecutable<Apartment> module;
+        CHECK(absentAutomaticFactory() && module.CanRetire());
+    }
+    CHECK(noCom() && !ATL::_pAtlModule);
+    return true;
+}
+
 bool duplicate_auto_map() {
     // Inject an actual duplicate after the positive auto-map test. Each DLL
     // instance freezes its map exactly once, so a new owner must reject this
@@ -582,6 +709,12 @@ bool duplicate_auto_map() {
               E_INVALIDARG && !out);
         CHECK(dll.DllCanUnloadNow() == S_OK && dll.GetLockCount() == 0);
     }
+    {
+        Plain module;
+        CHECK(module.RegisterClassObjects(CLSCTX_LOCAL_SERVER, REGCLS_MULTIPLEUSE) == E_INVALIDARG);
+        CHECK(module.RevokeClassObjects() == S_FALSE && module.GetLockCount() == 0 &&
+              absentAutomaticFactory());
+    }
     CHECK(noCom() && !ATL::_pAtlModule && autoLive == 0);
     return true;
 }
@@ -589,5 +722,6 @@ bool duplicate_auto_map() {
 
 bool RunAtlModuleTests() {
     return module_locks() && executable() && executable_registration() && dll_module() &&
-           auto_object_map() && duplicate_auto_map();
+           auto_object_map() && automatic_executable<false>() && automatic_executable<true>() &&
+           duplicate_auto_map();
 }
