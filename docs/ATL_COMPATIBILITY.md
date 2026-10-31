@@ -20,7 +20,7 @@ target. Missing standard headers and APIs remain compatibility gaps; see the
 | `atlhost.h`, `atliface.h` | Windowed OLE containment, `CAxWindow`/`CAxWindow2`, site/ambient interfaces and explicit control creation; see [ownership contract](ACTIVEX_HOST.md) |
 | `atlcom.h` / `atlctl.h` | `AtlAdvise`/`AtlUnadvise`, `IDispEventSimpleImpl`, typed `SINK_ENTRY_INFO` maps |
 | `atlbase.h`: `CAtlModule`, `CAtlModuleT`, `CAtlExeModuleT` | Module locks, termination callbacks, balanced COM startup and explicit class-factory registration; see [module protocol](ATL_MODULE.md) |
-| `atlbase.h`: `CAtlDllModuleT<T>` | Real DLL exports and one `OpenATL::COM::Module` engine. Supports bound tables and static `OBJECT_ENTRY_AUTO` discovery, plus class-directed `UpdateRegistry(BOOL)` callbacks with ordered rollback; RGS resource scripts and automatic ProgID inference remain pending. |
+| `atlbase.h`: `CAtlDllModuleT<T>` | Real DLL exports and one `OpenATL::COM::Module` engine. Supports bound tables and static `OBJECT_ENTRY_AUTO` discovery, plus class-directed `UpdateRegistry(BOOL)` callbacks with ordered rollback; Bounded REGISTRY-resource scripts require an explicit registration context. TypeLib=TRUE fails E_NOTIMPL before class callbacks; automatic ProgID inference and TypeLib registration remain pending. |
 | `OBJECT_ENTRY_AUTO(clsid, type)` | Static per-image class map and optional typed `UpdateRegistry(BOOL)` callback, bounded duplicate/invalid CLSID rejection, real `IClassFactory`/object/module-lock ownership and native STA/MTA activation. No COM, registry I/O or heap allocation in static constructor. |
 | `DECLARE_NO_REGISTRY()` | Explicit ATL class opt-out of persistent registration; absent `UpdateRegistry` without this opt-out fails `E_NOTIMPL`. |
 | `DECLARE_REGISTRY_RESOURCEID(id)` | Class-static `UpdateRegistry(BOOL)` loads a real `REGISTRY` resource from the explicit HMODULE, parses a bounded ATL RGS subset and executes the owner-verified plan only inside a scoped application registration context; no implicit HKCR or TypeLib registration. |
@@ -35,7 +35,8 @@ target. Missing standard headers and APIs remain compatibility gaps; see the
 | `COM_INTERFACE_ENTRY_CHAIN(Base)` | Chain a base ATL COM map without double AddRef; preserve outer-first canonical `IUnknown` or use the base identity for a chain-only map. Native MI/QI/identity tests cover both forms. |
 | `DECLARE_NOT_AGGREGATABLE` | Select the nonaggregated creator |
 | `DECLARE_PROTECT_FINAL_CONSTRUCT` | Retain/release the construction guard reference |
-| WTL `CAppModule::Init` | `Init(hInstance)` and ordinary `Init(nullptr, hInstance)`; nonempty object maps/type-library IDs currently fail explicitly (missing compatibility) |
+| `CComModule` / WTL `CAppModule::Init` | Legacy object-map initialization, optional LIBID metadata, factory/cookie registration and object-main hooks are implemented. Full legacy module/registration API compatibility is still incomplete. |
+| `atlconv.h`: `CA2WEX<N>`, `CW2AEX<N>`, `CA2W`, `CW2A` | Object-owned inline/heap buffers, explicit code page and default thread ACP, public buffer members and Unicode `CA2T`/`CT2A` aliases. Strict malformed/lossy conversion throws; see [encoding differences](UNICODE.md). |
 | `openatl/com_server.h` / `com_registration.h` | Explicit in-process COM Server, IClassFactory, module/server locks, CLSID/ProgID registration and Windows STA/MTA activation (implemented subset) |
 
 Reference-count and ownership semantics follow the corresponding ATL APIs.
@@ -94,12 +95,12 @@ COMMap DLL build/link or any of the 37 original pure-ATL projects passing.
 
 **Tracked compatibility gaps:** expanded ATL object-map entry variants
 (including aggregation, automatic aggregates and tear-offs),
-image-embedded TypeLib dispatch and RGS-driven persistent
-class registration, complete TypeLib registration/unregistration,
-connection-point server templates, RGS, SAFEARRAY wrappers, windowless
+image-embedded TypeLib dispatch, full RGS grammar and automatic registration
+policy, complete TypeLib registration/unregistration,
+connection-point server templates, SAFEARRAY wrappers, windowless
 hosting, resource-based ActiveX dialogs and complete control/server support.
-`CComModule` is currently unimplemented but not prohibited by policy; assess
-it against unchanged ATL consumers. Windowed containment and typed simple
+`CComModule` has an implemented legacy object-map subset; its presence is
+not a claim that complete legacy ATL applications already pass. Windowed containment and typed simple
 event sinks are implemented. Missing APIs must not claim fake success.
 Real COM Server support already covers explicit class factories, module
 locks, registration and native STA/MTA activation. No claim of complete

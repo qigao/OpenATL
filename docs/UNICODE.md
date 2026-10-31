@@ -31,6 +31,37 @@ error propagation; a failed conversion never replaces the previous
 string or BSTR owner. Win32 active-code-page manifests independently
 exercise UTF-8 ACP behavior.
 
+## ATL conversion objects
+
+`atlconv.h` supports `CA2WEX<N>`, `CW2AEX<N>`, `CA2W`, `CW2A`, and the
+Unicode aliases `CA2T` / `CT2A` and `CA2TEX<N>` / `CT2AEX<N>`.
+These objects do not require `USES_CONVERSION`:
+
+```cpp
+ATL::CW2A bytes(L"text", CP_UTF8);
+ATL::CA2W text(bytes, CP_UTF8);
+```
+
+The one-argument constructors select `CP_THREAD_ACP`; the two-argument
+constructors select an explicit Windows code page. `m_psz` and
+`m_szBuffer[N]` are public, with mutable pointer conversion. Results including
+the NUL terminator that fit in N elements use the inline buffer; larger
+results use object-owned heap storage. The objects cannot be copied, and a
+borrowed output pointer must not outlive its conversion object. Null input
+produces a null pointer; empty input produces a nonnull empty buffer.
+
+The existing strict encoding policy still rejects malformed UTF-8/UTF-16
+and lossy/default ANSI substitutions. Failed conversions throw
+`CAtlException` with the failing HRESULT (or terminate under
+`_ATL_NO_EXCEPTIONS`). This policy is stricter than permissive Microsoft ATL
+ANSI conversions; complete conversion-class compatibility is not claimed.
+Other conversion classes and aliases remain future work.
+
+Legacy `A2W` / `W2A` macros retain `USES_CONVERSION` lexical ownership,
+process ACP, and their existing null-pointer / `GetLastError` failure contract.
+`CW2A` is now a conversion type, so save a named object when retaining its
+output pointer instead of retaining a pointer from a temporary expression.
+
 ## Deliberately unsupported advanced text operations
 
 The old opt-in `OPENATL_USE_SALTS_UNICODE` / `Salts::Unicode` processing
