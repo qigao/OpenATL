@@ -156,8 +156,10 @@ bool TestMissingTypeLibrary() {
     DISPATCH_CHECK(FAILED(dispatch->Invoke(77,IID_NULL,LOCALE_SYSTEM_DEFAULT,
         DISPATCH_METHOD,&params,nullptr,nullptr,nullptr)));
     ATL::CComTypeInfoHolder holder;
-    DISPATCH_CHECK(holder.GetTI(&iidValue,&libValue,0xffff,0xffff,
-        LOCALE_SYSTEM_DEFAULT,&missing) == E_NOTIMPL && missing == nullptr);
+    DISPATCH_CHECK(FAILED(holder.GetTI(&iidValue,&libValue,0xffff,0xffff,
+        LOCALE_SYSTEM_DEFAULT,&missing)) && missing == nullptr);
+    DISPATCH_CHECK(holder.GetTI(&iidValue,&libValue,0xffff,0,
+        LOCALE_SYSTEM_DEFAULT,&missing) == E_INVALIDARG && missing == nullptr);
     dispatch.Release();
     DISPATCH_CHECK(raw->Release() == 0);
     return true;

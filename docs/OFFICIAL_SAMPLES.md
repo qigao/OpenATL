@@ -143,8 +143,19 @@ There is no registry installation or `regsvr32` post-build action.
 Windows x64/ARM64 build hosts use their selected Windows SDK MIDL;
 there are no Linux/macOS cross-host MIDL claims or jobs.
 
-This qualifies original **IDL code generation and binary TypeLib loading**,
-not original COMMap project compilation/link or native class activation.
+The generated TypeLib is also embedded as TYPELIB resource 1 in the existing
+native COM DLL fixture. MIDL uses Win64 metadata for both supported 64-bit
+Windows CPUs (and Win32 metadata for an explicitly selected 32-bit build).
+The fixture implements original IChain and uses standard
+`IDispatchImpl<IChain, &IID_IChain, &LIBID_COMMAPLib, 0xffff, 0xffff>`:
+STA/MTA tests resolve Name2 and invoke its BSTR property through real
+OLEAUT32. They also check TypeLib identity, pointer width, missing IID and
+LIBID failures, object/module lifetime, and unchanged registered-library
+lookup results. CAtlBaseModule identifies its own PE image, including in a DLL.
+
+This qualifies original **IDL generation, embedded TypeLib loading and one
+real Automation property**, not original COMMap project compilation/link or
+original COMMap class activation.
 The unchanged COMMap still needs aggregation, cached tear-offs, automatic
 aggregation, TypeLib registration, broader `IDispatchImpl` and
 generated `aggreg/aggreg.idl`. All 37 original pure-ATL project

@@ -5,6 +5,9 @@
 #include "interfaces.h"
 #include "fixture_registry_ids.h"
 #include "openatl_rgs_fixtures.generated.h"
+#if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
+#include "COMMap.h"
+#endif
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -358,6 +361,63 @@ public:
     ~Dll() { Close(); }
 };
 
+#if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
+bool embeddedDispatch(Dll& dll) {
+    using Create = HRESULT (WINAPI*)(IDispatch**);
+    using TypeInfo = HRESULT (WINAPI*)(REFIID, REFGUID, ITypeInfo**);
+    const auto create = reinterpret_cast<Create>(
+        ::GetProcAddress(dll.image, "OpenATLCreateEmbeddedDispatch"));
+    const auto query = reinterpret_cast<TypeInfo>(
+        ::GetProcAddress(dll.image, "OpenATLGetEmbeddedTypeInfo"));
+    REQUIRE(create && query);
+    ATL::CComPtr<ITypeLib> registeredBefore;
+    const HRESULT registryBefore = ::LoadRegTypeLib(LIBID_COMMAPLib, 1, 0,
+        LOCALE_SYSTEM_DEFAULT, &registeredBefore.p);
+    ATL::CComPtr<IDispatch> dispatch;
+    REQUIRE(create(&dispatch.p) == S_OK && dispatch.p);
+    REQUIRE(dll.unload() == S_FALSE);
+    ATL::CComPtr<ITypeInfo> info;
+    REQUIRE(dispatch->GetTypeInfo(0, LOCALE_SYSTEM_DEFAULT, &info.p) == S_OK && info.p);
+    ATL::CComPtr<ITypeLib> library;
+    UINT index = 0;
+    REQUIRE(info->GetContainingTypeLib(&library.p, &index) == S_OK && library.p);
+    TLIBATTR* attr = nullptr;
+    REQUIRE(library->GetLibAttr(&attr) == S_OK && attr);
+    const bool identity = IsEqualGUID(attr->guid, LIBID_COMMAPLib) &&
+        attr->wMajorVerNum == 1 && attr->wMinorVerNum == 0 &&
+        attr->syskind == (sizeof(void*) == 8 ? SYS_WIN64 : SYS_WIN32);
+    library->ReleaseTLibAttr(attr);
+    REQUIRE(identity);
+    LPOLESTR names[] = {const_cast<LPOLESTR>(L"Name2")};
+    DISPID member = DISPID_UNKNOWN;
+    REQUIRE(dispatch->GetIDsOfNames(IID_NULL, names, 1,
+        LOCALE_SYSTEM_DEFAULT, &member) == S_OK && member == 0);
+    DISPPARAMS arguments{};
+    ATL::CComVariant result;
+    REQUIRE(dispatch->Invoke(member, IID_NULL, LOCALE_SYSTEM_DEFAULT,
+        DISPATCH_PROPERTYGET, &arguments, &result, nullptr, nullptr) == S_OK);
+    REQUIRE(result.vt == VT_BSTR && result.bstrVal &&
+        ::SysStringLen(result.bstrVal) == 22 &&
+        std::wcscmp(result.bstrVal, L"OpenWTL embedded chain") == 0);
+    ITypeInfo* missing = reinterpret_cast<ITypeInfo*>(1);
+    REQUIRE(query(IID_IStream, LIBID_COMMAPLib, &missing) == TYPE_E_ELEMENTNOTFOUND && !missing);
+    missing = reinterpret_cast<ITypeInfo*>(1);
+    REQUIRE(query(IID_IChain, GUID_NULL, &missing) == E_INVALIDARG && !missing);
+    missing = reinterpret_cast<ITypeInfo*>(1);
+    REQUIRE(query(IID_IChain, IID_IStream, &missing) == TYPE_E_ELEMENTNOTFOUND && !missing);
+    REQUIRE(query(IID_IChain, LIBID_COMMAPLib, nullptr) == E_POINTER);
+    ATL::CComPtr<ITypeLib> registeredAfter;
+    REQUIRE(::LoadRegTypeLib(LIBID_COMMAPLib, 1, 0, LOCALE_SYSTEM_DEFAULT,
+        &registeredAfter.p) == registryBefore);
+    dispatch.Release();
+    info.Release();
+    library.Release();
+    REQUIRE(dll.unload() == S_OK);
+    std::puts("OPENATL_EMBEDDED_TYPELIB_OK image=dll dispatch=1 invoke=1 register=0");
+    return true;
+}
+#endif
+
 // All test-induced foreign registry content is owned under a newly-created
 // exact ProgID. No preexisting user entry is overwritten or deleted.
 struct ForeignAuxProgId {
@@ -534,6 +594,9 @@ bool native(DWORD apartment) {
     HRESULT initialized = ::CoInitializeEx(nullptr, apartment);
     REQUIRE(initialized == S_OK);
     struct ApartmentOwner { ~ApartmentOwner() { ::CoUninitialize(); } } owner;
+#if defined(OPENATL_ORIGINAL_COMMAP_MIDL)
+    REQUIRE(embeddedDispatch(dll));
+#endif
     CLSID resolved{};
     REQUIRE(::CLSIDFromProgID(OpenATLTestProgId, &resolved) == S_OK &&
              IsEqualCLSID(resolved, CLSID_OpenATLValue));

@@ -9,6 +9,10 @@
 #include "atldef.h"
 #include "atltrace.h"
 
+// PE linkers provide this image-local symbol for EXEs and DLLs. It avoids
+// mistaking a DLL's host process image for the module owning these headers.
+extern "C" IMAGE_DOS_HEADER __ImageBase;
+
 namespace ATL {
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -201,8 +205,7 @@ public:
         m_hInstResource = NULL;
         dwAtlBuildVer = _ATL_VER;
 
-        // Get the module handle for the current executable
-        m_hInst = ::GetModuleHandleW(NULL);
+        m_hInst = reinterpret_cast<HINSTANCE>(&__ImageBase);
         m_hInstResource = m_hInst;
     }
 
