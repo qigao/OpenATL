@@ -1,10 +1,12 @@
 #include <atlcom.h>
 #include <statreg.h>
+#include "fixture_registry_ids.h"
 #include <array>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <thread>
+#include <type_traits>
 #include <vector>
 
 #define CHECK(x) do { if (!(x)) { std::fprintf(stderr, "ATL_MODULE_FAIL line=%d: %s\n", __LINE__, #x); return false; } } while (0)
@@ -17,6 +19,26 @@ void WINAPI record(DWORD_PTR value) {
     lateCallback = ATL::_pAtlModule->AddTermFunc(record, 3);
 }
 void WINAPI countCallback(DWORD_PTR value) { ++*reinterpret_cast<std::atomic<int>*>(value); }
+struct ModuleRegistryRoot {
+    ATL::CRegKey key;
+    std::wstring path;
+    bool owned = false;
+    bool Open() {
+        GUID guid{};
+        wchar_t text[40]{};
+        if (FAILED(::CoCreateGuid(&guid)) || !::StringFromGUID2(guid, text, 40)) return false;
+        path = std::wstring(L"Software\\OpenATL.ModuleRegistryTest.") + text;
+        DWORD disposition = 0;
+        const LSTATUS result = key.Create(HKEY_CURRENT_USER, path.c_str(), nullptr,
+            REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, nullptr, &disposition);
+        owned = result == ERROR_SUCCESS && disposition == REG_CREATED_NEW_KEY;
+        return owned;
+    }
+    ~ModuleRegistryRoot() {
+        key.Close();
+        if (owned) ::RegDeleteTreeW(HKEY_CURRENT_USER, path.c_str());
+    }
+};
 bool pinnedInDestructor = true;
 inline constexpr CLSID classId = {0xd19b8862, 0xa881, 0x47f6, {0x9c, 0x71, 0x91, 0xb2, 0xaf, 0x43, 0xe1, 0x03}};
 inline constexpr CLSID autoClassId = {0xd19b8863, 0xa881, 0x47f6, {0x9c, 0x71, 0x91, 0xb2, 0xaf, 0x43, 0xe1, 0x03}};
@@ -291,6 +313,7 @@ bool executable() {
         CHECK(module.GetInitHRESULT() == RPC_E_CHANGED_MODE && module.Run() == RPC_E_CHANGED_MODE);
         CHECK(module.RegisterServer(FALSE, &exeRegistryClassId) == RPC_E_CHANGED_MODE &&
               module.UnregisterServer(FALSE, &exeRegistryClassId) == RPC_E_CHANGED_MODE);
+        CHECK(module.RegisterAppId() == RPC_E_CHANGED_MODE && module.UnregisterAppId() == RPC_E_CHANGED_MODE);
         CHECK(module.RegisterClassObjects(CLSCTX_LOCAL_SERVER, REGCLS_MULTIPLEUSE) == RPC_E_CHANGED_MODE);
     }
     APTTYPE type; APTTYPEQUALIFIER qualifier;
@@ -310,26 +333,7 @@ bool executable() {
 class RegistrationModule : public ATL::CAtlModuleT<RegistrationModule> {};
 bool executable_registration() {
     CHECK(noCom() && !ATL::_pAtlModule && exeRegistryCalls == 0);
-    struct PrivateRoot {
-        ATL::CRegKey key;
-        std::wstring path;
-        bool owned = false;
-        bool Open() {
-            GUID guid{};
-            wchar_t text[40]{};
-            if (FAILED(::CoCreateGuid(&guid)) || !::StringFromGUID2(guid, text, 40)) return false;
-            path = std::wstring(L"Software\\OpenATL.ExeRegistryTest.") + text;
-            DWORD disposition = 0;
-            const LSTATUS result = key.Create(HKEY_CURRENT_USER, path.c_str(), nullptr,
-                REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, nullptr, &disposition);
-            owned = result == ERROR_SUCCESS && disposition == REG_CREATED_NEW_KEY;
-            return owned;
-        }
-        ~PrivateRoot() {
-            key.Close();
-            if (owned) ::RegDeleteTreeW(HKEY_CURRENT_USER, path.c_str());
-        }
-    } root;
+    ModuleRegistryRoot root;
     CHECK(root.Open());
     const wchar_t* name = L"OpenATL.Exe.AutoRegistry";
     const auto exists = [&]() {
@@ -390,6 +394,172 @@ bool executable_registration() {
         CHECK(module.UnregisterServer(FALSE, &exeRegistryClassId) == S_OK && !exists() && noCom());
     }
     CHECK(exeRegistryCalls == 5 && noCom() && !ATL::_pAtlModule);
+    return true;
+}
+
+constexpr LPCWSTR appIdText = L"{DF014EC0-2477-450C-B47C-C493B26D9B90}";
+constexpr LPCWSTR appIdPath = L"AppID\\{DF014EC0-2477-450C-B47C-C493B26D9B90}";
+constexpr LPCWSTR appAlias = L"AppID\\OpenWTL.AppId.Test.exe";
+bool registryKeyExists(HKEY root, LPCWSTR path) {
+    ATL::CRegKey key;
+    return key.Open(root, path, KEY_READ) == ERROR_SUCCESS;
+}
+template<class T, template<class> class Module>
+class AppIdFixture : public Module<T> {
+public:
+    DECLARE_REGISTRY_APPID_RESOURCEID(IDR_OPENATL_APPID, "{DF014EC0-2477-450C-B47C-C493B26D9B90}")
+    HKEY root = nullptr;
+    HRESULT commonResult = S_OK, installResult = S_OK, removeResult = S_OK;
+    bool throwCommon = false, flipMode = false, failRollback = false;
+    int installs = 0, removals = 0;
+    HRESULT AddCommonRGSReplacements(IRegistrarBase* registrar) override {
+        const auto* scope = OpenATL::COM::rgs_resource_detail::CurrentModule();
+        if (scope && !scope->PerUserRegistration()) return E_UNEXPECTED;
+        if (throwCommon) throw std::bad_alloc();
+        if (FAILED(commonResult)) return commonResult;
+        if (flipMode) ATL::AtlSetPerUserRegistration(false);
+        return registrar->AddReplacement(L"APP_VALUE", L"OpenWTL AppID");
+    }
+    HRESULT RegisterServer(BOOL, const CLSID* = nullptr) noexcept {
+        ++installs;
+        const auto* scope = OpenATL::COM::rgs_resource_detail::CurrentModule();
+        if (!scope || !scope->PerUserRegistration() || !registryKeyExists(root, appIdPath))
+            return E_UNEXPECTED;
+        if (failRollback) commonResult = E_ABORT;
+        return installResult; // Ordering probe, not a TypeLib registration substitute.
+    }
+    HRESULT UnregisterServer(BOOL, const CLSID* = nullptr) noexcept {
+        ++removals;
+        const auto* scope = OpenATL::COM::rgs_resource_detail::CurrentModule();
+        if (!scope || !scope->PerUserRegistration() || !registryKeyExists(root, appIdPath))
+            return E_UNEXPECTED;
+        return removeResult;
+    }
+};
+class AppIdBase : public AppIdFixture<AppIdBase, ATL::CAtlModuleT> {};
+class AppIdExe : public AppIdFixture<AppIdExe, ATL::CAtlExeModuleT> {};
+class AppIdDll : public AppIdFixture<AppIdDll, ATL::CAtlDllModuleT> {};
+class InvalidAppId : public ATL::CAtlModuleT<InvalidAppId> {
+public:
+    DECLARE_REGISTRY_APPID_RESOURCEID(IDR_OPENATL_APPID, "invalid")
+};
+class MissingAppIdResource : public ATL::CAtlModuleT<MissingAppIdResource> {
+public:
+    DECLARE_REGISTRY_APPID_RESOURCEID(65535, "{DF014EC0-2477-450C-B47C-C493B26D9B90}")
+};
+
+template<class Module>
+bool appid_registration() {
+    CHECK(noCom() && !ATL::_pAtlModule);
+    struct RestoreMode {
+        bool previous = false;
+        bool armed = false;
+        ~RestoreMode() { if (armed) ATL::AtlSetPerUserRegistration(previous); }
+    } mode;
+    CHECK(ATL::AtlGetPerUserRegistration(&mode.previous) == S_OK &&
+          ATL::AtlSetPerUserRegistration(true) == S_OK);
+    mode.armed = true;
+    ModuleRegistryRoot root;
+    CHECK(root.Open());
+    ATL::CRegKey shared;
+    CHECK(shared.Create(root.key, L"AppID") == ERROR_SUCCESS &&
+          shared.SetStringValue(L"Foreign", L"preserved") == ERROR_SUCCESS);
+    shared.Close();
+    {
+        Module module;
+        module.root = root.key;
+        OpenATL::COM::ScopedRgsRegistrationContext context(
+            root.key, ::GetModuleHandleW(nullptr), L"AppIdNativeTest");
+        CHECK(context.Status() == S_OK && std::wstring_view(Module::GetAppId()) == appIdText);
+        CHECK(module.RegisterAppId() == S_OK && registryKeyExists(root.key, appAlias));
+        ATL::CRegKey key;
+        CHECK(key.Open(root.key, appIdPath, KEY_READ | KEY_WRITE) == ERROR_SUCCESS);
+        wchar_t value[OpenATL::RGS::MaxPathUnits + 64]{};
+        ULONG count = static_cast<ULONG>(sizeof(value) / sizeof(value[0]));
+        const auto& path = OpenATL::COM::rgs_resource_detail::Current()->modulePath;
+        CHECK(key.QueryStringValue(L"Module", value, &count) == ERROR_SUCCESS && path == value);
+        count = static_cast<ULONG>(sizeof(value) / sizeof(value[0]));
+        CHECK(key.QueryStringValue(L"OpenATL.COMOwner", value, &count) == ERROR_SUCCESS &&
+              std::wstring(value) == L"RGS1:AppIdNativeTest:" + path);
+        CHECK(key.SetStringValue(nullptr, L"foreign edit") == ERROR_SUCCESS);
+        key.Close();
+        CHECK(FAILED(module.UnregisterAppId()) && registryKeyExists(root.key, appIdPath) &&
+              registryKeyExists(root.key, appAlias));
+        CHECK(key.Open(root.key, appIdPath, KEY_WRITE) == ERROR_SUCCESS &&
+              key.SetStringValue(nullptr, L"OpenWTL AppID") == ERROR_SUCCESS);
+        key.Close();
+        CHECK(module.UnregisterAppId() == S_OK && !registryKeyExists(root.key, appIdPath) &&
+              !registryKeyExists(root.key, appAlias));
+        module.commonResult = E_ACCESSDENIED;
+        CHECK(module.RegisterAppId() == E_ACCESSDENIED && module.installs == 0);
+        module.commonResult = S_OK;
+        module.throwCommon = true;
+        CHECK(module.RegisterAppId() == E_OUTOFMEMORY && !registryKeyExists(root.key, appIdPath));
+        module.throwCommon = false;
+        if constexpr (std::is_same<Module, AppIdExe>::value) {
+            HRESULT install = S_OK, remove = S_OK;
+            std::thread wrong([&] { install = module.RegisterAppId(); remove = module.UnregisterAppId(); });
+            wrong.join();
+            CHECK(install == RPC_E_WRONG_THREAD && remove == RPC_E_WRONG_THREAD);
+        }
+        const auto install = [&]() {
+            if constexpr (std::is_same<Module, AppIdExe>::value) {
+                HRESULT hr = E_FAIL;
+                return !module.ParseCommandLine(L"test.exe /RegServer", &hr) ? hr : E_UNEXPECTED;
+            } else if constexpr (std::is_same<Module, AppIdDll>::value) return module.DllRegisterServer(FALSE);
+            else return module.RegisterAppId();
+        };
+        const auto remove = [&]() {
+            if constexpr (std::is_same<Module, AppIdExe>::value) {
+                HRESULT hr = E_FAIL;
+                return !module.ParseCommandLine(L"test.exe -UnregServer", &hr) ? hr : E_UNEXPECTED;
+            } else if constexpr (std::is_same<Module, AppIdDll>::value) return module.DllUnregisterServer(FALSE);
+            else return module.UnregisterAppId();
+        };
+        if constexpr (!std::is_same<Module, AppIdBase>::value) {
+            module.flipMode = true;
+            CHECK(install() == S_OK && module.installs == 1 && registryKeyExists(root.key, appIdPath));
+            CHECK(ATL::AtlSetPerUserRegistration(true) == S_OK);
+            CHECK(remove() == S_OK && module.removals == 1 && !registryKeyExists(root.key, appIdPath));
+            module.flipMode = false;
+            CHECK(ATL::AtlSetPerUserRegistration(true) == S_OK);
+            module.installResult = E_ACCESSDENIED;
+            CHECK(install() == E_ACCESSDENIED && !registryKeyExists(root.key, appIdPath));
+            module.failRollback = true;
+            CHECK(install() == E_ABORT && registryKeyExists(root.key, appIdPath));
+            module.commonResult = S_OK;
+            module.failRollback = false;
+            CHECK(module.UnregisterAppId() == S_OK);
+            module.installResult = S_OK;
+            CHECK(install() == S_OK);
+            module.removeResult = E_ACCESSDENIED;
+            CHECK(remove() == E_ACCESSDENIED && registryKeyExists(root.key, appIdPath));
+            module.removeResult = S_OK;
+            CHECK(remove() == S_OK && !registryKeyExists(root.key, appIdPath));
+        }
+        CHECK(key.Open(root.key, L"AppID", KEY_READ) == ERROR_SUCCESS);
+        count = static_cast<ULONG>(sizeof(value) / sizeof(value[0]));
+        CHECK(key.QueryStringValue(L"Foreign", value, &count) == ERROR_SUCCESS &&
+              std::wstring_view(value) == L"preserved");
+        key.Close();
+        module.Term();
+        CHECK(module.RegisterAppId() == E_UNEXPECTED && module.UnregisterAppId() == E_UNEXPECTED &&
+              Module::UpdateRegistryAppId(TRUE) == E_UNEXPECTED);
+    }
+    CHECK(noCom() && !ATL::_pAtlModule && !OpenATL::COM::rgs_resource_detail::Current() &&
+          !OpenATL::COM::rgs_resource_detail::CurrentModule());
+    return true;
+}
+
+bool appid_guards() {
+    CHECK(noCom() && !ATL::_pAtlModule);
+    { RegistrationModule module;
+      CHECK(!RegistrationModule::GetAppId() && module.RegisterAppId() == S_FALSE &&
+            module.UnregisterAppId() == S_FALSE && noCom()); }
+    { InvalidAppId module; CHECK(module.RegisterAppId() == E_INVALIDARG); }
+    { MissingAppIdResource module; CHECK(FAILED(module.RegisterAppId())); }
+    CHECK(noCom() && !ATL::_pAtlModule && !OpenATL::COM::rgs_resource_detail::Current() &&
+          !OpenATL::COM::rgs_resource_detail::CurrentModule());
     return true;
 }
 
@@ -984,7 +1154,9 @@ bool duplicate_auto_map() {
 }
 
 bool RunAtlModuleTests() {
-    return module_locks() && executable() && executable_registration() && dll_module() &&
+    return module_locks() && executable() && executable_registration() &&
+           appid_guards() && appid_registration<AppIdBase>() && appid_registration<AppIdExe>() &&
+           appid_registration<AppIdDll>() && dll_module() &&
            auto_object_map() && automatic_executable<false>() && automatic_executable<true>() &&
            cross_process_executable(false) && cross_process_executable(true) &&
            duplicate_auto_map();

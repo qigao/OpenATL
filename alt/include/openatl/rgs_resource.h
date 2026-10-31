@@ -189,6 +189,7 @@ public:
     ScopedModuleRgsRegistration(const ScopedModuleRgsRegistration&) = delete;
     ScopedModuleRgsRegistration& operator=(const ScopedModuleRgsRegistration&) = delete;
     HMODULE ResourceModule() const noexcept { return image_; }
+    bool PerUserRegistration() const noexcept { return perUser_; }
 
     HRESULT Ensure() noexcept {
         if (rgs_resource_detail::Current()) return S_OK; // Explicit scope wins.

@@ -229,6 +229,12 @@ bool TestForeignContent() {
     REG_CHECK(::RegDeleteKeyW(root.handle, child.c_str()) == ERROR_SUCCESS);
     REG_CHECK(UnregisterRgs(root.handle, doc, kModule, L"MsChain") == S_OK);
     REG_CHECK(AllOwnedAbsent(root.handle, doc));
+    Document shared;
+    REG_CHECK(OpenATL::RGS::Parse(L"HKCR { NoRemove AppID = s 'not a value-free container' }", shared) == Error::Ok);
+    REG_CHECK(RegisterRgs(root.handle, shared, kModule, L"AppIdGuard") == E_INVALIDARG);
+    REG_CHECK(OpenATL::RGS::Parse(L"HKCR { A { NoRemove AppID { B = s 'nested' } } }", shared) == Error::Ok);
+    REG_CHECK(RegisterRgs(root.handle, shared, kModule, L"AppIdGuard") == E_INVALIDARG);
+    REG_CHECK(!Exists(root.handle, L"A") && !Exists(root.handle, L"AppID"));
     REG_CHECK(root.Close());
     return true;
 }

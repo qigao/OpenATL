@@ -134,9 +134,10 @@ inline HRESULT Prepare(const RGS::Document& source,
             if (RGS::detail::Same(key.path, expanded.keys[j].path))
                 return E_INVALIDARG;
         // Shared NoRemove containers are *not owned*. Only the top-level
-        // CLSID grouping can be shared, with no values of its own.
+        // CLSID/AppID groupings can be shared, with no scripted values.
         const bool shared = key.directive == RGS::Directive::NoRemove;
-        if (shared && (!RGS::detail::Same(key.path, L"CLSID") ||
+        if (shared && ((!RGS::detail::Same(key.path, L"CLSID") &&
+                        !RGS::detail::Same(key.path, L"AppID")) ||
                        !key.values.empty())) return E_INVALIDARG;
         if (!shared && key.directive != RGS::Directive::Ordinary &&
             key.directive != RGS::Directive::ForceRemove)
