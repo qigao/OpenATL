@@ -48,7 +48,7 @@ public:
     BEGIN_COM_MAP(AuxValue)
         COM_INTERFACE_ENTRY_IID(IID_OpenATLValue, IOpenATLValue)
     END_COM_MAP()
-    DECLARE_REGISTRY_RESOURCEID(IDR_OPENATL_AUX)
+    DECLARE_REGISTRY_RESOURCE(L"OPENATL_AUX_NAMED")
     HRESULT STDMETHODCALLTYPE GetValue(LONG* value) noexcept override {
         if (!value) return E_POINTER;
         *value = 84;

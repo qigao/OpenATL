@@ -128,8 +128,9 @@ not redirect arbitrary Win32 calls or another DLL. Native qualification
 uses per-user registration and real DACL denial, without elevation or HKLM
 writes. Machine-wide permission behavior remains separately unqualified.
 
-Class-directed `DECLARE_REGISTRY_RESOURCEID` loads an actual `REGISTRY`
-resource from the module's own image. `CAtlDllModuleT::RegisterServer` and
+Class-directed `DECLARE_REGISTRY_RESOURCEID` and `DECLARE_REGISTRY_RESOURCE`
+load actual numeric/named `REGISTRY` resources from the module's own image.
+`CAtlDllModuleT::RegisterServer` and
 `UnregisterServer` supply a lazy synchronous RGS context: per-user mode opens
 the current user's `Software\Classes`; default mode opens the current
 token's HKCR merged Classes view with `RegOpenUserClassesRoot`. Root-access
@@ -140,10 +141,40 @@ through all class callbacks, TypeLib work and class rollback.
 An explicit `ScopedRgsRegistrationContext` still takes priority, for example
 when an installer needs an isolated root or custom owner tag. Automatic
 contexts use `OpenATL.Module` plus the canonical DLL path as their ownership
-identity and retain the existing parser and owner-verified executor. A direct
-class `UpdateRegistry` call outside module registration still requires an
-explicit context. Nested explicit contexts remain rejected. Installer writes
+identity and retain the existing parser and owner-verified executor. Direct
+class callbacks use the active ATL module's static registrar; without an ATL
+module they require an explicit context. Nested explicit contexts remain rejected. Installer writes
 must be serialized; no work runs under `DllMain`.
+
+`CAtlModule::UpdateRegistryFromResourceS(UINT/LPCTSTR, BOOL,
+_ATL_REGMAP_ENTRY* = nullptr)` and the default `UpdateRegistryFromResource`
+alias execute that same static registrar, including when called directly
+outside `RegisterServer`. Existing explicit/operation contexts take priority;
+otherwise the helper supplies an own-image context with the current per-user
+setting. Resource names are bounded to 128 UTF-16 units and numeric IDs to
+1..65535. Decoding, replacement validation and parsing finish before a default
+registry root is acquired.
+
+The replacement map is copied into owned strings before execution. Supply
+at most 64 entries followed by `{nullptr, nullptr}`; the entire sentinel table
+must remain readable for the call. Names are case-insensitive ASCII identifiers
+of at most 64 units; data is limited to 8192 units and the complete map to
+65536 units. Replacements occur only within key/name/REG_SZ data tokens.
+Quotes and braces in data cannot introduce script instructions. Unknown or
+duplicate names, reserved `MODULE`/`MODULE_RAW` overrides, recursive `%`
+data, CR/LF and invalid expanded names fail before writes. Pointer-map strings
+are NUL-terminated; counted parser-map data additionally rejects embedded NUL.
+Unregistration must supply the same replacement values for ownership checks.
+
+OpenWTL always uses its built-in static registrar. Dynamic
+`UpdateRegistryFromResourceD`, `IRegistrar`/`CRegObject`,
+`AddCommonRGSReplacements`, EXE-specific quoted `%MODULE%` and `%MODULE_RAW%`
+semantics remain unimplemented; these APIs are not redirected to another
+registrar implementation.
+
+Public signature references: [CAtlModule registry helpers](https://learn.microsoft.com/en-us/cpp/atl/reference/catlmodule-class),
+[registry macros](https://learn.microsoft.com/en-us/cpp/atl/reference/registry-macros),
+and [replaceable parameters](https://learn.microsoft.com/en-us/cpp/atl/using-replaceable-parameters-the-registrar-s-preprocessor).
 
 The existing `tests/com_server/fixture.cpp` now routes its actual COM DLL
 exports through `CAtlDllModuleT`, without manually opening a root or supplying

@@ -1,0 +1,8 @@
+HKCR
+{
+    ForceRemove '%KEY%' = s '%VALUE%'
+    {
+        val '%FIELD%' = s 'prefix %VALUE% suffix'
+        val Module = s '%MODULE%'
+    }
+}

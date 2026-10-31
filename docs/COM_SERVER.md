@@ -126,8 +126,9 @@ batch and complete preflight are needed.
 
 **Further work:** the `DECLARE_REGISTRY_RESOURCEID(id)` path now loads the
 actual Windows `REGISTRY` resource and delegates to the existing bounded
-RGS parser/owner-verified executor through a scoped application policy.
-Full ATL RGS variants, automatic installation/elevation, complete TypeLib
+RGS parser/owner-verified executor through the module's default or an explicit
+context. Named resources and static module replacement-map helpers use that
+same engine. Full ATL RGS variants, complete TypeLib
 registration, and broad unchanged Microsoft ATL project compatibility
 remain unqualified.
 
@@ -144,10 +145,13 @@ GUID key names; quoted bare `Programmable` keys; `TypeLib`,
 
 Inputs must fit **65,536 UTF-16 code units**, **512 keys**, **1,024 values**,
 **20 nested scopes** and bounded name/path/value lengths. Unsupported
-roots, value types or substitutions, malformed quotes/braces, case-folded
+roots, value types or unknown substitutions, malformed quotes/braces, case-folded
 duplicate keys/values, traversal names and ownership-marker collisions
 fail closed. Failure leaves the output document unchanged.
-`ResolveModule` produces an independent expanded document and never reads
+The parser can additionally accept a bounded replacement map for custom
+key/name/string tokens. Replacement text is never re-tokenized as grammar;
+unknown/duplicate names, recursive `%` data and invalid expanded names are
+rejected. `ResolveModule` produces an independent expanded document and never reads
 environment variables or the registry.
 
 **The parser alone never executes registry instructions.** `ForceRemove`
@@ -229,8 +233,8 @@ Microsoft ATL registrar grammar remains unsupported.
 
 ## Genuine `REGISTRY` resource-ID installation
 
-`openatl/rgs_resource.h` adds `ReadRgsResource(HMODULE image, unsigned id,
-RGS::Document&)` and `UpdateRegistryResource(id, BOOL)`. The first is a
+`openatl/rgs_resource.h` provides numeric-ID and string-name overloads of
+`ReadRgsResource` and `UpdateRegistryResource`. The first is a
 **read-only** loader using exactly `FindResourceW` with resource type
 `REGISTRY`, `SizeofResource`, `LoadResource`, and `LockResource`.
 It handles strict UTF-8 (including BOM) and BOM-declared UTF-16 LE/BE,
@@ -238,7 +242,8 @@ rejecting malformed encoding, embedded NULs and over-budget resources before
 parsing. Failed loads leave an existing output document unchanged. There
 is **no** fallback to another resource type, file path or RGS engine.
 
-`DECLARE_REGISTRY_RESOURCEID(IDR_X)` in `atlcom.h` provides the ATL
+`DECLARE_REGISTRY_RESOURCEID(IDR_X)` and `DECLARE_REGISTRY_RESOURCE(name)`
+in `atlcom.h` provide the ATL
 class's `static UpdateRegistry(BOOL)` hook, reusing the same immutable
 `OBJECT_ENTRY_AUTO` class list and `CAtlDllModuleT` registration ordering
 from #29. `CAtlDllModuleT` supplies its own image and a lazy registration
@@ -252,15 +257,24 @@ markers contain `OpenATL.Module` and the canonical DLL path.
 An explicit `ScopedRgsRegistrationContext` takes priority and still accepts
 an opened HKEY, the actual resource HMODULE and a custom owner tag. It validates
 the module's absolute path and borrows its HKEY/HMODULE for that synchronous
-invocation on the same module and thread. Direct standalone callbacks need
-this explicit scope. Invalid/nested explicit scopes, root-access failures,
+invocation on the same module and thread. Direct class callbacks use the
+active ATL module's static registrar; without that module they need an
+explicit scope. Invalid/nested explicit scopes, root-access failures,
 wrong resource type, unknown ID and invalid resource contents fail with an
 HRESULT. Class-factory lookup and UI windows need no such scope or COM init.
+
+`CAtlModule::UpdateRegistryFromResourceS` accepts either a UINT or an LPCTSTR
+resource identifier and a standard `_ATL_REGMAP_ENTRY` sentinel array. The
+default `UpdateRegistryFromResource` name calls this static implementation.
+Both helpers preserve an existing operation's mode/context or supply a lazy
+own-image context when called directly. Replacement names/data are copied
+and validated before execution, and the resource is decoded/parsed before
+opening a default registry root. See [module limits](ATL_MODULE.md).
 
 The native `openatl_com_server_fixture.dll` now embeds two actual
 `REGISTRY` resources with class-matching CLSIDs, plus two byte-identical
 Microsoft `Chain.rgs`/`Outer.rgs` resources in a Windows .rc file. Its
-two ATL classes use `DECLARE_REGISTRY_RESOURCEID`, not custom
+two ATL classes use the numeric and named resource macros, not custom
 `UpdateRegistry` code or synthetic strings. The DLL exports select per-user
 mode and call the standard ATL module registrar, without manually opening a
 registry root or constructing an RGS context. The STA/MTA client
@@ -271,6 +285,13 @@ HKCU root. Native TypeLib write-denial tests also verify class rollback through
 this automatic context; export checks detect context leaks after success and
 failure. An isolated-root test proves explicit policy overrides the lazy
 module default. Machine-wide permissions remain separately unqualified.
+
+The same native client calls static module helpers on an original Microsoft
+resource and a named parameterized resource under its GUID-isolated root.
+It checks actual key/default/named values, embedded quote/brace data,
+case-insensitive parameters, `%MODULE%`, conflicting re-registration,
+modified-map unregistration rejection, missing resources/types, malformed
+sentinel tables and cleanup. These use the existing executable and DLL.
 
 This is a restricted source-compatible resource-ID API, **not** a general
 RGS interpreter or the complete standalone registrar API. It preserves

@@ -598,7 +598,7 @@ bool verifyResourceDocuments(HMODULE image) {
     REQUIRE(FAILED(COM::ReadRgsResource(image, 32767, untouched)));
     REQUIRE(COM::ReadRgsResource(nullptr, IDR_MICROSOFT_CHAIN,
                                  untouched) == E_INVALIDARG);
-    REQUIRE(COM::ReadRgsResource(image, 0, untouched) == E_INVALIDARG);
+    REQUIRE(COM::ReadRgsResource(image, 0U, untouched) == E_INVALIDARG);
     REQUIRE(untouched.keys.size() == 1 &&
             untouched.keys[0].path == L"Sentinel");
     std::wstring decoded = L"untouched";
@@ -669,6 +669,62 @@ bool scopedResourceRegistry(HMODULE image) {
     }
     REQUIRE(OpenATL::COM::UpdateRegistryResource(
         IDR_MICROSOFT_CHAIN, TRUE) == E_UNEXPECTED);
+    {
+        ATL::CAtlModule registrar;
+        ScopedRgsRegistrationContext context(root.key, image, L"ModuleResourceTest");
+        REQUIRE(context.Status() == S_OK);
+        REQUIRE(registrar.UpdateRegistryFromResourceS(IDR_MICROSOFT_CHAIN, TRUE) == S_OK);
+        REQUIRE(exists(root.key, L"COMMap.Chain.1"));
+        REQUIRE(registrar.UpdateRegistryFromResource(
+            MAKEINTRESOURCE(IDR_MICROSOFT_CHAIN), FALSE) == S_OK);
+        REQUIRE(!exists(root.key, L"COMMap.Chain.1"));
+
+        ATL::_ATL_REGMAP_ENTRY map[] = {
+            {L"KEY", L"OpenATL.ModuleResource"}, {L"FIELD", L"Description"},
+            {L"VALUE", L"O'Brien } Other = s 'literal' {"}, {nullptr, nullptr}
+        };
+        REQUIRE(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE, map) == S_OK);
+        ATL::CRegKey registered;
+        REQUIRE(registered.Open(root.key, map[0].szData, KEY_READ) == ERROR_SUCCESS);
+        wchar_t value[1024]{};
+        ULONG length = 1024;
+        REQUIRE(registered.QueryStringValue(nullptr, value, &length) == ERROR_SUCCESS &&
+                std::wstring_view(value) == map[2].szData);
+        length = 1024;
+        REQUIRE(registered.QueryStringValue(map[1].szData, value, &length) == ERROR_SUCCESS &&
+                std::wstring(value) == std::wstring(L"prefix ") + map[2].szData + L" suffix");
+        length = 1024;
+        REQUIRE(registered.QueryStringValue(L"Module", value, &length) == ERROR_SUCCESS &&
+                std::wstring_view(value) == OpenATL::COM::rgs_resource_detail::Current()->modulePath);
+        registered.Close();
+        REQUIRE(!exists(root.key, L"Other"));
+        REQUIRE(registrar.UpdateRegistryFromResource(L"OPENATL_PARAMETERS", TRUE, map) ==
+                HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS));
+        map[2].szData = L"wrong unregister value";
+        REQUIRE(FAILED(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", FALSE, map)));
+        REQUIRE(exists(root.key, map[0].szData));
+        map[2].szData = L"O'Brien } Other = s 'literal' {";
+        REQUIRE(registrar.UpdateRegistryFromResource(L"OPENATL_PARAMETERS", FALSE, map) == S_OK);
+        REQUIRE(!exists(root.key, map[0].szData));
+
+        ATL::_ATL_REGMAP_ENTRY duplicate[] = {{L"KEY", L"A"}, {L"key", L"B"}, {nullptr, nullptr}};
+        REQUIRE(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE, duplicate) == E_INVALIDARG);
+        ATL::_ATL_REGMAP_ENTRY unterminated[OpenATL::RGS::MaxReplacements + 1];
+        for (auto& entry : unterminated) entry = {L"KEY", L"A"};
+        REQUIRE(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE, unterminated) ==
+                HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW));
+        ATL::_ATL_REGMAP_ENTRY badData[] = {{L"KEY", nullptr}, {nullptr, nullptr}};
+        REQUIRE(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE, badData) == E_INVALIDARG);
+        REQUIRE(FAILED(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE)));
+        REQUIRE(FAILED(registrar.UpdateRegistryFromResourceS(L"missing", TRUE)));
+        REQUIRE(FAILED(registrar.UpdateRegistryFromResourceS(IDR_WRONG_RESOURCE_TYPE, TRUE)));
+        REQUIRE(registrar.UpdateRegistryFromResourceS(0U, TRUE) == E_INVALIDARG);
+        REQUIRE(registrar.UpdateRegistryFromResourceS(65536U, TRUE) == E_INVALIDARG);
+        REQUIRE(registrar.UpdateRegistryFromResourceS(static_cast<LPCTSTR>(nullptr), TRUE) == E_INVALIDARG);
+        REQUIRE(!exists(root.key, L"A") && !exists(root.key, L"B"));
+        registrar.Term();
+        REQUIRE(registrar.UpdateRegistryFromResourceS(IDR_MICROSOFT_CHAIN, TRUE) == E_UNEXPECTED);
+    }
     REQUIRE(root.Close());
     return true;
 }

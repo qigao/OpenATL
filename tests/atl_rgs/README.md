@@ -18,8 +18,8 @@ The test program embeds these pinned files as immutable wide literals on
 Windows and accepts their **read-only syntax and projection** with exact
 node/value counts. Separately, the native COM test now exercises the opt-in
 owner-verified executor under a newly GUID-named, isolated HKCU test root.
-This is still **not** proof of complete ATL RGS compatibility or automated
-production resource registration. The `HKCR` keyword is a symbolic
+This is still **not** proof of complete ATL RGS compatibility. Separate
+DLL tests now exercise module resource registration. The `HKCR` keyword is a symbolic
 input root, not authorization to write to real HKCR/HKLM.
 
 `ForceRemove` and `NoRemove` remain parsed directives in the AST.
@@ -28,10 +28,14 @@ caller-owned HKEY and registration owner tag. `ForceRemove` is *not*
 authority to replace or recursively delete existing keys. The native
 test's isolated HKCU root is deleted only if newly created by that test;
 production execution performs no blind recursive deletion, hidden elevation
-or COM initialization. A restricted `DECLARE_REGISTRY_RESOURCEID` capability now loads actual
-compiled Win32 `REGISTRY` resources through an explicit HMODULE and an
-application-scoped installer context. The fixture embeds the unchanged
+or COM initialization. The numeric/named `DECLARE_REGISTRY_RESOURCEID` and
+`DECLARE_REGISTRY_RESOURCE` macros load compiled Win32 `REGISTRY` resources
+through the module's default context or an explicit installer context.
+`CAtlModule::UpdateRegistryFromResourceS` feeds bounded replacement maps into
+the same parser: only key/name/string data is substituted, never syntax.
+The fixture embeds the unchanged
 Microsoft Chain/Outer files as resources and compares their loaded AST to
 these pinned text inputs. Real COM classes use two class-matching RGS
-resources for native STA/MTA activation; full ATL registrar/resource
-language and TypeLib semantics remain separate work.
+resources for native STA/MTA activation, including an actual named resource.
+The native TypeLib subset has separate tests; full ATL registrar/resource
+language and complete TypeLib semantics remain separate work.
