@@ -41,9 +41,9 @@ COM Server registration. Source conformance and native tests must protect
 **both** Client and Server APIs. The source policy must not forbid future
 standard ATL modules, object maps or registration by name.
 
-**Missing compatibility features, not exclusions:** standard
-`CAtlDllModuleT`, automatic/chained object maps, aggregation and tear-offs,
-RGS, complete EXE-server registration, type libraries, Automation,
+**Missing compatibility features, not exclusions:** expanded object maps,
+aggregation and tear-offs, full RGS, complete EXE-server registration,
+complete type-library registration/image loading and Automation,
 SAFEARRAY wrappers and full ActiveX/OLE controls. Implement these against
 original ATL consumers and qualify native behavior. The existing server
 supports explicit nonaggregated factories and CLSID/ProgID registration.

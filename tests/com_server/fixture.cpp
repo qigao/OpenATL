@@ -75,8 +75,10 @@ HRESULT withRegistryContext(BOOL installing) noexcept {
     ScopedRgsRegistrationContext scope(root.m_hKey, image,
                                         L"OpenATLNativeFixture");
     if (FAILED(scope.Status())) return scope.Status();
-    return installing ? dllModule.DllRegisterServer()
-                      : dllModule.DllUnregisterServer();
+    // This fixture has no TypeLib. Register its two classes explicitly;
+    // requesting the unimplemented TypeLib path must fail before writes.
+    return installing ? dllModule.DllRegisterServer(FALSE)
+                      : dllModule.DllUnregisterServer(FALSE);
 }
 } // namespace
 

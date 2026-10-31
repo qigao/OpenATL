@@ -12,9 +12,10 @@ thread and optional explicit class-factory registrations.
 through the same `OpenATL::COM::Module` engine. Standard static
 `OBJECT_ENTRY_AUTO` class discovery is implemented; automatic registry
 registration from class-defined `UpdateRegistry(BOOL)` callbacks is now
-supported; resource-driven RGS and expanded ATL map variants remain
-compatibility work. `CComModule` is absent today, not banned from future
-consideration.
+supported. Bounded resource-driven RGS requires an explicit registration
+context; full RGS and expanded ATL maps remain compatibility work. Legacy
+`CComModule` supports bounded object maps, class-factory registration cookies,
+object-main hooks and same-thread retirement; its full API remains incomplete.
 
 One application module may be alive per binary image. Construction publishes
 the borrowed `_pAtlModule` pointer before application workers start. Module
@@ -106,7 +107,12 @@ these methods; the inherited default now uses only the class-defined
 `UpdateRegistry(BOOL)` methods attached to `OBJECT_ENTRY_AUTO` entries.
 A missing class callback is **`E_NOTIMPL`**, not fake success.
 `DECLARE_NO_REGISTRY()` deliberately opts a class out and explicitly
-returns `S_OK` without installing keys. Type library registration remains unimplemented. Class-directed
+returns `S_OK` without installing keys. Type library registration remains unimplemented. The default
+`RegisterServer(TRUE, ...)` / `UnregisterServer(TRUE, ...)` reject with
+`E_NOTIMPL` before invoking any class callback. Consequently the default
+`DllRegisterServer()` / `DllUnregisterServer()` also reject: their default
+TypeLib argument is TRUE. A class-only application explicitly passes FALSE;
+a derived registrar may implement the complete TypeLib contract. Class-directed
 `DECLARE_REGISTRY_RESOURCEID` now loads an actual `REGISTRY` resource
 under the application's explicit `ScopedRgsRegistrationContext`, reusing
 the existing RGS parser and owner-verified executor; it does not silently

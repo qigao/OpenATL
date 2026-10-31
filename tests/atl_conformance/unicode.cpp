@@ -1,14 +1,83 @@
+#include <atlconv.h> // Also qualify the standalone public conversion header.
 #include <atlbase.h>
 #include <atlstr.h>
 #include <openatl/unicode.h>
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <type_traits>
 
 using namespace OpenATL::Unicode;
 #define CHECK(expression) do { if (!(expression)) { \
     std::fprintf(stderr, "OPENATL_UNICODE_FAIL line=%d expression=%s acp=%u\n", \
                  __LINE__, #expression, ::GetACP()); return false; } } while (0)
+
+static bool conversionObjects() {
+    static_assert(!std::is_copy_constructible<ATL::CA2W>::value);
+    static_assert(!std::is_copy_assignable<ATL::CW2A>::value);
+    // These standard declarations must compile without USES_CONVERSION.
+    ATL::CW2A utf8(L"\u6771\U0001F600", CP_UTF8);
+    ATL::CA2W wide(utf8, CP_UTF8);
+    CHECK(std::strcmp(utf8, "\xE6\x9D\xB1\xF0\x9F\x98\x80") == 0);
+    CHECK(std::wcscmp(wide, L"\u6771\U0001F600") == 0);
+    CHECK(utf8.m_psz == utf8.m_szBuffer && wide.m_psz == wide.m_szBuffer);
+    ATL::CA2W euro("\x80", 1252);
+    ATL::CW2A ansi(euro, 1252);
+    CHECK(std::wcscmp(euro, L"\u20AC") == 0 && std::strcmp(ansi, "\x80") == 0);
+    ATL::CA2T text("ASCII");
+    ATL::CT2A narrow(text);
+    CHECK(std::strcmp(narrow, "ASCII") == 0);
+
+    ATL::CA2WEX<4> exactWide("abc", CP_UTF8);
+    ATL::CW2AEX<4> exactNarrow(L"abc", CP_UTF8);
+    CHECK(exactWide.m_psz == exactWide.m_szBuffer &&
+          exactNarrow.m_psz == exactNarrow.m_szBuffer);
+    ATL::CA2WEX<4> grownWide("abcd", CP_UTF8);
+    ATL::CW2AEX<4> grownNarrow(L"abcd", CP_UTF8);
+    CHECK(grownWide.m_psz != grownWide.m_szBuffer &&
+          grownNarrow.m_psz != grownNarrow.m_szBuffer);
+    const std::string longBytes(4096, 'x');
+    for (int i = 0; i != 50; ++i) {
+        ATL::CA2WEX<8> large(longBytes.c_str(), CP_UTF8);
+        ATL::CW2AEX<8> roundTrip(large, CP_UTF8);
+        CHECK(large.m_psz != large.m_szBuffer &&
+              roundTrip.m_psz != roundTrip.m_szBuffer);
+        CHECK(std::strcmp(roundTrip, longBytes.c_str()) == 0);
+    }
+    CHECK(std::wcscmp(grownWide, L"abcd") == 0 &&
+          std::strcmp(grownNarrow, "abcd") == 0);
+    LPWSTR writableWide = grownWide;
+    LPSTR writableNarrow = grownNarrow;
+    writableWide[0] = L'z';
+    writableNarrow[0] = 'z';
+    CHECK(std::wcscmp(grownWide, L"zbcd") == 0 &&
+          std::strcmp(grownNarrow, "zbcd") == 0);
+    ATL::CA2W nullWide(nullptr);
+    ATL::CW2A nullNarrow(nullptr);
+    ATL::CA2WEX<1> emptyWide("", CP_UTF8);
+    ATL::CW2AEX<1> emptyNarrow(L"", CP_UTF8);
+    CHECK(!nullWide.m_psz && !nullNarrow.m_psz);
+    CHECK(emptyWide.m_psz == emptyWide.m_szBuffer && !*emptyWide.m_psz);
+    CHECK(emptyNarrow.m_psz == emptyNarrow.m_szBuffer && !*emptyNarrow.m_psz);
+    bool invalidBytes = false, invalidWide = false, lossy = false, invalidPage = false;
+    try { ATL::CA2W bad("\xC0\xAF", CP_UTF8); }
+    catch (const ATL::CAtlException& e) {
+        invalidBytes = e.m_hr == HRESULT_FROM_WIN32(ERROR_NO_UNICODE_TRANSLATION);
+    }
+    const wchar_t surrogate[] = {wchar_t(0xd800), 0};
+    try { ATL::CW2A bad(surrogate, CP_UTF8); }
+    catch (const ATL::CAtlException& e) {
+        invalidWide = e.m_hr == HRESULT_FROM_WIN32(ERROR_NO_UNICODE_TRANSLATION);
+    }
+    try { ATL::CW2A bad(L"\u221E", 1252); }
+    catch (const ATL::CAtlException& e) {
+        lossy = e.m_hr == HRESULT_FROM_WIN32(ERROR_NO_UNICODE_TRANSLATION);
+    }
+    try { ATL::CA2W bad("x", 0xffffffffu); }
+    catch (const ATL::CAtlException& e) { invalidPage = FAILED(e.m_hr); }
+    CHECK(invalidBytes && invalidWide && lossy && invalidPage);
+    return true;
+}
 
 static bool boundaries() {
     const std::string utf8("A\0\xF0\x9F\x98\x80\xE6\x9D\xB1", 9);
@@ -106,7 +175,8 @@ int main(int argc, char** argv) {
     if (argc != 1 && !requireUtf8) return 2;
     if (requireUtf8 && ::GetACP() != CP_UTF8) return 3;
     ULONG_PTR token = 0;
-    if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED || !boundaries()) return 1;
+    if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED ||
+        !boundaries() || !conversionObjects()) return 1;
     if (::CoGetContextToken(&token) != CO_E_NOTINITIALIZED) return 1;
     std::printf("OPENATL_UNICODE_OK utf8=1 utf16=1 acp=1 ownership=1 win32=1\n");
     return 0;

@@ -435,10 +435,15 @@ public:
     // class must expose a real static UpdateRegistry(BOOL), or explicitly
     // opt out with DECLARE_NO_REGISTRY. This path never derives ProgIDs or
     // installer privileges from the CLSID and never implements RGS silently.
-    HRESULT RegisterServer(BOOL = FALSE, const CLSID* selected = nullptr) noexcept {
+    HRESULT RegisterServer(BOOL registerTypeLib = FALSE, const CLSID* selected = nullptr) noexcept {
+        // TypeLib registration is not implemented. Reject it before any
+        // class callback, rather than report success after a partial install.
+        // A derived module may implement the complete registration contract.
+        if (registerTypeLib) return E_NOTIMPL;
         return ApplyAutoRegistry(TRUE, selected);
     }
-    HRESULT UnregisterServer(BOOL = FALSE, const CLSID* selected = nullptr) noexcept {
+    HRESULT UnregisterServer(BOOL unregisterTypeLib = FALSE, const CLSID* selected = nullptr) noexcept {
+        if (unregisterTypeLib) return E_NOTIMPL;
         return ApplyAutoRegistry(FALSE, selected);
     }
 

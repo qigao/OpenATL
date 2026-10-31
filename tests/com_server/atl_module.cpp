@@ -19,6 +19,8 @@ bool pinnedInDestructor = true;
 inline constexpr CLSID classId = {0xd19b8862, 0xa881, 0x47f6, {0x9c, 0x71, 0x91, 0xb2, 0xaf, 0x43, 0xe1, 0x03}};
 inline constexpr CLSID autoClassId = {0xd19b8863, 0xa881, 0x47f6, {0x9c, 0x71, 0x91, 0xb2, 0xaf, 0x43, 0xe1, 0x03}};
 inline constexpr CLSID noRegistryClassId = {0xd19b8864, 0xa881, 0x47f6, {0x9c, 0x71, 0x91, 0xb2, 0xaf, 0x43, 0xe1, 0x03}};
+inline constexpr CLSID registrationClassId = {0xd19b8865, 0xa881, 0x47f6, {0x9c, 0x71, 0x91, 0xb2, 0xaf, 0x43, 0xe1, 0x03}};
+int registrationCalls = 0;
 std::atomic<int> autoLive{0}, autoFinalRelease{0};
 
 class Value : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>, public IPersist {
@@ -71,6 +73,15 @@ public:
     }
 };
 OBJECT_ENTRY_AUTO(noRegistryClassId, NoRegistryValue)
+
+class RegistrationValue : public NoRegistryValue {
+public:
+    static HRESULT WINAPI UpdateRegistry(BOOL) noexcept {
+        ++registrationCalls;
+        return S_OK;
+    }
+};
+OBJECT_ENTRY_AUTO(registrationClassId, RegistrationValue)
 
 class Factory : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>, public IClassFactory {
 public:
@@ -388,6 +399,17 @@ bool auto_object_map() {
         CHECK(dll.RegisterServer(FALSE, &CLSID_NULL) == CLASS_E_CLASSNOTAVAILABLE);
         CHECK(dll.RegisterServer(FALSE, &noRegistryClassId) == S_OK);
         CHECK(dll.UnregisterServer(FALSE, &noRegistryClassId) == S_OK);
+        // TRUE used to be ignored, executing the class callback and claiming
+        // a complete install. Rejection must precede every class side effect.
+        CHECK(registrationCalls == 0);
+        CHECK(dll.RegisterServer(TRUE, &registrationClassId) == E_NOTIMPL);
+        CHECK(dll.UnregisterServer(TRUE, &registrationClassId) == E_NOTIMPL);
+        CHECK(dll.DllRegisterServer() == E_NOTIMPL);
+        CHECK(dll.DllUnregisterServer() == E_NOTIMPL);
+        CHECK(registrationCalls == 0 && dll.GetLockCount() == 0);
+        CHECK(dll.RegisterServer(FALSE, &registrationClassId) == S_OK);
+        CHECK(dll.UnregisterServer(FALSE, &registrationClassId) == S_OK);
+        CHECK(registrationCalls == 2);
         CHECK(noCom() && dll.DllCanUnloadNow() == S_OK);
         ATL::CComPtr<IClassFactory> factory;
         CHECK(dll.DllGetClassObject(autoClassId, IID_IClassFactory,

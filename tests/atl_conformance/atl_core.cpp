@@ -85,7 +85,8 @@ static int conversions() {
     const wchar_t* first = A2W("OpenATL alpha");
     const wchar_t* second = A2CW("second");
     const char* third = W2A(L"narrow alpha");
-    const char* fourth = CW2A(L"another");
+    ATL::CW2A fourthConversion(L"another");
+    const char* fourth = fourthConversion;
     if (!first || !second || !third || !fourth ||
         wcscmp(first,L"OpenATL alpha")!=0 ||
         wcscmp(second,L"second")!=0 ||
