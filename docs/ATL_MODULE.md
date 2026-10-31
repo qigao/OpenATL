@@ -87,8 +87,8 @@ The default loop uses GetMessage/TranslateMessage/DispatchMessage and reports
 GetMessage errors. Registration commands are limited to 32767 UTF-16 code
 units including the terminator, then tokenized as Windows arguments;
 the default RegServer/UnregServer commands request TypeLib registration, so a
-missing embedded TypeLib fails before any class callback. Per-user command
-switches remain unimplemented. Idle-shutdown monitoring,
+missing embedded TypeLib fails before any class callback. Per-user registration
+commands are supported as described below. Idle-shutdown monitoring,
 service modules and complete ATL EXE-server behavior remain compatibility work.
 No fake success is permitted.
 
@@ -144,8 +144,8 @@ module admission, retaining its output contract and native CI matrix.
 
 This qualifies native SCM launch and system-interface marshaling under the
 current user's local COM policy. Custom proxy/stub generation, arbitrary
-user-defined interface marshaling, AppID security policy, services, per-user
-command switches, idle shutdown and positive EXE embedded-TypeLib registration
+user-defined interface marshaling, AppID security policy, services,
+idle shutdown and positive EXE embedded-TypeLib registration
 remain separate work.
 
 `RegisterAppId()` / `UnregisterAppId()` now invoke the derived module's
@@ -185,6 +185,33 @@ CMake target or workflow is added.
 
 Public contracts: [module AppID helpers](https://learn.microsoft.com/en-us/cpp/atl/reference/catlmodulet-class),
 [AppID resource macro](https://learn.microsoft.com/en-us/cpp/atl/reference/registry-macros#declare_registry_appid_resourceid).
+
+The EXE parser recognizes RegServerPerUser and UnregServerPerUser with either
+`/` or `-`, case-insensitively as complete Windows argument tokens. After the
+thread/init/state and input checks, it enables AtlSetPerUserRegistration(true)
+and calls the same AppID/class/TypeLib command workflow. Both commands retain
+the TRUE TypeLib request. A command returns false (stop application startup),
+with its actual operation HRESULT, on either success or failure. The enabled
+image-local setting remains selected after failure or success unless application
+code changes it; ordinary RegServer/UnregServer do not reset it. Callback changes
+still cannot change the captured policy of the current operation.
+
+An enclosing module scope already fixed to non-per-user mode rejects a nested
+per-user command with E_UNEXPECTED before changing mode or running callbacks.
+An existing per-user scope can be reused; an explicit opened-root context keeps
+its existing priority. These OpenWTL scope rules prevent a mixed-policy operation.
+Unknown/suffixed tokens, a token in the executable path, invalid/oversized input,
+null outputs and wrong-thread/failed-init/terminated entry do not enable the mode.
+
+The existing native module tests run both per-user commands through the AppID
+resource ordering/rollback/mode-mutation cases. A separate application hook
+registers and unregisters an actual uniquely named HKCU Software\\Classes RGS
+key through the default scope and verifies quoted/raw module data, failure and
+exception results, persistent setting selection, ordinary-command continuity,
+input/state guards and cleanup. That hook checks the TRUE dispatch flag but is
+not evidence of positive EXE embedded-TypeLib registration. The default EXE's
+missing-TypeLib test still fails honestly after selecting per-user mode. No new
+binary, project, CMake target or workflow is introduced.
 
 ## `CAtlDllModuleT<T>` — implemented explicit-class-table milestone
 

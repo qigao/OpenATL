@@ -290,7 +290,11 @@ bool executable() {
         Plain module;
         HRESULT result = S_OK;
         CHECK(!module.ParseCommandLine(L"app.exe /RegServer", &result) && FAILED(result));
-        CHECK(!module.ParseCommandLine(L"app.exe /RegServerPerUser", &result) && result == E_NOTIMPL);
+        bool previous = false, enabled = false;
+        CHECK(ATL::AtlGetPerUserRegistration(&previous) == S_OK);
+        CHECK(!module.ParseCommandLine(L"app.exe /RegServerPerUser", &result) && FAILED(result));
+        CHECK(ATL::AtlGetPerUserRegistration(&enabled) == S_OK && enabled);
+        CHECK(ATL::AtlSetPerUserRegistration(previous) == S_OK);
         CHECK(module.SetClassObjects(nullptr, 0) == S_OK);
         CHECK(module.WinMain(SW_HIDE) == static_cast<int>(S_FALSE));
     }
@@ -315,6 +319,11 @@ bool executable() {
               module.UnregisterServer(FALSE, &exeRegistryClassId) == RPC_E_CHANGED_MODE);
         CHECK(module.RegisterAppId() == RPC_E_CHANGED_MODE && module.UnregisterAppId() == RPC_E_CHANGED_MODE);
         CHECK(module.RegisterClassObjects(CLSCTX_LOCAL_SERVER, REGCLS_MULTIPLEUSE) == RPC_E_CHANGED_MODE);
+        bool before = false, after = false;
+        HRESULT parsed = S_OK;
+        CHECK(ATL::AtlGetPerUserRegistration(&before) == S_OK);
+        CHECK(!module.ParseCommandLine(L"app.exe /RegServerPerUser", &parsed) && parsed == RPC_E_CHANGED_MODE);
+        CHECK(ATL::AtlGetPerUserRegistration(&after) == S_OK && before == after);
     }
     APTTYPE type; APTTYPEQUALIFIER qualifier;
     CHECK(::CoGetApartmentType(&type, &qualifier) == S_OK &&
@@ -449,7 +458,7 @@ public:
 };
 
 template<class Module>
-bool appid_registration() {
+bool appid_registration(bool perUserCommand = false) {
     CHECK(noCom() && !ATL::_pAtlModule);
     struct RestoreMode {
         bool previous = false;
@@ -505,14 +514,18 @@ bool appid_registration() {
         const auto install = [&]() {
             if constexpr (std::is_same<Module, AppIdExe>::value) {
                 HRESULT hr = E_FAIL;
-                return !module.ParseCommandLine(L"test.exe /RegServer", &hr) ? hr : E_UNEXPECTED;
+                if (perUserCommand) ATL::AtlSetPerUserRegistration(false);
+                return !module.ParseCommandLine(perUserCommand ? L"test.exe /rEgSeRvErPeRuSeR" :
+                    L"test.exe /RegServer", &hr) ? hr : E_UNEXPECTED;
             } else if constexpr (std::is_same<Module, AppIdDll>::value) return module.DllRegisterServer(FALSE);
             else return module.RegisterAppId();
         };
         const auto remove = [&]() {
             if constexpr (std::is_same<Module, AppIdExe>::value) {
                 HRESULT hr = E_FAIL;
-                return !module.ParseCommandLine(L"test.exe -UnregServer", &hr) ? hr : E_UNEXPECTED;
+                if (perUserCommand) ATL::AtlSetPerUserRegistration(false);
+                return !module.ParseCommandLine(perUserCommand ? L"test.exe -uNrEgSeRvErPeRuSeR" :
+                    L"test.exe -UnregServer", &hr) ? hr : E_UNEXPECTED;
             } else if constexpr (std::is_same<Module, AppIdDll>::value) return module.DllUnregisterServer(FALSE);
             else return module.UnregisterAppId();
         };
@@ -545,6 +558,134 @@ bool appid_registration() {
         module.Term();
         CHECK(module.RegisterAppId() == E_UNEXPECTED && module.UnregisterAppId() == E_UNEXPECTED &&
               Module::UpdateRegistryAppId(TRUE) == E_UNEXPECTED);
+    }
+    CHECK(noCom() && !ATL::_pAtlModule && !OpenATL::COM::rgs_resource_detail::Current() &&
+          !OpenATL::COM::rgs_resource_detail::CurrentModule());
+    return true;
+}
+
+class PerUserCommandModule : public ATL::CAtlExeModuleT<PerUserCommandModule> {
+public:
+    std::wstring key;
+    HRESULT outcome = S_OK;
+    bool throwInstall = false;
+    int installs = 0, removals = 0;
+    static constexpr LPCWSTR script = L"HKCR { ForceRemove '%COMMAND_KEY%' = s '%MODULE%' "
+        L"{ val RawModule = s '%MODULE_RAW%' } }";
+    HRESULT RegisterServer(BOOL library) {
+        ++installs;
+        if (throwInstall) throw ATL::CAtlException(E_ABORT);
+        return Apply(library, true);
+    }
+    HRESULT UnregisterServer(BOOL library) {
+        ++removals;
+        return Apply(library, false);
+    }
+private:
+    HRESULT Apply(BOOL library, bool install) {
+        const auto* scope = OpenATL::COM::rgs_resource_detail::CurrentModule();
+        if (!library || !scope || !scope->PerUserRegistration()) return E_UNEXPECTED;
+        if (FAILED(outcome)) return outcome;
+        // Real default-root RGS execution; the TRUE argument is a command
+        // dispatch probe, not a claim of EXE embedded-TypeLib qualification.
+        ATL::CRegObject registrar;
+        const HRESULT hr = registrar.AddReplacement(L"COMMAND_KEY", key.c_str());
+        if (FAILED(hr)) return hr;
+        return install ? registrar.StringRegister(script) : registrar.StringUnregister(script);
+    }
+};
+
+bool per_user_commands() {
+    CHECK(noCom() && !ATL::_pAtlModule);
+    struct RestoreMode {
+        bool previous = false;
+        bool armed = false;
+        ~RestoreMode() { if (armed) ATL::AtlSetPerUserRegistration(previous); }
+    } mode;
+    CHECK(ATL::AtlGetPerUserRegistration(&mode.previous) == S_OK &&
+          ATL::AtlSetPerUserRegistration(false) == S_OK);
+    mode.armed = true;
+    const auto enabled = []() {
+        bool value = false;
+        return ATL::AtlGetPerUserRegistration(&value) == S_OK && value;
+    };
+    {
+        PerUserCommandModule module;
+        GUID id{};
+        wchar_t token[40]{};
+        CHECK(::CoCreateGuid(&id) == S_OK && ::StringFromGUID2(id, token, 40));
+        module.key = L"OpenWTL.Command.";
+        for (wchar_t ch : token) if (OpenATL::RGS::detail::Hex(ch)) module.key += ch;
+        const std::wstring path = L"Software\\Classes\\" + module.key;
+        CHECK(!registryKeyExists(HKEY_CURRENT_USER, path.c_str()));
+        struct Cleanup {
+            PerUserCommandModule& module;
+            bool installed = false;
+            ~Cleanup() {
+                if (!installed) return;
+                module.outcome = S_OK;
+                HRESULT hr = E_FAIL;
+                module.ParseCommandLine(L"test.exe /UnregServerPerUser", &hr);
+                if (FAILED(hr)) std::fprintf(stderr, "ATL_COMMAND_CLEANUP_FAIL\n");
+            }
+        } cleanup{module};
+        HRESULT result = E_FAIL;
+        CHECK(module.ParseCommandLine(L"\"C:\\RegServerPerUser path\\app.exe\" /Embedding", &result) &&
+              result == S_OK && !enabled());
+        CHECK(module.ParseCommandLine(L"test.exe /RegServerPerUserSuffix", &result) && result == S_OK && !enabled());
+        CHECK(!module.ParseCommandLine(nullptr, &result) && result == E_INVALIDARG && !enabled());
+        CHECK(!module.ParseCommandLine(L"test.exe /RegServerPerUser", nullptr) && !enabled());
+        const std::wstring oversized(32767, L'x');
+        CHECK(!module.ParseCommandLine(oversized.c_str(), &result) &&
+              result == HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW) && !enabled());
+        bool wrongRun = true;
+        std::thread wrong([&] { wrongRun = module.ParseCommandLine(L"test.exe /RegServerPerUser", &result); });
+        wrong.join();
+        CHECK(!wrongRun && result == RPC_E_WRONG_THREAD && !enabled());
+        {
+            OpenATL::COM::ScopedModuleRgsRegistration outer(::GetModuleHandleW(nullptr), false);
+            CHECK(!module.ParseCommandLine(L"test.exe /RegServerPerUser", &result) &&
+                  result == E_UNEXPECTED && !enabled());
+        }
+        CHECK(module.installs == 0 && module.removals == 0);
+        module.outcome = E_ACCESSDENIED;
+        CHECK(!module.ParseCommandLine(L"test.exe /rEgSeRvErPeRuSeR", &result) &&
+              result == E_ACCESSDENIED && enabled());
+        CHECK(ATL::AtlSetPerUserRegistration(false) == S_OK);
+        module.throwInstall = true;
+        CHECK(!module.ParseCommandLine(L"test.exe -RegServerPerUser", &result) && result == E_ABORT && enabled());
+        module.throwInstall = false;
+        module.outcome = S_OK;
+        CHECK(ATL::AtlSetPerUserRegistration(false) == S_OK);
+        cleanup.installed = true;
+        CHECK(!module.ParseCommandLine(L"test.exe /RegServerPerUser", &result) && result == S_OK && enabled());
+        ATL::CRegKey key;
+        CHECK(key.Open(HKEY_CURRENT_USER, path.c_str(), KEY_READ) == ERROR_SUCCESS);
+        wchar_t image[OpenATL::RGS::MaxPathUnits + 2]{}, value[OpenATL::RGS::MaxPathUnits + 32]{};
+        CHECK(::GetModuleFileNameW(nullptr, image, static_cast<DWORD>(sizeof(image) / sizeof(image[0]))));
+        ULONG count = static_cast<ULONG>(sizeof(value) / sizeof(value[0]));
+        CHECK(key.QueryStringValue(nullptr, value, &count) == ERROR_SUCCESS &&
+              std::wstring(value) == std::wstring(L"\"") + image + L"\"");
+        count = static_cast<ULONG>(sizeof(value) / sizeof(value[0]));
+        CHECK(key.QueryStringValue(L"RawModule", value, &count) == ERROR_SUCCESS && std::wstring_view(value) == image);
+        key.Close();
+        CHECK(ATL::AtlSetPerUserRegistration(false) == S_OK);
+        module.outcome = E_ACCESSDENIED;
+        CHECK(!module.ParseCommandLine(L"test.exe -UnregServerPerUser", &result) &&
+              result == E_ACCESSDENIED && enabled() && registryKeyExists(HKEY_CURRENT_USER, path.c_str()));
+        module.outcome = S_OK;
+        CHECK(!module.ParseCommandLine(L"test.exe -uNrEgSeRvErPeRuSeR", &result) && result == S_OK && enabled());
+        cleanup.installed = false;
+        CHECK(!registryKeyExists(HKEY_CURRENT_USER, path.c_str()));
+        // Ordinary commands preserve the policy selected by a previous command.
+        cleanup.installed = true;
+        CHECK(!module.ParseCommandLine(L"test.exe /RegServer", &result) && result == S_OK && enabled());
+        CHECK(!module.ParseCommandLine(L"test.exe /UnregServer", &result) && result == S_OK && enabled());
+        cleanup.installed = false;
+        CHECK(!registryKeyExists(HKEY_CURRENT_USER, path.c_str()));
+        CHECK(ATL::AtlSetPerUserRegistration(false) == S_OK);
+        module.Term();
+        CHECK(!module.ParseCommandLine(L"test.exe /RegServerPerUser", &result) && result == E_UNEXPECTED && !enabled());
     }
     CHECK(noCom() && !ATL::_pAtlModule && !OpenATL::COM::rgs_resource_detail::Current() &&
           !OpenATL::COM::rgs_resource_detail::CurrentModule());
@@ -1156,7 +1297,8 @@ bool duplicate_auto_map() {
 bool RunAtlModuleTests() {
     return module_locks() && executable() && executable_registration() &&
            appid_guards() && appid_registration<AppIdBase>() && appid_registration<AppIdExe>() &&
-           appid_registration<AppIdDll>() && dll_module() &&
+           appid_registration<AppIdExe>(true) &&
+           appid_registration<AppIdDll>() && per_user_commands() && dll_module() &&
            auto_object_map() && automatic_executable<false>() && automatic_executable<true>() &&
            cross_process_executable(false) && cross_process_executable(true) &&
            duplicate_auto_map();

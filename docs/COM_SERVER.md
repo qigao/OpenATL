@@ -373,6 +373,15 @@ exception propagation and rollback error priority. An undeclared AppID returns
 S_FALSE without writes. This does not qualify arbitrary AppID security settings,
 DCOM permissions, RunAs or service management.
 
+RegServerPerUser/UnregServerPerUser now enable the image-local per-user setting
+and invoke that same application-registration workflow with TRUE for TypeLib.
+Native tests cover actual default-root HKCU RGS work under a fresh unique key,
+both command spellings, AppID ordering/rollback and captured policy, failure and
+exception propagation, persistent mode and ordinary-command continuity. Invalid
+input/state does not change the setting; a nested command incompatible with its
+enclosing module policy is rejected. The application hook used for the HKCU
+test is not positive EXE embedded-TypeLib qualification; see [command limits](ATL_MODULE.md).
+
 This is a restricted source-compatible resource-ID API, **not** a general
 RGS interpreter or the complete standalone registrar API. It preserves
 the existing owner markers and nonrecursive deletion semantics and does not
