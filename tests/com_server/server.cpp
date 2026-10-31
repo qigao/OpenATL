@@ -627,6 +627,131 @@ bool verifyResourceDocuments(HMODULE image) {
     return true;
 }
 
+class CommonRgsTestModule : public ATL::CAtlDllModuleT<CommonRgsTestModule> {
+public:
+    enum class Action { Add, Recover, Clear, Fail, AtlFailure, AllocationFailure,
+                        Unexpected, Duplicate, Reserved, Limit } action = Action::Add;
+    ATL::CComPtr<IRegistrarBase> retained;
+    unsigned calls = 0;
+    HRESULT AddCommonRGSReplacements(IRegistrarBase* registrar) override {
+        ++calls;
+        retained = registrar;
+        switch (action) {
+        case Action::Recover:
+            if (registrar->AddReplacement(L"key", L"OpenATL.Bad") != E_INVALIDARG)
+                return E_UNEXPECTED;
+            break; // A rejected addition must leave the original map intact.
+        case Action::Fail: return E_ABORT;
+        case Action::AtlFailure: throw ATL::CAtlException(E_ACCESSDENIED);
+        case Action::AllocationFailure: throw std::bad_alloc();
+        case Action::Unexpected: throw std::runtime_error("common replacements");
+        case Action::Duplicate: return registrar->AddReplacement(L"key", L"duplicate");
+        case Action::Reserved: return registrar->AddReplacement(L"MODULE", L"C:\\other.dll");
+        case Action::Limit:
+            for (size_t i = 0; i <= OpenATL::RGS::MaxReplacements; ++i) {
+                const std::wstring name = L"Entry" + std::to_wstring(i);
+                const HRESULT hr = registrar->AddReplacement(name.c_str(), L"value");
+                if (FAILED(hr)) return hr;
+            }
+            return E_UNEXPECTED;
+        case Action::Clear: {
+            HRESULT hr = registrar->ClearReplacements();
+            if (FAILED(hr)) return hr;
+            hr = registrar->AddReplacement(L"KEY", L"OpenATL.Common.Cleared");
+            if (FAILED(hr)) return hr;
+            hr = registrar->AddReplacement(L"VALUE", L"cleared");
+            if (FAILED(hr)) return hr;
+            break;
+        }
+        default: break;
+        }
+        wchar_t field[] = L"Description";
+        const HRESULT hr = registrar->AddReplacement(L"FIELD", field);
+        field[0] = L'X'; // The borrowed stack string must already be copied.
+        return hr;
+    }
+};
+
+bool commonResourceReplacements(HMODULE image, HKEY root) {
+    CommonRgsTestModule registrar;
+    registrar.action = CommonRgsTestModule::Action::Recover;
+    ScopedRgsRegistrationContext context(root, image, L"CommonResourceTest");
+    REQUIRE(context.Status() == S_OK);
+    ATL::_ATL_REGMAP_ENTRY map[] = {
+        {L"KEY", L"OpenATL.Common"}, {L"VALUE", L"O'Brien { literal }"}, {nullptr, nullptr}
+    };
+    REQUIRE(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE, map) == S_OK);
+    REQUIRE(registrar.calls == 1 && !exists(root, L"OpenATL.Bad") && registrar.GetLockCount() == 1 &&
+            registrar.DllCanUnloadNow() == S_FALSE);
+    ATL::CRegKey key;
+    REQUIRE(key.Open(root, L"OpenATL.Common", KEY_READ) == ERROR_SUCCESS);
+    wchar_t value[128]{};
+    ULONG length = 128;
+    REQUIRE(key.QueryStringValue(L"Description", value, &length) == ERROR_SUCCESS &&
+            std::wstring_view(value) == L"prefix O'Brien { literal } suffix");
+    key.Close();
+    REQUIRE(registrar.retained.p &&
+            registrar.retained->AddReplacement(L"LATE", L"data") == E_UNEXPECTED &&
+            registrar.retained->ClearReplacements() == E_UNEXPECTED);
+    ATL::CComPtr<IUnknown> identity;
+    REQUIRE(registrar.retained->QueryInterface(IID_IUnknown,
+        reinterpret_cast<void**>(&identity.p)) == S_OK);
+    REQUIRE(identity.p == static_cast<IUnknown*>(registrar.retained.p));
+    ATL::CComPtr<IRegistrarBase> again;
+    REQUIRE(identity->QueryInterface(__uuidof(IRegistrarBase),
+        reinterpret_cast<void**>(&again.p)) == S_OK && again.p == registrar.retained.p);
+    void* unsupported = reinterpret_cast<void*>(1);
+    REQUIRE(again->QueryInterface(IID_IStream, &unsupported) == E_NOINTERFACE && !unsupported);
+    REQUIRE(again->QueryInterface(IID_IUnknown, nullptr) == E_POINTER);
+    identity.Release();
+    again.Release();
+    registrar.retained.Release();
+    REQUIRE(registrar.GetLockCount() == 0 && registrar.DllCanUnloadNow() == S_OK);
+    REQUIRE(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", FALSE, map) == S_OK);
+    registrar.retained.Release();
+    REQUIRE(!exists(root, L"OpenATL.Common") && registrar.GetLockCount() == 0);
+
+    const struct { CommonRgsTestModule::Action action; HRESULT error; } failures[] = {
+        {CommonRgsTestModule::Action::Fail, E_ABORT},
+        {CommonRgsTestModule::Action::AtlFailure, E_ACCESSDENIED},
+        {CommonRgsTestModule::Action::AllocationFailure, E_OUTOFMEMORY},
+        {CommonRgsTestModule::Action::Unexpected, E_UNEXPECTED},
+        {CommonRgsTestModule::Action::Duplicate, E_INVALIDARG},
+        {CommonRgsTestModule::Action::Reserved, E_INVALIDARG},
+        {CommonRgsTestModule::Action::Limit, HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW)}
+    };
+    for (const auto& failure : failures) {
+        registrar.action = failure.action;
+        REQUIRE(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE, map) == failure.error);
+        REQUIRE(!exists(root, L"OpenATL.Common") && registrar.GetLockCount() == 1);
+        REQUIRE(registrar.retained->AddReplacement(L"LATE", L"data") == E_UNEXPECTED &&
+                registrar.retained->ClearReplacements() == E_UNEXPECTED);
+        registrar.retained.Release();
+        REQUIRE(registrar.GetLockCount() == 0);
+    }
+    registrar.action = CommonRgsTestModule::Action::Clear;
+    REQUIRE(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE, map) == S_OK);
+    REQUIRE(!exists(root, L"OpenATL.Common") && exists(root, L"OpenATL.Common.Cleared"));
+    REQUIRE(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", FALSE, map) == S_OK);
+    registrar.retained.Release();
+    REQUIRE(!exists(root, L"OpenATL.Common.Cleared") && registrar.GetLockCount() == 0);
+    registrar.action = CommonRgsTestModule::Action::Add;
+    REQUIRE(FAILED(registrar.UpdateRegistryFromResourceS(L"Missing.RGS", TRUE, map)));
+    REQUIRE(registrar.retained->ClearReplacements() == E_UNEXPECTED);
+    registrar.retained.Release();
+    REQUIRE(registrar.GetLockCount() == 0);
+    const unsigned calls = registrar.calls;
+    REQUIRE(registrar.UpdateRegistryFromResourceS(static_cast<LPCTSTR>(nullptr), TRUE, map) ==
+            E_INVALIDARG && registrar.calls == calls);
+    ATL::_ATL_REGMAP_ENTRY invalid[] = {{nullptr, L"bad sentinel"}};
+    REQUIRE(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE, invalid) ==
+            E_INVALIDARG && registrar.calls == calls);
+    registrar.Term();
+    REQUIRE(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE, map) == E_UNEXPECTED &&
+            registrar.calls == calls);
+    return true;
+}
+
 bool scopedResourceRegistry(HMODULE image) {
     // The EXE can explicitly borrow its own GUID-isolated root for testing;
     // it does not inherit a DLL's TLS context or write to default HKCR.
@@ -725,6 +850,7 @@ bool scopedResourceRegistry(HMODULE image) {
         registrar.Term();
         REQUIRE(registrar.UpdateRegistryFromResourceS(IDR_MICROSOFT_CHAIN, TRUE) == E_UNEXPECTED);
     }
+    REQUIRE(commonResourceReplacements(image, root.key));
     REQUIRE(root.Close());
     return true;
 }

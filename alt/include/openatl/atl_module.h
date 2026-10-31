@@ -4,6 +4,7 @@
 #include "../atlbase.h"
 #include "com_server.h"
 #include "rgs_resource.h"
+#include "../atliface.h"
 #include <atomic>
 #include <algorithm>
 #include <mutex>
@@ -24,6 +25,7 @@ class CAtlModule;
 inline CAtlModule* _pAtlModule = nullptr;
 using _ATL_TERMFUNC = void (WINAPI*)(DWORD_PTR);
 struct _ATL_REGMAP_ENTRY { LPCOLESTR szKey; LPCOLESTR szData; };
+namespace detail { inline HRESULT AtlModuleException() noexcept; }
 
 class CAtlModule {
 public:
@@ -39,7 +41,7 @@ public:
         if (_pAtlModule) std::terminate();
         _pAtlModule = this;
     }
-    ~CAtlModule() noexcept {
+    virtual ~CAtlModule() noexcept {
         Term();
         if (_pAtlModule != this) std::terminate();
         _pAtlModule = nullptr;
@@ -73,42 +75,11 @@ public:
         } catch (const std::bad_alloc&) { return E_OUTOFMEMORY; }
           catch (...) { return E_UNEXPECTED; }
     }
-    HRESULT WINAPI UpdateRegistryFromResourceS(LPCTSTR resource, BOOL install,
-                                _ATL_REGMAP_ENTRY* entries = nullptr) noexcept {
-        if (IsTerminated()) return E_UNEXPECTED;
-        try {
-            // Own all replacement strings before executing any resource or
-            // registry callback. The caller supplies a valid sentinel table.
-            std::vector<OpenATL::RGS::Replacement> map;
-            if (entries) {
-                for (size_t i = 0;; ++i) {
-                    const auto& entry = entries[i];
-                    if (!entry.szKey) {
-                        if (entry.szData) return E_INVALIDARG;
-                        break;
-                    }
-                    if (i == OpenATL::RGS::MaxReplacements)
-                        return HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW);
-                    if (!OpenATL::COM::registration_detail::bounded(
-                            entry.szKey, OpenATL::RGS::MaxReplacementNameUnits) ||
-                        !OpenATL::COM::registration_detail::bounded(
-                            entry.szData, OpenATL::RGS::MaxValueUnits))
-                        return E_INVALIDARG;
-                    map.push_back({entry.szKey, entry.szData});
-                }
-            }
-            const HRESULT hr = OpenATL::COM::rgs_registration_detail::MapError(
-                OpenATL::RGS::ValidateReplacements(map));
-            if (FAILED(hr)) return hr;
-            if (OpenATL::COM::rgs_resource_detail::Current() ||
-                OpenATL::COM::rgs_resource_detail::CurrentModule())
-                return OpenATL::COM::UpdateRegistryResource(resource, install, &map);
-            OpenATL::COM::ScopedModuleRgsRegistration scope(
-                _AtlBaseModule.GetModuleInstance(), detail::perUserRegistration.load());
-            return OpenATL::COM::UpdateRegistryResource(resource, install, &map);
-        } catch (const std::bad_alloc&) { return E_OUTOFMEMORY; }
-          catch (...) { return E_UNEXPECTED; }
+    virtual HRESULT AddCommonRGSReplacements(IRegistrarBase* registrar) {
+        return registrar ? S_OK : E_POINTER;
     }
+    HRESULT WINAPI UpdateRegistryFromResourceS(LPCTSTR resource, BOOL install,
+                                _ATL_REGMAP_ENTRY* entries = nullptr) noexcept;
     HRESULT WINAPI UpdateRegistryFromResourceS(UINT id, BOOL install,
                                 _ATL_REGMAP_ENTRY* entries = nullptr) noexcept {
         if (!id || id > 0xffff) return E_INVALIDARG;
@@ -143,6 +114,132 @@ private:
     std::mutex mutex_;
     std::vector<Termination> callbacks_;
 };
+
+namespace detail {
+// A real owned COM capability for one synchronous replacement callback.
+// Retained interfaces stay valid and pin their image, but become immutable
+// when the callback finishes. No registry handles or borrowed strings escape.
+class CommonRgsRegistrar final : public IRegistrarBase {
+public:
+    CommonRgsRegistrar(CAtlModule& owner,
+                      std::vector<OpenATL::RGS::Replacement>&& map) noexcept
+        : pin_(owner), map_(std::move(map)) {}
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** output) noexcept override {
+        if (!output) return E_POINTER;
+        *output = nullptr;
+        if (!::IsEqualIID(iid, IID_IUnknown) &&
+            !::IsEqualIID(iid, IID_IRegistrarBase)) return E_NOINTERFACE;
+        *output = static_cast<IRegistrarBase*>(this);
+        AddRef();
+        return S_OK;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() noexcept override {
+        if (!OpenATL::COM::detail::retain(references_)) std::terminate();
+        return references_.load();
+    }
+    ULONG STDMETHODCALLTYPE Release() noexcept override {
+        const ULONG count = OpenATL::COM::detail::release(references_);
+        if (!count) delete this;
+        return count;
+    }
+    HRESULT STDMETHODCALLTYPE AddReplacement(LPCOLESTR name, LPCOLESTR value) noexcept override {
+        try {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!accepting_) return E_UNEXPECTED;
+            if (!OpenATL::COM::registration_detail::bounded(
+                    name, OpenATL::RGS::MaxReplacementNameUnits) ||
+                !OpenATL::COM::registration_detail::bounded(
+                    value, OpenATL::RGS::MaxValueUnits)) return E_INVALIDARG;
+            if (map_.size() == OpenATL::RGS::MaxReplacements)
+                return HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW);
+            auto staged = map_;
+            staged.push_back({name, value});
+            const HRESULT hr = OpenATL::COM::rgs_registration_detail::MapError(
+                OpenATL::RGS::ValidateReplacements(staged));
+            if (FAILED(hr)) return hr;
+            map_.swap(staged);
+            return S_OK;
+        } catch (...) { return AtlModuleException(); }
+    }
+    HRESULT STDMETHODCALLTYPE ClearReplacements() noexcept override {
+        try {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!accepting_) return E_UNEXPECTED;
+            map_.clear();
+            return S_OK;
+        } catch (...) { return AtlModuleException(); }
+    }
+    void Seal() noexcept {
+        std::lock_guard<std::mutex> lock(mutex_);
+        accepting_ = false;
+        map_.clear();
+    }
+    void Freeze(std::vector<OpenATL::RGS::Replacement>& output) noexcept {
+        std::lock_guard<std::mutex> lock(mutex_);
+        accepting_ = false;
+        output = std::move(map_);
+    }
+private:
+    ~CommonRgsRegistrar() = default;
+    struct ModulePin {
+        CAtlModule& owner;
+        explicit ModulePin(CAtlModule& module) noexcept : owner(module) { owner.Lock(); }
+        ~ModulePin() { owner.Unlock(); }
+    } pin_; // Declared first: retained through every other member's destruction.
+    std::atomic<ULONG> references_{1};
+    std::mutex mutex_;
+    std::vector<OpenATL::RGS::Replacement> map_;
+    bool accepting_ = true;
+};
+} // namespace detail
+
+inline HRESULT WINAPI CAtlModule::UpdateRegistryFromResourceS(
+    LPCTSTR resource, BOOL install, _ATL_REGMAP_ENTRY* entries) noexcept {
+    if (IsTerminated()) return E_UNEXPECTED;
+    if (!resource || (!IS_INTRESOURCE(resource) &&
+        (!OpenATL::COM::registration_detail::bounded(resource, OpenATL::RGS::MaxNameUnits) ||
+         !*resource))) return E_INVALIDARG;
+    // Capture policy before application code can change the image-local mode.
+    const bool perUser = detail::perUserRegistration.load();
+    const HMODULE image = _AtlBaseModule.GetModuleInstance();
+    try {
+        std::vector<OpenATL::RGS::Replacement> map;
+        if (entries) {
+            for (size_t i = 0;; ++i) {
+                const auto& entry = entries[i];
+                if (!entry.szKey) {
+                    if (entry.szData) return E_INVALIDARG;
+                    break;
+                }
+                if (i == OpenATL::RGS::MaxReplacements)
+                    return HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW);
+                if (!OpenATL::COM::registration_detail::bounded(
+                        entry.szKey, OpenATL::RGS::MaxReplacementNameUnits) ||
+                    !OpenATL::COM::registration_detail::bounded(
+                        entry.szData, OpenATL::RGS::MaxValueUnits)) return E_INVALIDARG;
+                map.push_back({entry.szKey, entry.szData});
+            }
+        }
+        HRESULT hr = OpenATL::COM::rgs_registration_detail::MapError(
+            OpenATL::RGS::ValidateReplacements(map));
+        if (FAILED(hr)) return hr;
+        CComPtr<detail::CommonRgsRegistrar> registrar;
+        registrar.Attach(new (std::nothrow) detail::CommonRgsRegistrar(*this, std::move(map)));
+        if (!registrar.p) return E_OUTOFMEMORY;
+        struct SealOnExit {
+            detail::CommonRgsRegistrar* registrar;
+            ~SealOnExit() { registrar->Seal(); }
+        } seal{registrar.p};
+        hr = AddCommonRGSReplacements(registrar.p); // Borrowed interface.
+        if (FAILED(hr)) return hr;
+        registrar.p->Freeze(map);
+        if (OpenATL::COM::rgs_resource_detail::Current() ||
+            OpenATL::COM::rgs_resource_detail::CurrentModule())
+            return OpenATL::COM::UpdateRegistryResource(resource, install, &map);
+        OpenATL::COM::ScopedModuleRgsRegistration scope(image, perUser);
+        return OpenATL::COM::UpdateRegistryResource(resource, install, &map);
+    } catch (...) { return detail::AtlModuleException(); }
+}
 
 // Original ATL object-map ABI. The source table remains owned by the caller;
 // this module owns only the COM factory references and registration cookies.

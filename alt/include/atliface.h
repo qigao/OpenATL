@@ -1,9 +1,20 @@
-// OpenATL public control-containment interfaces. COM vtable order follows
-// the published ATL IDL; implementation lives in atlhost.h.
+// OpenATL public containment and registrar interfaces. COM vtable order
+// follows the published ATL IDL; no external ATL implementation is used.
 #ifndef OPENATL_ATLIFACE_H
 #define OPENATL_ATLIFACE_H
 #pragma once
 #include <olectl.h>
+#ifndef __IRegistrarBase_INTERFACE_DEFINED__
+#define __IRegistrarBase_INTERFACE_DEFINED__
+inline constexpr IID IID_IRegistrarBase = {0xe21f8a85,0xb05d,0x4243,{0x81,0x83,0xc7,0xcb,0x40,0x55,0x88,0xf7}};
+MIDL_INTERFACE("E21F8A85-B05D-4243-8183-C7CB405588F7") IRegistrarBase : IUnknown {
+    virtual HRESULT STDMETHODCALLTYPE AddReplacement(LPCOLESTR, LPCOLESTR) = 0;
+    virtual HRESULT STDMETHODCALLTYPE ClearReplacements() = 0;
+};
+#ifdef __CRT_UUID_DECL
+__CRT_UUID_DECL(IRegistrarBase,0xe21f8a85,0xb05d,0x4243,0x81,0x83,0xc7,0xcb,0x40,0x55,0x88,0xf7)
+#endif
+#endif
 struct IDocHostUIHandlerDispatch;
 inline constexpr IID IID_IAxWinHostWindow = {0xb6ea2050,0x048a,0x11d1,{0x82,0xb9,0x00,0xc0,0x4f,0xb9,0x94,0x2e}};
 inline constexpr IID IID_IAxWinAmbientDispatch = {0xb6ea2051,0x048a,0x11d1,{0x82,0xb9,0x00,0xc0,0x4f,0xb9,0x94,0x2e}};

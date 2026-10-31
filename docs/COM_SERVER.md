@@ -271,6 +271,16 @@ own-image context when called directly. Replacement names/data are copied
 and validated before execution, and the resource is decoded/parsed before
 opening a default registry root. See [module limits](ATL_MODULE.md).
 
+Static resource helpers also invoke virtual
+`AddCommonRGSReplacements(IRegistrarBase*)` after the explicit map is validated.
+The published base interface supports real QI/reference counting and bounded
+owned `AddReplacement`/`ClearReplacements` operations. Hook errors and exceptions
+are translated before default registry writes. Callback exit freezes or closes
+the capability on every path; a retained interface stays valid, pins its module,
+and rejects later mutation. The per-user snapshot is captured before the hook.
+The full `IRegistrar` execution interface, CRegObject and dynamic registrar
+activation remain separate work.
+
 The native `openatl_com_server_fixture.dll` now embeds two actual
 `REGISTRY` resources with class-matching CLSIDs, plus two byte-identical
 Microsoft `Chain.rgs`/`Outer.rgs` resources in a Windows .rc file. Its
@@ -292,6 +302,12 @@ It checks actual key/default/named values, embedded quote/brace data,
 case-insensitive parameters, `%MODULE%`, conflicting re-registration,
 modified-map unregistration rejection, missing resources/types, malformed
 sentinel tables and cleanup. These use the existing executable and DLL.
+The native DLL's common hook now supplies a real ThreadingModel parameter and
+changes the global per-user mode during callbacks. Existing STA/MTA, native
+TypeLib registration and DACL-denial rollback therefore verify that the whole
+operation keeps its original policy. Additional native tests verify retained
+interface identity/module locks, immutable callback exit, atomic failed additions,
+clearing the map, bounded growth, and HRESULT/exception failure cleanup.
 
 This is a restricted source-compatible resource-ID API, **not** a general
 RGS interpreter or the complete standalone registrar API. It preserves
