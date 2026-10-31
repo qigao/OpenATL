@@ -1,4 +1,5 @@
 #include <atlbase.h>
+#include <statreg.h>
 #include <openatl/com_server.h>
 #include <openatl/com_registration.h>
 #include <openatl/rgs_resource.h>
@@ -702,6 +703,8 @@ bool commonResourceReplacements(HMODULE image, HKEY root) {
         reinterpret_cast<void**>(&again.p)) == S_OK && again.p == registrar.retained.p);
     void* unsupported = reinterpret_cast<void*>(1);
     REQUIRE(again->QueryInterface(IID_IStream, &unsupported) == E_NOINTERFACE && !unsupported);
+    unsupported = reinterpret_cast<void*>(1);
+    REQUIRE(again->QueryInterface(IID_IRegistrar, &unsupported) == E_NOINTERFACE && !unsupported);
     REQUIRE(again->QueryInterface(IID_IUnknown, nullptr) == E_POINTER);
     identity.Release();
     again.Release();
@@ -749,6 +752,176 @@ bool commonResourceReplacements(HMODULE image, HKEY root) {
     registrar.Term();
     REQUIRE(registrar.UpdateRegistryFromResourceS(L"OPENATL_PARAMETERS", TRUE, map) == E_UNEXPECTED &&
             registrar.calls == calls);
+    return true;
+}
+
+struct TempRgsFile {
+    std::wstring path;
+    HANDLE writer = INVALID_HANDLE_VALUE;
+    bool Open() {
+        wchar_t directory[MAX_PATH]{}, name[MAX_PATH]{};
+        const DWORD length = ::GetTempPathW(MAX_PATH, directory);
+        if (!length || length >= MAX_PATH || !::GetTempFileNameW(directory, L"OWR", 0, name))
+            return false;
+        path = name;
+        return true;
+    }
+    void CloseWriter() {
+        if (writer != INVALID_HANDLE_VALUE) { ::CloseHandle(writer); writer = INVALID_HANDLE_VALUE; }
+    }
+    bool Write(const std::vector<BYTE>& bytes, bool keepOpen = false) {
+        CloseWriter();
+        writer = ::CreateFileW(path.c_str(), GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+            TRUNCATE_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (writer == INVALID_HANDLE_VALUE) return false;
+        DWORD written = 0;
+        const bool okay = bytes.empty() ||
+            (::WriteFile(writer, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) &&
+             written == bytes.size());
+        if (!keepOpen) CloseWriter();
+        return okay;
+    }
+    ~TempRgsFile() { CloseWriter(); if (!path.empty()) ::DeleteFileW(path.c_str()); }
+};
+
+class StaticRegistrarTestModule final : public ATL::CAtlDllModuleT<StaticRegistrarTestModule> {};
+bool staticRegistrarScripts(HMODULE image, HKEY root) {
+    StaticRegistrarTestModule module;
+    ScopedRgsRegistrationContext context(root, image, L"StaticRegistrarTest");
+    REQUIRE(context.Status() == S_OK && module.DllCanUnloadNow() == S_OK);
+    REQUIRE(ATL::AtlCreateRegistrar(nullptr) == E_POINTER);
+    ATL::CComPtr<IRegistrar> retained;
+    const wchar_t* source = L"HKCR { ForceRemove '%KEY%' = s '%VALUE%' "
+                            L"{ val Origin = s '%MODULE%' } }";
+    {
+        ATL::CRegObject object;
+        REQUIRE(module.GetLockCount() == 1 && module.DllCanUnloadNow() == S_FALSE);
+        REQUIRE(object.QueryInterface(IID_IRegistrar,
+                reinterpret_cast<void**>(&retained.p)) == S_OK);
+        ATL::CComPtr<IRegistrarBase> base;
+        REQUIRE(retained->QueryInterface(__uuidof(IRegistrarBase),
+                reinterpret_cast<void**>(&base.p)) == S_OK);
+        ATL::CComPtr<IRegistrar> extended;
+        REQUIRE(base->QueryInterface(__uuidof(IRegistrar),
+                reinterpret_cast<void**>(&extended.p)) == S_OK && extended.p == retained.p);
+        ATL::CComPtr<IUnknown> first, second;
+        REQUIRE(base->QueryInterface(IID_IUnknown, reinterpret_cast<void**>(&first.p)) == S_OK);
+        REQUIRE(retained->QueryInterface(IID_IUnknown, reinterpret_cast<void**>(&second.p)) == S_OK &&
+                first.p == second.p);
+        void* unsupported = reinterpret_cast<void*>(1);
+        REQUIRE(retained->QueryInterface(IID_IStream, &unsupported) == E_NOINTERFACE && !unsupported);
+        REQUIRE(retained->QueryInterface(IID_IUnknown, nullptr) == E_POINTER);
+
+        wchar_t value[] = L"O'Brien { literal }";
+        REQUIRE(object.AddReplacement(L"KEY", L"OpenATL.Static.String") == S_OK &&
+                object.AddReplacement(L"VALUE", value) == S_OK);
+        value[0] = L'X';
+        REQUIRE(object.AddReplacement(L"key", L"OpenATL.Bad") == E_INVALIDARG);
+        REQUIRE(object.StringRegister(source) == S_OK);
+        ATL::CRegKey key;
+        REQUIRE(key.Open(root, L"OpenATL.Static.String", KEY_READ) == ERROR_SUCCESS);
+        wchar_t actual[OpenATL::RGS::MaxPathUnits + 2]{};
+        ULONG length = static_cast<ULONG>(sizeof(actual) / sizeof(actual[0]));
+        REQUIRE(key.QueryStringValue(nullptr, actual, &length) == ERROR_SUCCESS &&
+                std::wstring_view(actual) == L"O'Brien { literal }");
+        length = static_cast<ULONG>(sizeof(actual) / sizeof(actual[0]));
+        REQUIRE(key.QueryStringValue(L"Origin", actual, &length) == ERROR_SUCCESS &&
+                std::wstring_view(actual) == rgs_resource_detail::Current()->modulePath);
+        key.Close();
+        REQUIRE(!exists(root, L"OpenATL.Bad"));
+        REQUIRE(object.StringRegister(source) == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS));
+        REQUIRE(object.ClearReplacements() == S_OK &&
+                object.AddReplacement(L"KEY", L"OpenATL.Static.String") == S_OK &&
+                object.AddReplacement(L"VALUE", L"wrong") == S_OK);
+        REQUIRE(FAILED(object.StringUnregister(source)) && exists(root, L"OpenATL.Static.String"));
+        REQUIRE(object.ClearReplacements() == S_OK &&
+                object.AddReplacement(L"KEY", L"OpenATL.Static.String") == S_OK &&
+                object.AddReplacement(L"VALUE", L"O'Brien { literal }") == S_OK);
+        REQUIRE(object.StringUnregister(source) == S_OK && !exists(root, L"OpenATL.Static.String"));
+        REQUIRE(object.StringRegister(nullptr) == E_INVALIDARG);
+        REQUIRE(FAILED(object.StringRegister(L"HKLM { A = s 'no' }")) && !exists(root, L"A"));
+        REQUIRE(FAILED(object.StringRegister(L"HKCR { A = s '%UNKNOWN%' }")) && !exists(root, L"A"));
+
+        TempRgsFile file;
+        REQUIRE(file.Open());
+        const std::string utf8 = "HKCR { ForceRemove OpenATL.Static.File = s 'file data' }";
+        const std::vector<BYTE> bytes(utf8.begin(), utf8.end());
+        REQUIRE(file.Write(bytes));
+        REQUIRE(object.FileRegister(file.path.c_str()) == S_OK && exists(root, L"OpenATL.Static.File"));
+        REQUIRE(object.FileUnregister(file.path.c_str()) == S_OK && !exists(root, L"OpenATL.Static.File"));
+        // Both UTF-16 byte orders must resolve to the same registered plan.
+        for (bool little : {true, false}) {
+            std::vector<BYTE> encoded = little ? std::vector<BYTE>{0xff, 0xfe} :
+                                                std::vector<BYTE>{0xfe, 0xff};
+            for (unsigned char ch : utf8) {
+                encoded.push_back(little ? ch : 0);
+                encoded.push_back(little ? 0 : ch);
+            }
+            REQUIRE(file.Write(encoded) && retained->FileRegister(file.path.c_str()) == S_OK);
+            REQUIRE(file.Write(bytes) && retained->FileUnregister(file.path.c_str()) == S_OK);
+        }
+        REQUIRE(file.Write(bytes, true));
+        REQUIRE(object.FileRegister(file.path.c_str()) == HRESULT_FROM_WIN32(ERROR_SHARING_VIOLATION));
+        file.CloseWriter();
+        REQUIRE(!exists(root, L"OpenATL.Static.File"));
+        REQUIRE(file.Write({0xef, 0xbb, 0xbf, 0xc3, 0x28}) &&
+                object.FileRegister(file.path.c_str()) == HRESULT_FROM_WIN32(ERROR_NO_UNICODE_TRANSLATION));
+        REQUIRE(file.Write({0xff, 0xfe, 0x00}) &&
+                object.FileRegister(file.path.c_str()) == HRESULT_FROM_WIN32(ERROR_NO_UNICODE_TRANSLATION));
+        REQUIRE(file.Write({}) && object.FileRegister(file.path.c_str()) == E_INVALIDARG);
+        REQUIRE(file.Write(std::vector<BYTE>(OpenATL::RGS::MaxSourceUnits * 4 + 5, ' ')) &&
+                object.FileRegister(file.path.c_str()) == HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW));
+        REQUIRE(object.FileRegister(L"relative.rgs") == E_INVALIDARG);
+        REQUIRE(FAILED(object.FileRegister((file.path + L".missing").c_str())));
+        REQUIRE(!exists(root, L"OpenATL.Static.File"));
+
+        const auto& path = rgs_resource_detail::Current()->modulePath;
+        REQUIRE(object.ResourceRegister(path.c_str(), IDR_MICROSOFT_CHAIN, L"REGISTRY") == S_OK &&
+                exists(root, L"COMMap.Chain.1"));
+        REQUIRE(object.ResourceUnregister(path.c_str(), IDR_MICROSOFT_CHAIN, L"REGISTRY") == S_OK &&
+                !exists(root, L"COMMap.Chain.1"));
+        REQUIRE(object.ClearReplacements() == S_OK &&
+                object.AddReplacement(L"KEY", L"OpenATL.Static.Resource") == S_OK &&
+                object.AddReplacement(L"VALUE", L"resource data") == S_OK &&
+                object.AddReplacement(L"FIELD", L"Description") == S_OK);
+        REQUIRE(object.ResourceRegisterSz(path.c_str(), L"OPENATL_PARAMETERS", L"REGISTRY") == S_OK &&
+                exists(root, L"OpenATL.Static.Resource"));
+        REQUIRE(retained->ResourceUnregisterSz(path.c_str(), L"OPENATL_PARAMETERS", L"REGISTRY") == S_OK &&
+                !exists(root, L"OpenATL.Static.Resource"));
+        REQUIRE(retained->ResourceRegisterSz(path.c_str(), MAKEINTRESOURCEW(IDR_MICROSOFT_CHAIN),
+                                            L"registry") == S_OK);
+        REQUIRE(object.ResourceUnregisterSz(path.c_str(), MAKEINTRESOURCEW(IDR_MICROSOFT_CHAIN),
+                                             L"REGISTRY") == S_OK);
+        wchar_t host[OpenATL::RGS::MaxPathUnits + 2]{};
+        REQUIRE(::GetModuleFileNameW(nullptr, host, static_cast<DWORD>(sizeof(host) / sizeof(host[0]))));
+        REQUIRE(object.ResourceRegister(host, IDR_MICROSOFT_CHAIN, L"REGISTRY") == E_INVALIDARG);
+        REQUIRE(object.ResourceRegister(path.c_str(), IDR_MICROSOFT_CHAIN, L"RCDATA") ==
+                HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED));
+        REQUIRE(object.ResourceRegister(path.c_str(), 0, L"REGISTRY") == E_INVALIDARG);
+        REQUIRE(FAILED(object.ResourceRegister(path.c_str(), 65535, L"REGISTRY")));
+
+        REQUIRE(object.ClearReplacements() == S_OK &&
+                object.AddReplacement(L"KEY", L"OpenATL.Static.Survives") == S_OK &&
+                object.AddReplacement(L"VALUE", L"owned interface") == S_OK);
+        REQUIRE(object.StringRegister(source) == S_OK);
+    }
+    REQUIRE(module.GetLockCount() == 1 && module.DllCanUnloadNow() == S_FALSE);
+    REQUIRE(retained->StringUnregister(source) == S_OK && !exists(root, L"OpenATL.Static.Survives"));
+    retained.Release();
+    REQUIRE(module.GetLockCount() == 0 && module.DllCanUnloadNow() == S_OK);
+    ATL::CComPtr<IRegistrar> created;
+    REQUIRE(ATL::AtlCreateRegistrar(&created.p) == S_OK && created.p);
+    REQUIRE(created->StringRegister(source) == HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED));
+    created.Release();
+    REQUIRE(module.GetLockCount() == 0);
+    module.Term();
+    IRegistrar* rejected = reinterpret_cast<IRegistrar*>(1);
+    REQUIRE(ATL::AtlCreateRegistrar(&rejected) == E_UNEXPECTED && !rejected);
+    ATL::CRegObject stopped;
+    REQUIRE(stopped.StringRegister(source) == E_UNEXPECTED);
+    ULONG_PTR token = 0;
+    REQUIRE(::CoGetContextToken(&token) == CO_E_NOTINITIALIZED);
     return true;
 }
 
@@ -851,6 +1024,7 @@ bool scopedResourceRegistry(HMODULE image) {
         REQUIRE(registrar.UpdateRegistryFromResourceS(IDR_MICROSOFT_CHAIN, TRUE) == E_UNEXPECTED);
     }
     REQUIRE(commonResourceReplacements(image, root.key));
+    REQUIRE(staticRegistrarScripts(image, root.key));
     REQUIRE(root.Close());
     return true;
 }

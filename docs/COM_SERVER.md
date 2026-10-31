@@ -278,8 +278,13 @@ owned `AddReplacement`/`ClearReplacements` operations. Hook errors and exception
 are translated before default registry writes. Callback exit freezes or closes
 the capability on every path; a retained interface stays valid, pins its module,
 and rejects later mutation. The per-user snapshot is captured before the hook.
-The full `IRegistrar` execution interface, CRegObject and dynamic registrar
-activation remain separate work.
+The separate persistent `IRegistrar` execution interface and static CRegObject
+facade now use that same replacement-map implementation, parser and executor.
+They support string scripts, bounded strict-encoding disk files and REGISTRY
+resources in the current registration image. The common-hook interface itself
+still rejects extended IRegistrar QI. Foreign/unloaded resource images,
+CLSID_Registrar activation, dynamic registrar APIs and full CRegObject
+inheritance compatibility remain separate work; see [module limits](ATL_MODULE.md).
 
 The native `openatl_com_server_fixture.dll` now embeds two actual
 `REGISTRY` resources with class-matching CLSIDs, plus two byte-identical
@@ -308,6 +313,12 @@ TypeLib registration and DACL-denial rollback therefore verify that the whole
 operation keeps its original policy. Additional native tests verify retained
 interface identity/module locks, immutable callback exit, atomic failed additions,
 clearing the map, bounded growth, and HRESULT/exception failure cleanup.
+Existing native tests also call the static facade and retained IRegistrar:
+actual string/default/module values, duplicate/modified-map rejection, UTF-8
+and both UTF-16 file byte orders, writer-sharing denial, invalid/oversized
+files, numeric/named resources, resource-image identity, QI identity, interface
+survival after facade destruction, and final module-pin cleanup. These are
+extensions of the same executable; no installer/consumer project is added.
 
 This is a restricted source-compatible resource-ID API, **not** a general
 RGS interpreter or the complete standalone registrar API. It preserves

@@ -15,6 +15,23 @@ MIDL_INTERFACE("E21F8A85-B05D-4243-8183-C7CB405588F7") IRegistrarBase : IUnknown
 __CRT_UUID_DECL(IRegistrarBase,0xe21f8a85,0xb05d,0x4243,0x81,0x83,0xc7,0xcb,0x40,0x55,0x88,0xf7)
 #endif
 #endif
+#ifndef __IRegistrar_INTERFACE_DEFINED__
+#define __IRegistrar_INTERFACE_DEFINED__
+inline constexpr IID IID_IRegistrar = {0x44ec053b,0x400f,0x11d0,{0x9d,0xcd,0x00,0xa0,0xc9,0x03,0x91,0xd3}};
+MIDL_INTERFACE("44EC053B-400F-11D0-9DCD-00A0C90391D3") IRegistrar : IRegistrarBase {
+    virtual HRESULT STDMETHODCALLTYPE ResourceRegisterSz(LPCOLESTR, LPCOLESTR, LPCOLESTR) = 0;
+    virtual HRESULT STDMETHODCALLTYPE ResourceUnregisterSz(LPCOLESTR, LPCOLESTR, LPCOLESTR) = 0;
+    virtual HRESULT STDMETHODCALLTYPE FileRegister(LPCOLESTR) = 0;
+    virtual HRESULT STDMETHODCALLTYPE FileUnregister(LPCOLESTR) = 0;
+    virtual HRESULT STDMETHODCALLTYPE StringRegister(LPCOLESTR) = 0;
+    virtual HRESULT STDMETHODCALLTYPE StringUnregister(LPCOLESTR) = 0;
+    virtual HRESULT STDMETHODCALLTYPE ResourceRegister(LPCOLESTR, UINT, LPCOLESTR) = 0;
+    virtual HRESULT STDMETHODCALLTYPE ResourceUnregister(LPCOLESTR, UINT, LPCOLESTR) = 0;
+};
+#ifdef __CRT_UUID_DECL
+__CRT_UUID_DECL(IRegistrar,0x44ec053b,0x400f,0x11d0,0x9d,0xcd,0x00,0xa0,0xc9,0x03,0x91,0xd3)
+#endif
+#endif
 struct IDocHostUIHandlerDispatch;
 inline constexpr IID IID_IAxWinHostWindow = {0xb6ea2050,0x048a,0x11d1,{0x82,0xb9,0x00,0xc0,0x4f,0xb9,0x94,0x2e}};
 inline constexpr IID IID_IAxWinAmbientDispatch = {0xb6ea2051,0x048a,0x11d1,{0x82,0xb9,0x00,0xc0,0x4f,0xb9,0x94,0x2e}};
