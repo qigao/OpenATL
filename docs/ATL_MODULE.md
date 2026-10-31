@@ -110,8 +110,7 @@ MODULE_RAW and owner values, preservation after external value changes,
 unregistration, wrong-thread/failed-initialization/terminated rejection, and
 balanced COM teardown. The common CAtlModuleT path runs the same resource
 callback without initializing COM. Positive EXE embedded-TypeLib registration,
-AppID behavior and cross-process EXE launch/marshaling are not qualified by
-these resource checks.
+AppID behavior is not qualified by these resource checks.
 
 The same native module suite additionally publishes the automatic map in both
 STA and MTA, uses CoGetClassObject and CoCreateInstance to create actual objects,
@@ -120,8 +119,34 @@ updates, duplicate publication, wrong-thread rejection, explicit-empty opt-out,
 absence after revocation, a retained factory's independent lifetime, repeat Run,
 loop exceptions, explicit Term and destructor cleanup. Automatic activation
 must not run class registry callbacks. These are same-process native OLE
-activation checks, not evidence of cross-process launch or custom-interface
-marshaling. There is no new executable, CMake target or workflow.
+activation checks. There is no new executable, CMake target or workflow.
+
+The existing executable also serves as a real out-of-process fixture. Each
+client admission creates a fresh CLSID and named-event token, then uses the
+built-in owner-verified registrar to install only that HKCU LocalServer32 entry.
+The command uses quoted MODULE plus the server mode/token; ServerExecutable
+uses unquoted MODULE_RAW. CoGetClassObject starts the same executable through
+Windows SCM with -Embedding; the test never calls CreateProcess. The child
+publishes the token's automatic class and pumps its owning STA or MTA.
+
+Client calls use the system IClassFactory, IDispatch and IPersist proxy-stubs.
+They create objects through both factory CreateInstance and CoCreateInstance,
+check the remote ProcessId property against a different live process with the
+same executable image, verify the unique CLSID and balance LockServer calls.
+The registrar removes its unique CLSID before the child revokes publication.
+Existing proxies must still call the same server; after client releases, the
+child pumps until object/factory/server-lock references retire, exits normally
+and balances COM. The client checks exit code zero and absence of the owned key.
+Failure cleanup removes only verified registration, signals its token's stop
+event and, if necessary, terminates only the validated child process handle.
+Named waits and drain loops are bounded. All of this extends the existing
+module admission, retaining its output contract and native CI matrix.
+
+This qualifies native SCM launch and system-interface marshaling under the
+current user's local COM policy. Custom proxy/stub generation, arbitrary
+user-defined interface marshaling, AppID/security policy, services, per-user
+command switches, idle shutdown and positive EXE embedded-TypeLib registration
+remain separate work.
 
 ## `CAtlDllModuleT<T>` — implemented explicit-class-table milestone
 

@@ -1,7 +1,9 @@
 #include <atlcom.h>
+#include <statreg.h>
 #include <array>
 #include <atomic>
 #include <cstdio>
+#include <cstring>
 #include <thread>
 #include <vector>
 
@@ -694,6 +696,267 @@ bool automatic_executable() {
     return true;
 }
 
+// This fixture uses the system IDispatch/IPersist proxy-stubs. A fresh CLSID
+// and named-event token belong only to the one SCM-launched server process.
+CLSID processClassId{};
+class ProcessValue : public ATL::CComObjectRootEx<ATL::CComMultiThreadModel>,
+                     public IPersist, public IDispatch {
+public:
+    BEGIN_COM_MAP(ProcessValue)
+        COM_INTERFACE_ENTRY(IPersist)
+        COM_INTERFACE_ENTRY(IDispatch)
+    END_COM_MAP()
+    HRESULT STDMETHODCALLTYPE GetClassID(CLSID* output) override {
+        if (!output) return E_POINTER;
+        *output = processClassId;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetTypeInfoCount(UINT* count) override {
+        if (!count) return E_POINTER;
+        *count = 0;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetTypeInfo(UINT, LCID, ITypeInfo** output) override {
+        if (!output) return E_POINTER;
+        *output = nullptr;
+        return DISP_E_BADINDEX;
+    }
+    HRESULT STDMETHODCALLTYPE GetIDsOfNames(REFIID iid, LPOLESTR* names, UINT count,
+                                            LCID, DISPID* output) override {
+        if (!::IsEqualIID(iid, IID_NULL)) return DISP_E_UNKNOWNINTERFACE;
+        if (!names || !output || count != 1 || !names[0]) return E_INVALIDARG;
+        *output = DISPID_UNKNOWN;
+        if (::_wcsicmp(names[0], L"ProcessId")) return DISP_E_UNKNOWNNAME;
+        *output = 1;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE Invoke(DISPID member, REFIID iid, LCID, WORD flags,
+        DISPPARAMS* parameters, VARIANT* output, EXCEPINFO*, UINT*) override {
+        if (!::IsEqualIID(iid, IID_NULL)) return DISP_E_UNKNOWNINTERFACE;
+        if (member != 1 || flags != DISPATCH_PROPERTYGET) return DISP_E_MEMBERNOTFOUND;
+        if (!parameters || !output) return E_POINTER;
+        if (parameters->cArgs || parameters->cNamedArgs) return DISP_E_BADPARAMCOUNT;
+        ::VariantInit(output);
+        V_VT(output) = VT_UI4;
+        V_UI4(output) = ::GetCurrentProcessId();
+        return S_OK;
+    }
+};
+
+struct ProcessHandle {
+    HANDLE value = nullptr;
+    ProcessHandle() = default;
+    ProcessHandle(const ProcessHandle&) = delete;
+    ProcessHandle& operator=(const ProcessHandle&) = delete;
+    ~ProcessHandle() { if (value) ::CloseHandle(value); }
+};
+struct ProcessEvents {
+    ProcessHandle ready, stop, revoked;
+    bool Open(const std::wstring& token, bool create) {
+        const auto open = [&](ProcessHandle& target, LPCWSTR suffix) {
+            const std::wstring name = L"Local\\OpenWTL.Exe." + token + suffix;
+            if (create) {
+                target.value = ::CreateEventW(nullptr, TRUE, FALSE, name.c_str());
+                return target.value && ::GetLastError() != ERROR_ALREADY_EXISTS;
+            }
+            target.value = ::OpenEventW(SYNCHRONIZE | EVENT_MODIFY_STATE, FALSE, name.c_str());
+            return target.value != nullptr;
+        };
+        return open(ready, L".ready") && open(stop, L".stop") && open(revoked, L".revoked");
+    }
+};
+
+template<bool Apartment>
+class ProcessExecutable : public ATL::CAtlExeModuleT<ProcessExecutable<Apartment>> {
+public:
+    static HRESULT InitializeCom() noexcept {
+        return ::CoInitializeEx(nullptr, Apartment ? COINIT_APARTMENTTHREADED : COINIT_MULTITHREADED);
+    }
+    ProcessEvents& events;
+    bool completed = false;
+    explicit ProcessExecutable(ProcessEvents& input) : events(input) {}
+    bool CanRetire() const noexcept {
+        const auto* server = this->autoMap_.Server();
+        return this->GetLockCount() == 0 && (!server || server->CanUnloadNow() == S_OK);
+    }
+    HRESULT PreMessageLoop(int show) noexcept {
+        const HRESULT hr = ATL::CAtlExeModuleT<ProcessExecutable<Apartment>>::PreMessageLoop(show);
+        if (hr != S_OK) return hr;
+        return ::SetEvent(events.ready.value) ? S_OK : HRESULT_FROM_WIN32(::GetLastError());
+    }
+    bool Pump(bool drain) {
+        const ULONGLONG deadline = ::GetTickCount64() + 10000;
+        for (;;) {
+            if (drain && CanRetire()) return true;
+            const DWORD wait = ::MsgWaitForMultipleObjects(drain ? 0 : 1,
+                drain ? nullptr : &events.stop.value, FALSE, 20, QS_ALLINPUT);
+            if (!drain && wait == WAIT_OBJECT_0) return true;
+            if (wait == WAIT_FAILED) return false;
+            MSG message{};
+            while (::PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+                if (message.message == WM_QUIT) return false;
+                ::TranslateMessage(&message);
+                ::DispatchMessageW(&message);
+            }
+            if (::GetTickCount64() >= deadline) return false;
+        }
+    }
+    void RunMessageLoop() {
+        if (!Pump(false) || this->RevokeClassObjects() != S_OK ||
+            !::SetEvent(events.revoked.value) || !Pump(true))
+            throw ATL::CAtlException(HRESULT_FROM_WIN32(ERROR_TIMEOUT));
+        completed = true;
+    }
+};
+
+template<bool Apartment>
+bool processServer(const std::wstring& token) {
+    ProcessEvents events;
+    CHECK(events.Open(token, false));
+    // Construct the node only in the launched child, before its map freezes.
+    static ATL::detail::AutoObjectEntry entry(processClassId,
+        static_cast<OpenATL::COM::Creator>(&ATL::CComObject<ProcessValue>::CreateInstance));
+    {
+        ProcessExecutable<Apartment> module(events);
+        CHECK(module.GetInitHRESULT() == S_OK);
+        CHECK(module.Run() == S_FALSE && module.completed && module.CanRetire());
+    }
+    CHECK(noCom() && !ATL::_pAtlModule);
+    return true;
+}
+
+const wchar_t* processScript =
+    L"HKCR { NoRemove CLSID { ForceRemove '%SERVER_CLSID%' = s 'OpenWTL native EXE test' "
+    L"{ LocalServer32 = s '%MODULE% %SERVER_MODE% %SERVER_CLSID%' "
+    L"{ val ServerExecutable = s '%MODULE_RAW%' } } } }";
+
+struct ProcessRegistration {
+    ATL::CRegObject registrar;
+    ProcessEvents events;
+    ProcessHandle process;
+    bool installed = false;
+    bool Remove() {
+        if (!installed) return true;
+        const HRESULT hr = registrar.StringUnregister(processScript);
+        if (SUCCEEDED(hr)) installed = false;
+        return SUCCEEDED(hr);
+    }
+    ~ProcessRegistration() {
+        if (!Remove()) std::fprintf(stderr, "ATL_EXE_PROCESS_CLEANUP_FAIL registry=1\n");
+        if (events.stop.value) ::SetEvent(events.stop.value);
+        if (process.value && ::WaitForSingleObject(process.value, 5000) != WAIT_OBJECT_0) {
+            // This handle is accepted only after remote PID and image checks.
+            // Forced termination is failure cleanup, never a passing admission.
+            ::TerminateProcess(process.value, 1);
+            ::WaitForSingleObject(process.value, 5000);
+        }
+    }
+};
+
+bool remoteProcessId(IDispatch* object, DWORD& pid) {
+    LPOLESTR name = const_cast<LPOLESTR>(L"ProcessId");
+    DISPID member = DISPID_UNKNOWN;
+    CHECK(object->GetIDsOfNames(IID_NULL, &name, 1, LOCALE_USER_DEFAULT, &member) == S_OK && member == 1);
+    DISPPARAMS parameters{};
+    ATL::CComVariant result;
+    CHECK(object->Invoke(member, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_PROPERTYGET,
+        &parameters, &result, nullptr, nullptr) == S_OK && V_VT(&result) == VT_UI4);
+    pid = V_UI4(&result);
+    return true;
+}
+
+bool cross_process_executable(bool apartment) {
+    CHECK(noCom() && !ATL::_pAtlModule);
+    struct ComBalance { ~ComBalance() { ::CoUninitialize(); } };
+    {
+        CHECK(::CoInitializeEx(nullptr, COINIT_MULTITHREADED) == S_OK);
+        ComBalance balance;
+        struct RestoreMode {
+            bool previous = false;
+            bool armed = false;
+            ~RestoreMode() { if (armed) ATL::AtlSetPerUserRegistration(previous); }
+        } mode;
+        CHECK(ATL::AtlGetPerUserRegistration(&mode.previous) == S_OK &&
+              ATL::AtlSetPerUserRegistration(true) == S_OK);
+        mode.armed = true;
+        GUID id{};
+        wchar_t guid[40]{}, image[OpenATL::RGS::MaxPathUnits + 2]{};
+        CHECK(::CoCreateGuid(&id) == S_OK && ::StringFromGUID2(id, guid, 40));
+        const DWORD length = ::GetModuleFileNameW(nullptr, image,
+            static_cast<DWORD>(sizeof(image) / sizeof(image[0])));
+        CHECK(length && length <= OpenATL::RGS::MaxPathUnits);
+        const std::wstring classPath = std::wstring(L"Software\\Classes\\CLSID\\") + guid;
+        const auto absent = [&]() {
+            ATL::CRegKey key;
+            return key.Open(HKEY_CURRENT_USER, classPath.c_str(), KEY_READ) == ERROR_FILE_NOT_FOUND;
+        };
+        CHECK(absent());
+        ProcessRegistration session;
+        CHECK(session.events.Open(guid, true));
+        CHECK(session.registrar.AddReplacement(L"SERVER_CLSID", guid) == S_OK &&
+              session.registrar.AddReplacement(L"SERVER_MODE",
+                  apartment ? L"--module-server-sta" : L"--module-server-mta") == S_OK);
+        CHECK(session.registrar.StringRegister(processScript) == S_OK);
+        session.installed = true;
+        {
+            ATL::CRegKey key;
+            CHECK(key.Open(HKEY_CURRENT_USER, (classPath + L"\\LocalServer32").c_str(), KEY_READ) == ERROR_SUCCESS);
+            wchar_t command[OpenATL::RGS::MaxPathUnits + 128]{};
+            ULONG count = static_cast<ULONG>(sizeof(command) / sizeof(command[0]));
+            const std::wstring expected = std::wstring(L"\"") + image + L"\" " +
+                (apartment ? L"--module-server-sta " : L"--module-server-mta ") + guid;
+            CHECK(key.QueryStringValue(nullptr, command, &count) == ERROR_SUCCESS && expected == command);
+            count = static_cast<ULONG>(sizeof(command) / sizeof(command[0]));
+            CHECK(key.QueryStringValue(L"ServerExecutable", command, &count) == ERROR_SUCCESS &&
+                  std::wstring_view(command) == image);
+        }
+        ATL::CComPtr<IClassFactory> factory;
+        // No CreateProcess call: Windows SCM reads LocalServer32 and starts
+        // this same executable with its -Embedding argument.
+        CHECK(::CoGetClassObject(id, CLSCTX_LOCAL_SERVER, nullptr, IID_IClassFactory,
+                                reinterpret_cast<void**>(&factory.p)) == S_OK);
+        CHECK(::WaitForSingleObject(session.events.ready.value, 5000) == WAIT_OBJECT_0);
+        ATL::CComPtr<IDispatch> object;
+        CHECK(factory->CreateInstance(nullptr, IID_IDispatch, reinterpret_cast<void**>(&object.p)) == S_OK);
+        DWORD pid = 0;
+        CHECK(remoteProcessId(object, pid) && pid && pid != ::GetCurrentProcessId());
+        HANDLE process = ::OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+                                       FALSE, pid);
+        CHECK(process);
+        wchar_t actualImage[OpenATL::RGS::MaxPathUnits + 2]{};
+        DWORD capacity = static_cast<DWORD>(sizeof(actualImage) / sizeof(actualImage[0]));
+        const bool sameImage = ::QueryFullProcessImageNameW(process, 0, actualImage, &capacity) &&
+                               !::lstrcmpiW(image, actualImage);
+        if (!sameImage) ::CloseHandle(process);
+        CHECK(sameImage);
+        session.process.value = process;
+        ATL::CComPtr<IPersist> persist, second;
+        CHECK(object->QueryInterface(IID_IPersist, reinterpret_cast<void**>(&persist.p)) == S_OK);
+        CLSID actual{};
+        CHECK(persist->GetClassID(&actual) == S_OK && ::IsEqualCLSID(actual, id));
+        CHECK(::CoCreateInstance(id, nullptr, CLSCTX_LOCAL_SERVER, IID_IPersist,
+                                reinterpret_cast<void**>(&second.p)) == S_OK);
+        CHECK(second->GetClassID(&actual) == S_OK && ::IsEqualCLSID(actual, id));
+        CHECK(factory->LockServer(TRUE) == S_OK && factory->LockServer(FALSE) == S_OK);
+        CHECK(session.Remove() && absent());
+        CHECK(::SetEvent(session.events.stop.value));
+        CHECK(::WaitForSingleObject(session.events.revoked.value, 5000) == WAIT_OBJECT_0);
+        DWORD after = 0;
+        CHECK(remoteProcessId(object, after) && after == pid);
+        CHECK(persist->GetClassID(&actual) == S_OK && ::IsEqualCLSID(actual, id));
+        object.Release();
+        persist.Release();
+        second.Release();
+        factory.Release();
+        CHECK(::WaitForSingleObject(session.process.value, 5000) == WAIT_OBJECT_0);
+        DWORD code = 1;
+        CHECK(::GetExitCodeProcess(session.process.value, &code) && code == 0 && absent());
+    }
+    CHECK(noCom() && !ATL::_pAtlModule && !OpenATL::COM::rgs_resource_detail::Current() &&
+          !OpenATL::COM::rgs_resource_detail::CurrentModule());
+    return true;
+}
+
 bool duplicate_auto_map() {
     // Inject an actual duplicate after the positive auto-map test. Each DLL
     // instance freezes its map exactly once, so a new owner must reject this
@@ -723,5 +986,14 @@ bool duplicate_auto_map() {
 bool RunAtlModuleTests() {
     return module_locks() && executable() && executable_registration() && dll_module() &&
            auto_object_map() && automatic_executable<false>() && automatic_executable<true>() &&
+           cross_process_executable(false) && cross_process_executable(true) &&
            duplicate_auto_map();
+}
+
+int RunAtlModuleServer(const char* input, bool apartment) {
+    if (!input || std::strlen(input) != 38) return 2;
+    wchar_t token[39]{};
+    for (size_t i = 0; i < 38; ++i) token[i] = static_cast<unsigned char>(input[i]);
+    if (!OpenATL::RGS::detail::Guid(token) || FAILED(::CLSIDFromString(token, &processClassId))) return 2;
+    return (apartment ? processServer<true>(token) : processServer<false>(token)) ? 0 : 1;
 }
