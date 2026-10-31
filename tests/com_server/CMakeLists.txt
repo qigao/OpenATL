@@ -65,8 +65,10 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${_openatl_commap_original}/original_sources.json")
 foreach(_index RANGE 0 ${_commap_last_blob})
   string(JSON _source MEMBER "${_commap_snapshot}" files ${_index})
-  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${_openatl_commap_original}/${_source}")
+  # Canonical fixtures also occur in _rgs_fixtures; normalize ../ aliases so
+  # Ninja sees each configure input once instead of duplicate output paths.
+  get_filename_component(_source_path "${_openatl_commap_original}/${_source}" ABSOLUTE)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_source_path}")
 endforeach()
 execute_process(COMMAND "${Python3_EXECUTABLE}"
   "${_openatl_commap_original}/check_idl.py" "${_openatl_commap_idl}"
