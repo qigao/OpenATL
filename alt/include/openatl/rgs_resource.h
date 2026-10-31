@@ -1,20 +1,22 @@
 // OpenATL - real ATL REGISTRY resource loading and scoped installation.
 //
-// DECLARE_REGISTRY_RESOURCEID uses UpdateRegistryResource() only while an
-// application-supplied ScopedRgsRegistrationContext is alive on the invoking
-// thread and in the SAME DLL image. This module never chooses HKCR/HKLM,
-// opens a default key, starts COM, or executes registration in DllMain.
+// Explicit contexts remain supported. DLL module registration also supplies
+// a lazy image-local context selected by its captured per-user setting.
+// Neither inclusion nor DllMain opens registry keys or initializes COM.
 #ifndef OPENATL_RGS_RESOURCE_H
 #define OPENATL_RGS_RESOURCE_H
 
 #include "rgs_registration.h"
 #include <cstdint>
 #include <exception>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 
 namespace OpenATL { namespace COM {
+
+class ScopedModuleRgsRegistration;
 
 struct RgsRegistrationContext {
     HKEY classesRoot = nullptr;         // Borrowed opened Classes-root handle.
@@ -27,6 +29,10 @@ namespace rgs_resource_detail {
 inline const RgsRegistrationContext*& Current() noexcept {
     static thread_local const RgsRegistrationContext* context = nullptr;
     return context;
+}
+inline ScopedModuleRgsRegistration*& CurrentModule() noexcept {
+    static thread_local ScopedModuleRgsRegistration* module = nullptr;
+    return module;
 }
 inline HRESULT Win32Failure(DWORD fallback) noexcept {
     const DWORD error = ::GetLastError();
@@ -165,6 +171,66 @@ private:
     bool armed_ = false;
 };
 
+// DLL-module operation scope. Root access is deferred until an actual RGS
+// callback, so custom/no-registry callbacks do not acquire registry rights.
+// The first RGS callback retains one opened root and context through all
+// later callbacks, TypeLib work and rollback in this operation.
+class ScopedModuleRgsRegistration final {
+public:
+    ScopedModuleRgsRegistration(HMODULE image, bool perUser) noexcept
+        : image_(image), perUser_(perUser), previous_(rgs_resource_detail::CurrentModule()) {
+        rgs_resource_detail::CurrentModule() = this;
+    }
+    ~ScopedModuleRgsRegistration() noexcept {
+        context_.reset(); // Release TLS context before closing its root handle.
+        if (rgs_resource_detail::CurrentModule() != this) std::terminate();
+        rgs_resource_detail::CurrentModule() = previous_;
+    }
+    ScopedModuleRgsRegistration(const ScopedModuleRgsRegistration&) = delete;
+    ScopedModuleRgsRegistration& operator=(const ScopedModuleRgsRegistration&) = delete;
+
+    HRESULT Ensure() noexcept {
+        if (rgs_resource_detail::Current()) return S_OK; // Explicit scope wins.
+        if (attempted_) return status_;
+        attempted_ = true;
+        if (!image_) return status_ = E_INVALIDARG;
+        if (perUser_) {
+            registration_detail::Key user;
+            LSTATUS state = ::RegOpenCurrentUser(KEY_READ | KEY_WRITE, &user.value);
+            if (state != ERROR_SUCCESS) return status_ = HRESULT_FROM_WIN32(state);
+            state = ::RegCreateKeyExW(user.value, L"Software\\Classes", 0,
+                nullptr, 0, KEY_READ | KEY_WRITE, nullptr, &root_.value, nullptr);
+            if (state != ERROR_SUCCESS) return status_ = HRESULT_FROM_WIN32(state);
+        } else {
+            // Get a real opened merged Classes handle, not the predefined
+            // HKCR pseudo-handle rejected by the owned-root registrar.
+            HANDLE token = nullptr;
+            if (!::OpenThreadToken(::GetCurrentThread(), TOKEN_QUERY, TRUE, &token)) {
+                const DWORD error = ::GetLastError();
+                if (error != ERROR_NO_TOKEN) return status_ = HRESULT_FROM_WIN32(error);
+                if (!::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, &token))
+                    return status_ = rgs_resource_detail::Win32Failure(ERROR_ACCESS_DENIED);
+            }
+            const LSTATUS state = ::RegOpenUserClassesRoot(token, 0,
+                KEY_READ | KEY_WRITE, &root_.value);
+            ::CloseHandle(token);
+            if (state != ERROR_SUCCESS) return status_ = HRESULT_FROM_WIN32(state);
+        }
+        // The existing ownership marker also contains the canonical image
+        // path, so another DLL cannot adopt these keys using this tag alone.
+        context_.emplace(root_.value, image_, L"OpenATL.Module");
+        return status_ = context_->Status();
+    }
+private:
+    HMODULE image_;
+    const bool perUser_;
+    ScopedModuleRgsRegistration* previous_;
+    bool attempted_ = false;
+    HRESULT status_ = E_UNEXPECTED;
+    registration_detail::Key root_;
+    std::optional<ScopedRgsRegistrationContext> context_;
+};
+
 // Resource loader (no registry I/O): the caller specifies both HMODULE and
 // integer resource ID, and the resource type must be literal "REGISTRY".
 // A failed load/parse does not mutate the supplied output document.
@@ -199,12 +265,19 @@ inline HRESULT ReadRgsResource(HMODULE image, unsigned resourceId,
       catch (...) { return E_UNEXPECTED; }
 }
 
-// Called by DECLARE_REGISTRY_RESOURCEID on an ATL class. Context is
-// mandatory; a standalone COM factory lookup or plain WTL window never
-// accidentally inherits registry policy or initializes COM.
+// Called by DECLARE_REGISTRY_RESOURCEID on an ATL class. A module supplies
+// the lazy default during registration; isolated callers can supply an
+// explicit context. Plain WTL/factory use creates neither policy nor COM.
 inline HRESULT UpdateRegistryResource(unsigned resourceId,
                                       BOOL registerClass) noexcept {
     const RgsRegistrationContext* context = rgs_resource_detail::Current();
+    if (!context) {
+        auto* module = rgs_resource_detail::CurrentModule();
+        if (!module) return E_UNEXPECTED;
+        const HRESULT hr = module->Ensure();
+        if (FAILED(hr)) return hr;
+        context = rgs_resource_detail::Current();
+    }
     if (!context) return E_UNEXPECTED;
     RGS::Document document;
     HRESULT hr = ReadRgsResource(context->resourceModule, resourceId, document);

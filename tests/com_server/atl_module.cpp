@@ -77,6 +77,10 @@ OBJECT_ENTRY_AUTO(noRegistryClassId, NoRegistryValue)
 class RegistrationValue : public NoRegistryValue {
 public:
     static HRESULT WINAPI UpdateRegistry(BOOL) noexcept {
+        // A custom callback receives the module scope without opening an
+        // RGS root. Class-only registration must not acquire unused rights.
+        if (!OpenATL::COM::rgs_resource_detail::CurrentModule() ||
+            OpenATL::COM::rgs_resource_detail::Current()) return E_UNEXPECTED;
         ++registrationCalls;
         return S_OK;
     }
